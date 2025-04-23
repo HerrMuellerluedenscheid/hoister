@@ -1,24 +1,23 @@
 //! Fetch info of all running containers concurrently
 
 use bollard::Docker;
-use bollard::models::{ContainerCreateBody, ContainerSummary};
 
-use bollard::container::{
-    InspectContainerOptions, RemoveContainerOptions, StartContainerOptions, StopContainerOptions,
+use bollard::models::ContainerCreateBody;
+use bollard::query_parameters::{
+    CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions,
+    RemoveContainerOptions, StartContainerOptions, StopContainerOptions,
+    StopContainerOptionsBuilder,
 };
-use bollard::image::CreateImageOptions;
-use bollard::query_parameters::ListContainersOptions;
-use futures_util::stream;
+
+use bollard::secret::ContainerSummaryStateEnum;
+use bollard::service::HostConfig;
+
 use futures_util::stream::StreamExt;
 use std::collections::HashMap;
 use std::default::Default;
 use std::process::exit;
 use std::time::Duration;
 
-use bollard::container::Config;
-use bollard::container::CreateContainerOptions;
-use bollard::secret::ContainerSummaryStateEnum;
-use bollard::service::HostConfig;
 use tokio::time::sleep;
 
 #[tokio::main]
@@ -84,8 +83,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             image_name, image_tag
         );
         let options = CreateImageOptions {
-            from_image: image_name.clone(),
-            tag: image_tag.to_string(), // Or specify a different tag if needed
+            from_image: Some(image_name.clone()),
+            tag: Some(image_tag.to_string()), // Or specify a different tag if needed
             ..Default::default()
         };
         let mut update_available = false;
@@ -112,12 +111,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         }
 
         println!("Stopping container {:?}...", &container_id);
-        let options = StopContainerOptions { t: 30 };
+        let options = StopContainerOptionsBuilder::new().t(30).build();
 
         docker.stop_container(&container_id, Some(options)).await?;
         println!("Container stopped successfully");
-        // Start a container
-        sleep(Duration::from_secs(2)).await;
 
         println!("Removing container (keeping volumes)...");
         let remove_options = RemoveContainerOptions {
@@ -171,7 +168,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         }
 
         let options = CreateContainerOptions {
-            name,
+            name: Some(name),
             // Add any other options needed
             ..Default::default()
         };
@@ -182,7 +179,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         // Step 6: Start the new container
         println!("Starting new container...");
         docker
-            .start_container(&container.id, None::<StartContainerOptions<String>>)
+            .start_container(&container.id, None::<StartContainerOptions>)
             .await?;
         println!("Container started successfully");
 
