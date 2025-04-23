@@ -1,0 +1,12 @@
+services:
+  example:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    labels:
+      - "deploya.enable=true"
+    image: emrius11/example:latest
+    ports:
+      - "8111:80"
+
+
