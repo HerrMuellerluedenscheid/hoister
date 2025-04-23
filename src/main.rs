@@ -24,11 +24,6 @@ use tokio::time::sleep;
 async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let docker = Docker::connect_with_local_defaults().unwrap();
 
-    let response = docker.ping().await?;
-    println!("{:?}", response);
-    let info = docker.version().await?;
-    println!("{:?}", info);
-
     // Create a filter for containers with the label "deploy.enable=true"
     let mut filters = HashMap::new();
     let mut label_filters = Vec::new();
@@ -44,7 +39,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     // List the containers matching our filter
     let containers = docker.clone().list_containers(Some(options)).await?;
-    println!("{:?}", containers);
     // Print the container details
     println!("found {} containers", containers.len());
     for container in containers {
@@ -67,6 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         let container_details = docker
             .inspect_container(&container_id, None::<InspectContainerOptions>)
             .await?;
+        println!("container details: {:?}", container_details);
         println!("ID: {}", &container_id);
         println!("Names: {:?}", container.names.unwrap_or_default());
         println!("Image: {}", image_name);
@@ -79,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
         // Step 3: Pull the latest version of the image
         println!(
-            "Pulling latest version of the image...{}{}",
+            "Pulling latest version of the image...{}:{}",
             image_name, image_tag
         );
         let options = CreateImageOptions {
@@ -154,7 +149,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
         let mut config: ContainerCreateBody = ContainerCreateBody::default();
         // let mut config = Config::default();
-        config.image = Some(image_name);
+        // config.image = Some(image_name);
         config.host_config = Some(host_config);
 
         // Copy over environment variables, entrypoint, cmd, etc.
@@ -164,6 +159,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             config.entrypoint = old_config.entrypoint;
             config.labels = old_config.labels;
             config.exposed_ports = old_config.exposed_ports;
+            config.image = old_config.image;
             // Add any other config parameters needed
         }
 
