@@ -1,9 +1,12 @@
+use crate::DeployaError;
 use bollard::Docker;
 use bollard::models::{ContainerCreateBody, ContainerSummary};
-use bollard::query_parameters::{CreateContainerOptions, CreateImageOptions, InspectContainerOptions, RemoveContainerOptions, StartContainerOptions, StopContainerOptionsBuilder};
+use bollard::query_parameters::{
+    CreateContainerOptions, CreateImageOptions, InspectContainerOptions, RemoveContainerOptions,
+    StartContainerOptions, StopContainerOptionsBuilder,
+};
 use futures_util::StreamExt;
 use log::{debug, error, info};
-use crate::DeployaError;
 
 pub(crate) async fn update_container(
     docker: &Docker,
@@ -37,7 +40,7 @@ pub(crate) async fn update_container(
         image_name, image_tag
     );
 
-    let digest = download_image(docker, &image_name, image_tag).await?;
+    let digest = download_image(docker, &image_name, &image_tag).await?;
     debug!("Image pulled successfully (digest: {})", digest);
     let new_image_name = image_name + "@" + &digest;
     info!("new image name: {}", new_image_name);
@@ -68,8 +71,10 @@ pub(crate) async fn update_container(
         .trim_start_matches('/')
         .to_string();
 
-    let mut config: ContainerCreateBody = ContainerCreateBody::default();
-    config.host_config = Some(host_config);
+    let mut config = ContainerCreateBody {
+        host_config: Some(host_config),
+        ..Default::default()
+    };
 
     if let Some(old_config) = container_details.config {
         config.env = old_config.env;
@@ -100,14 +105,14 @@ pub(crate) async fn update_container(
 
 async fn download_image(
     docker: &Docker,
-    image_name: &String,
-    image_tag: String,
+    image_name: &str,
+    image_tag: &str,
 ) -> Result<String, DeployaError> {
     let mut update_available = false;
     let mut digest = String::new();
     let options = CreateImageOptions {
-        from_image: Some(image_name.clone()),
-        tag: Some(image_tag.to_string()),
+        from_image: Some(image_name.to_owned()),
+        tag: Some(image_tag.to_owned()),
         ..Default::default()
     };
     let mut pull_stream = docker.create_image(Some(options), None, None);

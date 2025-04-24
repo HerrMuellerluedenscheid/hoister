@@ -3,32 +3,22 @@
 mod docker;
 
 use bollard::Docker;
-use serde_json;
 
-use bollard::models::{ContainerCreateBody, ContainerSummary};
-use bollard::query_parameters::{
-    CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions,
-    RemoveContainerOptions, StartContainerOptions, StopContainerOptionsBuilder,
-};
-use env_logger;
-use log::{debug, error, info};
+use bollard::query_parameters::ListContainersOptions;
+use log::{error, info};
 
 use bollard::errors::Error as BollardError;
-use bollard::secret::ContainerSummaryStateEnum;
 
+use crate::docker::update_container;
 use env_logger::Env;
-use futures_util::stream::StreamExt;
 use std::collections::HashMap;
 use std::default::Default;
 use thiserror::Error;
-use crate::docker::update_container;
 
 #[derive(Debug, Error)]
 enum DeployaError {
     #[error("no update available")]
     NoUpdateAvailable,
-    #[error("container {0} not running")]
-    ContainerNotRunning(String),
     #[error(transparent)]
     BollardError(#[from] BollardError),
 }
@@ -39,8 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let docker = Docker::connect_with_local_defaults().unwrap();
 
     let mut filters = HashMap::new();
-    let mut label_filters = Vec::new();
-    label_filters.push("deploya.enable=true".to_string());
+    let label_filters = vec!["deploya.enable=true".to_string()];
     filters.insert("label".to_string(), label_filters);
 
     let options = ListContainersOptions {
