@@ -1,5 +1,4 @@
 //! Fetch info of all running containers concurrently
-
 mod docker;
 mod persistence;
 
@@ -48,6 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         containers.len()
     );
     for container in containers {
+        persistence.add_snapshot(&container.id).await;
         let container = update_container(&docker, container)
             .await
             .inspect_err(|e| error!("{}", e))?;
