@@ -1,4 +1,5 @@
 //! Fetch info of all running containers concurrently
+
 use bollard::Docker;
 use serde_json;
 
@@ -91,7 +92,7 @@ async fn update_container(
     info!("Names: {:?}", container.names.unwrap_or_default());
     info!("Image: {}", image_name);
     let image_id = container.image_id.unwrap_or_default();
-    let image_details = docker.inspect_image(&image_id).await.unwrap();
+    let image_details = docker.inspect_image(&image_id).await?;
     info!(
         "Image Details: {}",
         serde_json::to_string_pretty(&image_details).unwrap()
@@ -111,6 +112,7 @@ async fn update_container(
         ..Default::default()
     };
     let mut update_available = false;
+    let mut digest = String::new();
     let mut pull_stream = docker.create_image(Some(options), None, None);
     while let Some(result) = pull_stream.next().await {
         match result {
@@ -118,6 +120,11 @@ async fn update_container(
                 if let Some(status) = &output.status {
                     if status.contains("Download complete") || status.contains("Pull complete") {
                         update_available = true;
+                    }
+                    if status.contains("Digest:") {
+                        if let Some(pos) = status.find("sha256:") {
+                            status[pos..].clone_into(&mut digest);
+                        }
                     }
                     info!("Status: {}", status);
                 }
@@ -131,7 +138,15 @@ async fn update_container(
         exit(0);
     }
 
-    info!("Image pulled successfully");
+    info!("Image pulled successfully (digest: {})", digest);
+    // let new_image_name = image_name + "@" + &digest;
+    let new_image_name = "docker.io/emrius11/example:latest";
+    info!("new iimage name: {}", new_image_name);
+    let image_details = docker.inspect_image(&new_image_name).await?;
+    info!(
+        "Image Details of new image: {}",
+        serde_json::to_string_pretty(&image_details).unwrap()
+    );
     info!("Stopping container {:?}...", &container_id);
     let options = StopContainerOptionsBuilder::new().t(30).build();
 
