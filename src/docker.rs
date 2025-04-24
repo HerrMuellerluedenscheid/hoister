@@ -1,6 +1,6 @@
 use crate::DeployaError;
 use bollard::Docker;
-use bollard::models::{ContainerCreateBody, ContainerSummary};
+use bollard::models::{ContainerCreateBody, ContainerCreateResponse, ContainerSummary};
 use bollard::query_parameters::{
     CreateContainerOptions, CreateImageOptions, InspectContainerOptions, RemoveContainerOptions,
     StartContainerOptions, StopContainerOptionsBuilder,
@@ -11,7 +11,7 @@ use log::{debug, error, info};
 pub(crate) async fn update_container(
     docker: &Docker,
     container: ContainerSummary,
-) -> Result<(), DeployaError> {
+) -> Result<ContainerCreateResponse, DeployaError> {
     let container_id = container.id.unwrap_or_default();
     let image_name = container.image.expect("Container tag format wrong");
     debug!("Image: {}", image_name);
@@ -25,9 +25,6 @@ pub(crate) async fn update_container(
         "container details: {}",
         serde_json::to_string_pretty(&container_details).unwrap()
     );
-    debug!("ID: {}", &container_id);
-    debug!("Names: {:?}", container.names.unwrap_or_default());
-    debug!("Image: {}", image_name);
     let image_id = container.image_id.unwrap_or_default();
     let image_details = docker.inspect_image(&image_id).await?;
     debug!(
@@ -100,7 +97,7 @@ pub(crate) async fn update_container(
         .start_container(&container.id, None::<StartContainerOptions>)
         .await?;
     info!("Container started successfully");
-    Ok(())
+    Ok(container)
 }
 
 async fn download_image(

@@ -1,16 +1,19 @@
 //! Fetch info of all running containers concurrently
 
 mod docker;
+mod persistence;
 
 use bollard::Docker;
 
-use bollard::query_parameters::ListContainersOptions;
+use bollard::query_parameters::{EventsOptions, ListContainersOptions};
 use log::{error, info};
 
 use bollard::errors::Error as BollardError;
 
 use crate::docker::update_container;
+use bollard::models::ContainerCreateResponse;
 use env_logger::Env;
+use futures_util::StreamExt;
 use std::collections::HashMap;
 use std::default::Default;
 use thiserror::Error;
@@ -43,9 +46,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         containers.len()
     );
     for container in containers {
-        let _ = update_container(&docker, container)
+        let container = update_container(&docker, container)
             .await
-            .inspect_err(|e| error!("{}", e));
+            .inspect_err(|e| error!("{}", e))?;
+        monitor_state(container, &docker).await?;
+    }
+
+    Ok(())
+}
+
+async fn monitor_state(
+    container: ContainerCreateResponse,
+    docker: &Docker,
+) -> Result<(), DeployaError> {
+    let container_to_monitor = container.id.clone();
+    println!("Starting to monitor container: {}", container.id);
+
+    let filters = HashMap::from([
+        ("container".to_string(), vec![container_to_monitor.clone()]),
+        ("type".to_string(), vec!["container".to_string()]),
+    ]);
+    let options = EventsOptions {
+        since: None,
+        until: None,
+        filters: Some(filters),
+    };
+
+    let mut events_stream = docker.events(Some(options));
+
+    while let Some(event) = events_stream.next().await {
+        match event {
+            Ok(event) => println!("event {:?}", event),
+            Err(e) => eprintln!("Error receiving event: {:?}", e),
+        }
     }
 
     Ok(())
