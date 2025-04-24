@@ -8,5 +8,12 @@ services:
     image: emrius11/example:latest
     ports:
       - "8111:80"
+    volumes:
+      - ./test:/test
+      - ./test.txt:/test.txt
+    networks:
+      - default-deploya
 
-
+networks:
+  default-deploya:
+    name: deploya-test-network

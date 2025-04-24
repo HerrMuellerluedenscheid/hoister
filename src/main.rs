@@ -13,19 +13,19 @@ use log::{debug, error, info};
 
 use bollard::errors::Error as BollardError;
 use bollard::secret::ContainerSummaryStateEnum;
-use bollard::service::HostConfig;
 
 use env_logger::Env;
 use futures_util::stream::StreamExt;
 use std::collections::HashMap;
 use std::default::Default;
-use std::process::exit;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 enum DeployaError {
     #[error("no update available")]
     NoUpdateAvailable,
+    #[error("container {0} not running")]
+    ContainerNotRunning(String),
     #[error(transparent)]
     BollardError(#[from] BollardError),
 }
@@ -35,23 +35,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let docker = Docker::connect_with_local_defaults().unwrap();
 
-    // Create a filter for containers with the label "deploy.enable=true"
     let mut filters = HashMap::new();
     let mut label_filters = Vec::new();
     label_filters.push("deploya.enable=true".to_string());
     filters.insert("label".to_string(), label_filters);
 
-    // Set up the list options with our filter
     let options = ListContainersOptions {
-        all: true, // Include stopped containers as well
         filters: Some(filters),
         ..Default::default()
     };
 
-    // List the containers matching our filter
     let containers = docker.clone().list_containers(Some(options)).await?;
-    // Print the container details
-    info!("found {} containers", containers.len());
+    info!(
+        "found {} containers with label `deploya.enable=true`",
+        containers.len()
+    );
     for container in containers {
         let _ = update_container(&docker, container)
             .await
@@ -66,18 +64,8 @@ async fn update_container(
     container: ContainerSummary,
 ) -> Result<(), DeployaError> {
     let container_id = container.id.unwrap_or_default();
-    let container_state = container.state.unwrap();
-    match container_state {
-        ContainerSummaryStateEnum::RUNNING | ContainerSummaryStateEnum::RESTARTING => {
-            info!("Container {} is {}", container_id, &container_state);
-        }
-        _ => {
-            info!("Container {} is {}", container_id, &container_state);
-            return Err(DeployaError::NoUpdateAvailable);
-        }
-    }
-    let image_name = container.image.unwrap_or("x:x".into());
-    info!("Image: {}", image_name);
+    let image_name = container.image.expect("Container tag format wrong");
+    debug!("Image: {}", image_name);
     let (image_name, image_tag) = image_name.rsplit_once(":").unwrap_or_default();
     let image_name = image_name.to_string();
     let image_tag = image_tag.to_string();
@@ -88,60 +76,25 @@ async fn update_container(
         "container details: {}",
         serde_json::to_string_pretty(&container_details).unwrap()
     );
-    info!("ID: {}", &container_id);
-    info!("Names: {:?}", container.names.unwrap_or_default());
-    info!("Image: {}", image_name);
+    debug!("ID: {}", &container_id);
+    debug!("Names: {:?}", container.names.unwrap_or_default());
+    debug!("Image: {}", image_name);
     let image_id = container.image_id.unwrap_or_default();
     let image_details = docker.inspect_image(&image_id).await?;
-    info!(
+    debug!(
         "Image Details: {}",
         serde_json::to_string_pretty(&image_details).unwrap()
     );
-    if let Some(repo_tags) = image_details.repo_tags {
-        info!("Full image URL: {:?}", repo_tags);
-    }
 
-    // Step 3: Pull the latest version of the image
     info!(
         "Pulling latest version of the image...{}:{}",
         image_name, image_tag
     );
-    let options = CreateImageOptions {
-        from_image: Some(image_name.clone()),
-        tag: Some(image_tag.to_string()), // Or specify a different tag if needed
-        ..Default::default()
-    };
-    let mut update_available = false;
-    let mut digest = String::new();
-    let mut pull_stream = docker.create_image(Some(options), None, None);
-    while let Some(result) = pull_stream.next().await {
-        match result {
-            Ok(output) => {
-                if let Some(status) = &output.status {
-                    if status.contains("Download complete") || status.contains("Pull complete") {
-                        update_available = true;
-                    }
-                    if status.contains("Digest:") {
-                        if let Some(pos) = status.find("sha256:") {
-                            status[pos..].clone_into(&mut digest);
-                        }
-                    }
-                    info!("Status: {}", status);
-                }
-                info!("{:?}", output)
-            }
-            Err(e) => info!("Error pulling image: {:?}", e),
-        }
-    }
-    if !update_available {
-        info!("No update available");
-        exit(0);
-    }
 
-    info!("Image pulled successfully (digest: {})", digest);
-    // let new_image_name = image_name + "@" + &digest;
-    let new_image_name = "docker.io/emrius11/example:latest";
-    info!("new iimage name: {}", new_image_name);
+    let digest = download_image(docker, &image_name, image_tag).await?;
+    debug!("Image pulled successfully (digest: {})", digest);
+    let new_image_name = image_name + "@" + &digest;
+    info!("new image name: {}", new_image_name);
     let image_details = docker.inspect_image(&new_image_name).await?;
     info!(
         "Image Details of new image: {}",
@@ -161,10 +114,7 @@ async fn update_container(
         .remove_container(&container_id, Some(remove_options))
         .await?;
 
-    // Extract necessary configuration from the container details
     let host_config = container_details.host_config.unwrap_or_default();
-    let network_mode = host_config.network_mode.unwrap_or_default();
-    let binds = host_config.binds.unwrap_or_default();
 
     let name = container_details
         .name
@@ -172,25 +122,9 @@ async fn update_container(
         .trim_start_matches('/')
         .to_string();
 
-    let mut host_config = HostConfig::default();
-    host_config.network_mode = Some(network_mode);
-    host_config.binds = Some(binds);
-
-    // Add any other host config parameters needed (mounts, ports, etc.)
-    if let Some(mounts) = host_config.mounts {
-        host_config.mounts = Some(mounts);
-    }
-    if let Some(port_bindings) = host_config.port_bindings {
-        info!("setting port binding: {:?}", port_bindings);
-        host_config.port_bindings = Some(port_bindings);
-    }
-
     let mut config: ContainerCreateBody = ContainerCreateBody::default();
-    // let mut config = Config::default();
-    // config.image = Some(image_name);
     config.host_config = Some(host_config);
 
-    // Copy over environment variables, entrypoint, cmd, etc.
     if let Some(old_config) = container_details.config {
         config.env = old_config.env;
         config.cmd = old_config.cmd;
@@ -198,26 +132,58 @@ async fn update_container(
         config.labels = old_config.labels;
         config.exposed_ports = old_config.exposed_ports;
         config.image = old_config.image;
-        // Add any other config parameters needed
+        config.attach_stderr = old_config.attach_stderr;
+        config.attach_stdout = old_config.attach_stdout;
+        config.tty = old_config.tty;
     }
 
     let options = CreateContainerOptions {
         name: Some(name),
-        // Add any other options needed
         ..Default::default()
     };
 
     let container = docker.create_container(Some(options), config).await?;
     info!("Container created with ID: {}", container.id);
 
-    // Step 6: Start the new container
-    info!("Starting new container...");
     docker
         .start_container(&container.id, None::<StartContainerOptions>)
         .await?;
     info!("Container started successfully");
-
-    // Do something while the container is running
-    info!("Container is running...");
     Ok(())
+}
+
+async fn download_image(
+    docker: &Docker,
+    image_name: &String,
+    image_tag: String,
+) -> Result<String, DeployaError> {
+    let mut update_available = false;
+    let mut digest = String::new();
+    let options = CreateImageOptions {
+        from_image: Some(image_name.clone()),
+        tag: Some(image_tag.to_string()),
+        ..Default::default()
+    };
+    let mut pull_stream = docker.create_image(Some(options), None, None);
+    while let Some(result) = pull_stream.next().await {
+        match result {
+            Ok(output) => {
+                if let Some(status) = &output.status {
+                    if status.contains("Download complete") || status.contains("Pull complete") {
+                        update_available = true;
+                    }
+                    if status.contains("Digest:") {
+                        if let Some(pos) = status.find("sha256:") {
+                            status[pos..].clone_into(&mut digest);
+                        }
+                    }
+                }
+            }
+            Err(e) => error!("Error pulling image: {:?}", e),
+        }
+    }
+    if !update_available {
+        return Err(DeployaError::NoUpdateAvailable);
+    }
+    Ok(digest)
 }
