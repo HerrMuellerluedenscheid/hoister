@@ -11,6 +11,7 @@ use log::{error, info};
 use bollard::errors::Error as BollardError;
 
 use crate::docker::update_container;
+use crate::persistence::Persistence;
 use bollard::models::ContainerCreateResponse;
 use env_logger::Env;
 use futures_util::StreamExt;
@@ -31,6 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let docker = Docker::connect_with_local_defaults().unwrap();
 
+    let persistence = Persistence {};
     let mut filters = HashMap::new();
     let label_filters = vec!["deploya.enable=true".to_string()];
     filters.insert("label".to_string(), label_filters);

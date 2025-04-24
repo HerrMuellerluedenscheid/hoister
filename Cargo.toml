@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bollard = { path="../bollard" }
+bollard = { git = "https://github.com/HerrMuellerluedenscheid/bollard.git" }
 futures-util = "0.3.31"
 tokio = { version = "1.44.2", features = ["rt", "rt-multi-thread", "macros"] }
 log = "0.4.27"

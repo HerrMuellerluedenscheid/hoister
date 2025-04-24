@@ -121,6 +121,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 [[package]]
 name = "bollard"
 version = "0.19.0-rc1"
+source = "git+https://github.com/HerrMuellerluedenscheid/bollard.git#6da0e840955be5289dc8905af28650e6e1bc6377"
 dependencies = [
  "base64",
  "bollard-stubs",
