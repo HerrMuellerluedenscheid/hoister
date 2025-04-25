@@ -1,0 +1,4 @@
+Dockerfile
+target
+.git
+.docker-compose.yaml
