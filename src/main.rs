@@ -1,4 +1,5 @@
 //! Fetch info of all running containers concurrently
+mod cli;
 mod docker;
 mod persistence;
 
@@ -9,6 +10,7 @@ use log::{error, info};
 
 use bollard::errors::Error as BollardError;
 
+use crate::cli::configure_cli;
 use crate::docker::update_container;
 use crate::persistence::Persistence;
 use bollard::models::ContainerCreateResponse;
@@ -16,6 +18,7 @@ use env_logger::Env;
 use futures_util::StreamExt;
 use std::collections::HashMap;
 use std::default::Default;
+use std::time::Duration;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -31,6 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let docker = Docker::connect_with_local_defaults().unwrap();
 
+    let config = configure_cli();
     let persistence = Persistence {};
     let mut filters = HashMap::new();
     let label_filters = vec!["deploya.enable=true".to_string()];
@@ -41,17 +45,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         ..Default::default()
     };
 
-    let containers = docker.clone().list_containers(Some(options)).await?;
-    info!(
-        "found {} containers with label `deploya.enable=true`",
-        containers.len()
-    );
-    for container in containers {
-        persistence.add_snapshot(&container.id).await;
-        let container = update_container(&docker, container)
-            .await
-            .inspect_err(|e| error!("{}", e))?;
-        // monitor_state(container, &docker).await?;
+    loop {
+        let containers = docker
+            .clone()
+            .list_containers(Some(options.clone()))
+            .await?;
+        info!(
+            "found {} containers with label `deploya.enable=true`",
+            containers.len()
+        );
+        for container in containers {
+            persistence.add_snapshot(&container.id).await;
+            let container = update_container(&docker, container)
+                .await
+                .inspect_err(|e| error!("{}", e))?;
+            // monitor_state(container, &docker).await?;
+        }
+        if config.interval.is_some() {
+            tokio::time::sleep(Duration::from_secs(config.interval.unwrap().into())).await;
+        } else {
+            break;
+        }
     }
 
     Ok(())
