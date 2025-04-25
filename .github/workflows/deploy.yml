@@ -1,0 +1,81 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - '*.*.*'
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+
+  debian-package:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: install cargo-deb
+        run: cargo install cargo-deb
+      - name: Build
+        run: cargo deb
+      - name: Rename artifact
+        run: cp target/debian/deploya_*.deb target/debian/deploya-${{ github.ref_name }}.deb
+      - name: upload artefact
+        uses: actions/upload-artifact@v3
+        with:
+          name: deploya-${{ github.ref_name }}.deb
+          path: target/debian/deploya-${{ github.ref_name }}.deb
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: target/debian/deploya-*.deb
+
+  release-windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build Release
+        run: cargo build --release
+      - name: Rename artifact
+        run: ls target/release/
+
+      - name: upload artefact
+        uses: actions/upload-artifact@v3
+        with:
+          name: deploya.exe
+          path: target/release/deploya.exe
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: target/release/deploya.exe
+
+  release-osx:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build Release
+      run: cargo build --release
+    - name: Rename artifact
+      run: cp target/release/deploya target/release/deploya-osx
+
+    - name: upload artefact
+      uses: actions/upload-artifact@v3
+      with:
+        name: deploya-osx
+        path: target/release/deploya-osx
+
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: target/release/deploya-osx
