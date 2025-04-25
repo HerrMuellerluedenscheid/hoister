@@ -1,12 +1,16 @@
 use crate::DeployaError;
 use bollard::Docker;
-use bollard::models::{ContainerCreateBody, ContainerCreateResponse, ContainerSummary};
+use bollard::models::{
+    ContainerCreateBody, ContainerCreateResponse, ContainerSummary, HealthStatusEnum,
+};
 use bollard::query_parameters::{
     CreateContainerOptions, CreateImageOptions, InspectContainerOptions, RemoveContainerOptions,
-    StartContainerOptions, StopContainerOptionsBuilder,
+    RenameContainerOptions, StartContainerOptions, StopContainerOptionsBuilder,
 };
 use futures_util::StreamExt;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
+use std::error::Error;
+use std::time::Duration;
 
 pub(crate) async fn update_container(
     docker: &Docker,
@@ -47,17 +51,20 @@ pub(crate) async fn update_container(
         serde_json::to_string_pretty(&image_details).unwrap()
     );
     info!("Stopping container {:?}...", &container_id);
-    let options = StopContainerOptionsBuilder::new().t(30).build();
+    let options_stop_container = StopContainerOptionsBuilder::new().t(30).build();
 
-    docker.stop_container(&container_id, Some(options)).await?;
+    docker
+        .stop_container(&container_id, Some(options_stop_container.clone()))
+        .await?;
 
-    let remove_options = RemoveContainerOptions {
-        v: false,     // Don't remove volumes
-        force: false, // Container is already stopped
-        link: false,
+    let backup_name = format!("{}-backup", container_id);
+    println!("rename old container to {}", &backup_name);
+
+    let rename_options = RenameContainerOptions {
+        name: backup_name.clone(),
     };
     docker
-        .remove_container(&container_id, Some(remove_options))
+        .rename_container(&container_id, rename_options)
         .await?;
 
     let host_config = container_details.host_config.unwrap_or_default();
@@ -75,8 +82,8 @@ pub(crate) async fn update_container(
 
     if let Some(old_config) = container_details.config {
         config.env = old_config.env;
-        config.cmd = old_config.cmd;
-        config.entrypoint = old_config.entrypoint;
+        // config.cmd = old_config.cmd;
+        // config.entrypoint = old_config.entrypoint;
         config.labels = old_config.labels;
         config.exposed_ports = old_config.exposed_ports;
         config.image = old_config.image;
@@ -91,12 +98,52 @@ pub(crate) async fn update_container(
     };
 
     let container = docker.create_container(Some(options), config).await?;
-    info!("Container created with ID: {}", container.id);
+    debug!("Container created with ID: {}", container.id);
 
     docker
         .start_container(&container.id, None::<StartContainerOptions>)
         .await?;
-    info!("Container started successfully");
+    info!("Container started");
+
+    if check_container_health(docker, &container.id).await.is_err() {
+        warn!("New container failed, rolling back to previous version");
+
+        docker
+            .stop_container(&container.id, Some(options_stop_container))
+            .await?;
+        docker
+            .remove_container(
+                &container.id,
+                Some(RemoveContainerOptions {
+                    force: true,
+                    ..Default::default()
+                }),
+            )
+            .await?;
+
+        let rename_back_options = RenameContainerOptions {
+            name: container_id.clone(),
+        };
+        docker
+            .rename_container(&backup_name, rename_back_options)
+            .await?;
+
+        docker
+            .start_container(&container_id, None::<StartContainerOptions>)
+            .await?;
+        info!("Rollback complete, old container restarted");
+    } else {
+        debug!("Container updated successfully. deleting old container");
+        let remove_options = RemoveContainerOptions {
+            v: false,
+            force: false,
+            link: false,
+        };
+        docker
+            .remove_container(&container_id, Some(remove_options))
+            .await?;
+        info!("Container updated successfully. backup container removed");
+    }
     Ok(container)
 }
 
@@ -134,4 +181,37 @@ async fn download_image(
         return Err(DeployaError::NoUpdateAvailable);
     }
     Ok(digest)
+}
+
+async fn check_container_health(
+    docker: &Docker,
+    container_name: &str,
+) -> Result<(), Box<dyn Error>> {
+    // Wait a moment for container to initialize
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // Check container state
+    let container = docker
+        .inspect_container(container_name, None::<InspectContainerOptions>)
+        .await?;
+
+    if let Some(state) = container.state {
+        if let Some(running) = state.running {
+            if running {
+                // For containers with healthcheck
+                if let Some(health) = state.health {
+                    if let Some(status) = health.status {
+                        if status == HealthStatusEnum::HEALTHY {
+                            return Ok(());
+                        }
+                    }
+                } else {
+                    // For containers without healthcheck, just verify it's running
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    Err("Container is not healthy".into())
 }

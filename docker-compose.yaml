@@ -2,7 +2,7 @@ services:
   example:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: works.Dockerfile
     labels:
       - "deploya.enable=true"
     image: emrius11/example:latest

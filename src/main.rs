@@ -51,13 +51,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         let container = update_container(&docker, container)
             .await
             .inspect_err(|e| error!("{}", e))?;
-        monitor_state(container, &docker).await?;
+        // monitor_state(container, &docker).await?;
     }
 
     Ok(())
 }
 
-async fn monitor_state(
+async fn _monitor_state(
     container: ContainerCreateResponse,
     docker: &Docker,
 ) -> Result<(), DeployaError> {
