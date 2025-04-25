@@ -21,4 +21,4 @@ RUN rm -rf /bin/ash /bin/bash /usr/bin/curl /usr/bin/wget
 WORKDIR /app
 COPY --from=builder /app/target/release/deploya .
 
-CMD ["sh", "-c", "/app/deploya --watch $WATCH_INTERVAL"]
+CMD ["sh", "-c", "/app/deploya --watch 60"]
