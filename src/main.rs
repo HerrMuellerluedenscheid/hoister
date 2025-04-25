@@ -56,9 +56,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         );
         for container in containers {
             persistence.add_snapshot(&container.id).await;
-            let container = update_container(&docker, container)
+            let _ = update_container(&docker, container)
                 .await
-                .inspect_err(|e| error!("{}", e))?;
+                .inspect_err(|e| error!("{}", e));
             // monitor_state(container, &docker).await?;
         }
         if config.interval.is_some() {
