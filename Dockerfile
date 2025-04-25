@@ -15,12 +15,9 @@ RUN apk update && \
     apk add --no-cache ca-certificates tzdata && \
     rm -rf /var/cache/apk/*
 
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 RUN rm -rf /bin/ash /bin/sh /bin/bash /usr/bin/curl /usr/bin/wget
-COPY --from=builder --chown=appuser:appgroup /app/target/release/deploya .
-
-USER appuser
 WORKDIR /app
+COPY --from=builder /app/target/release/deploya .
 
 CMD ["/app/deploya"]
