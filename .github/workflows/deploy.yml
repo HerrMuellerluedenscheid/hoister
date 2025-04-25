@@ -14,7 +14,7 @@ env:
 
 jobs:
 
-  debian-package:
+  release-linux:
     timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
@@ -22,19 +22,25 @@ jobs:
       - name: install cargo-deb
         run: cargo install cargo-deb
       - name: Build
+        run: cargo build --release
+      - name: Build Debian
         run: cargo deb
       - name: Rename artifact
         run: cp target/debian/deploya_*.deb target/debian/deploya-${{ github.ref_name }}.deb
       - name: upload artefact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: deploya-${{ github.ref_name }}.deb
-          path: target/debian/deploya-${{ github.ref_name }}.deb
+          path: |
+            target/debian/deploya-${{ github.ref_name }}.deb
+            target/debian/deploya
       - name: Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: target/debian/deploya-*.deb
+          files: |
+            target/debian/deploya-*.deb
+            target/debian/deploya
 
   release-windows:
     runs-on: windows-latest
@@ -47,7 +53,7 @@ jobs:
         run: ls target/release/
 
       - name: upload artefact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: deploya.exe
           path: target/release/deploya.exe
@@ -69,7 +75,7 @@ jobs:
       run: cp target/release/deploya target/release/deploya-osx
 
     - name: upload artefact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: deploya-osx
         path: target/release/deploya-osx

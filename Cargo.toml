@@ -2,6 +2,10 @@
 name = "deploya"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+description = "simple continuous CD container upgrades"
+repository = "https://github.com/HerrMuellerluedenscheid/deploya"
+authors = ["marius.kriegerowski@gmail.com"]
 
 [dependencies]
 bollard = { git = "https://github.com/HerrMuellerluedenscheid/bollard.git" }
