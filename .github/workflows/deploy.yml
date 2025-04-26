@@ -33,14 +33,14 @@ jobs:
           name: deploya-${{ github.ref_name }}.deb
           path: |
             target/debian/deploya-${{ github.ref_name }}.deb
-            target/debian/deploya
+            target/release/deploya
       - name: Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             target/debian/deploya-*.deb
-            target/debian/deploya
+            target/release/deploya
 
   release-windows:
     runs-on: windows-latest
@@ -49,9 +49,6 @@ jobs:
       - uses: actions/checkout@v2
       - name: Build Release
         run: cargo build --release
-      - name: Rename artifact
-        run: ls target/release/
-
       - name: upload artefact
         uses: actions/upload-artifact@v4
         with:
