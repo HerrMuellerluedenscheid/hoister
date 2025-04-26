@@ -14,11 +14,51 @@ env:
 
 jobs:
 
+  release-linux-arm64:
+    timeout-minutes: 15
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Build Debian package
+        run: cargo deb
+
+      - name: Rename artifacts
+        run: |
+          cp target/debian/deploya_*.deb target/debian/deploya-arm64-${{ github.ref_name }}.deb
+          cp target/release/deploya target/release/deploya-binary-arm64-${{ github.ref_name }}
+
+      - name: Upload .deb package
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploya-arm64-${{ github.ref_name }}.deb
+          path: target/debian/deploya-arm64-${{ github.ref_name }}.deb
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploya-binary-arm64-${{ github.ref_name }}
+          path: target/release/deploya-binary-arm64-${{ github.ref_name }}
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            target/debian/deploya-arm64-${{ github.ref_name }}.deb
+            target/release/deploya-binary-arm64-${{ github.ref_name }}
+
   release-linux:
     timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: install cargo-deb
         run: cargo install cargo-deb
       - name: Build
@@ -49,7 +89,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Build Release
         run: cargo build --release
       - name: upload artefact
@@ -68,7 +108,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Build Release
       run: cargo build --release
     - name: Rename artifact
