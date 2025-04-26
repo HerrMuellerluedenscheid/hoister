@@ -27,7 +27,6 @@ add the Deploya container alongside your services:
 ```yaml
 services:
   deploya:
-    build: .
     image: emrius11/deploya:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -35,14 +34,6 @@ services:
       - no-new-privileges:true
     depends_on:
       - example
-
-  example:
-    build:
-      context: .
-      dockerfile: works.Dockerfile
-    labels:
-      - "deploya.enable=true"
-    image: emrius11/example:latest
 ```
 
 Finally, push a new image to your registry using the same tag, and Deploya will automatically update the container.
