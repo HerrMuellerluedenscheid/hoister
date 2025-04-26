@@ -1,7 +1,6 @@
 //! Fetch info of all running containers concurrently
 mod cli;
 mod docker;
-mod persistence;
 
 use bollard::Docker;
 
@@ -12,7 +11,6 @@ use bollard::errors::Error as BollardError;
 
 use crate::cli::configure_cli;
 use crate::docker::update_container;
-use crate::persistence::Persistence;
 use bollard::models::ContainerCreateResponse;
 use env_logger::Env;
 use futures_util::StreamExt;
@@ -35,7 +33,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let docker = Docker::connect_with_local_defaults().unwrap();
 
     let config = configure_cli();
-    let persistence = Persistence {};
     let mut filters = HashMap::new();
     let label_filters = vec!["deploya.enable=true".to_string()];
     filters.insert("label".to_string(), label_filters);
@@ -55,7 +52,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             containers.len()
         );
         for container in containers {
-            persistence.add_snapshot(&container.id).await;
             let _ = update_container(&docker, container)
                 .await
                 .inspect_err(|e| error!("{}", e));

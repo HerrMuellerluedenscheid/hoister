@@ -27,13 +27,16 @@ jobs:
         run: cargo deb
       - name: Rename artifact
         run: cp target/debian/deploya_*.deb target/debian/deploya-${{ github.ref_name }}.deb
-      - name: upload artefact
+      - name: Upload .deb package
         uses: actions/upload-artifact@v4
         with:
           name: deploya-${{ github.ref_name }}.deb
-          path: |
-            target/debian/deploya-${{ github.ref_name }}.deb
-            target/release/deploya
+          path: target/debian/deploya-${{ github.ref_name }}.deb
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploya-binary-${{ github.ref_name }}
+          path: target/release/deploya
       - name: Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')

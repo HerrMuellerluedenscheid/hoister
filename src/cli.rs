@@ -4,12 +4,6 @@ pub struct Config {
     pub interval: Option<u64>,
 }
 
-impl Config {
-    pub(crate) fn watch(&self) -> bool {
-        self.interval.is_some()
-    }
-}
-
 impl From<ArgMatches> for Config {
     fn from(matches: ArgMatches) -> Self {
         Config {
