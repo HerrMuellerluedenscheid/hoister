@@ -3,7 +3,7 @@ deploya
 
 Deploy Docker images automatically with rollback support.
 
-Add the label "deploya.enable=true" to your Docker Compose service.
+Add the label `deploya.enable=true` to your Docker Compose service.
 Deploya checks if a new version of the image (under the same tag) is available.
 It will download and start the updated container with the same settings, volumes, and networks as before.
 In case of failure, it will automatically roll back to the last working state.
