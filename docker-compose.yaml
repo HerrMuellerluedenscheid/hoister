@@ -6,6 +6,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
       - no-new-privileges:true
+    cap_add:
+      - SETGID
     depends_on:
       - example
 

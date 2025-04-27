@@ -16,6 +16,10 @@ use env_logger::Env;
 use futures_util::StreamExt;
 use std::collections::HashMap;
 use std::default::Default;
+
+#[cfg(target_os = "linux")]
+use std::{env, process};
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
@@ -32,6 +36,11 @@ enum DeployaError {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
+    #[cfg(target_os = "linux")]
+    set_group_id();
+
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
 
@@ -42,7 +51,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     .expect("Error setting Ctrl-C handler");
 
     while running.load(Ordering::SeqCst) {
-        env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
         let docker = Docker::connect_with_local_defaults().unwrap();
 
         let config = configure_cli();
@@ -84,9 +92,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 break;
             }
         }
+        break;
     }
 
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn set_group_id() {
+    let docker_gid = env::var("DOCKER_GID")
+        .unwrap_or_else(|_| "999".to_string())
+        .parse::<u32>()
+        .expect("Invalid DOCKER_GID");
+
+    // Note: This requires CAP_SETGID capability
+    unsafe {
+        if libc::setgid(docker_gid) != 0 {
+            error!("Failed to set GID to {}", docker_gid);
+        }
+    }
 }
 
 async fn _monitor_state(
