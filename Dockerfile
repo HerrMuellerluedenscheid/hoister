@@ -7,7 +7,7 @@ RUN cargo build --release
 
 FROM alpine:latest AS runner
 
-ENV WATCH_INTERVAL=60
+ENV WATCH_INTERVAL=120
 LABEL maintainer="marius.kriegerowski@gmail.com"
 LABEL description="Deploy and roll back docker images"
 
@@ -17,8 +17,8 @@ RUN apk update && \
     rm -rf /var/cache/apk/*
 
 
-RUN rm -rf /bin/ash /bin/bash /usr/bin/curl /usr/bin/wget
+RUN rm -rf /bin/ash /bin/sh /bin/bash /usr/bin/curl /usr/bin/wget
 WORKDIR /app
 COPY --from=builder /app/target/release/deploya .
 
-CMD ["/app/deploya", "--watch", "60"]
+CMD /app/deploya --watch ${WATCH_INTERVAL}
