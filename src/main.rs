@@ -16,8 +16,11 @@ use env_logger::Env;
 use futures_util::StreamExt;
 use std::collections::HashMap;
 use std::default::Default;
-use std::time::Duration;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, SystemTime};
 use thiserror::Error;
+use tokio::time::sleep;
 
 #[derive(Debug, Error)]
 enum DeployaError {
@@ -29,38 +32,57 @@ enum DeployaError {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
-    let docker = Docker::connect_with_local_defaults().unwrap();
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
 
-    let config = configure_cli();
-    let mut filters = HashMap::new();
-    let label_filters = vec!["deploya.enable=true".to_string()];
-    filters.insert("label".to_string(), label_filters);
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+        info!("Received shutdown signal, gracefully shutting down...");
+    })
+    .expect("Error setting Ctrl-C handler");
 
-    let options = ListContainersOptions {
-        filters: Some(filters),
-        ..Default::default()
-    };
+    while running.load(Ordering::SeqCst) {
+        env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+        let docker = Docker::connect_with_local_defaults().unwrap();
 
-    loop {
-        let containers = docker
-            .clone()
-            .list_containers(Some(options.clone()))
-            .await?;
-        info!(
-            "found {} containers with label `deploya.enable=true`",
-            containers.len()
-        );
-        for container in containers {
-            let _ = update_container(&docker, container)
-                .await
-                .inspect_err(|e| error!("{}", e));
-            // monitor_state(container, &docker).await?;
-        }
-        if config.interval.is_some() {
-            tokio::time::sleep(Duration::from_secs(config.interval.unwrap())).await;
-        } else {
-            break;
+        let config = configure_cli();
+        let mut filters = HashMap::new();
+        let label_filters = vec!["deploya.enable=true".to_string()];
+        filters.insert("label".to_string(), label_filters);
+
+        let options = ListContainersOptions {
+            filters: Some(filters),
+            ..Default::default()
+        };
+
+        loop {
+            let now = SystemTime::now();
+            let containers = docker
+                .clone()
+                .list_containers(Some(options.clone()))
+                .await?;
+            info!(
+                "found {} containers with label `deploya.enable=true`",
+                containers.len()
+            );
+            for container in containers {
+                let _ = update_container(&docker, container)
+                    .await
+                    .inspect_err(|e| error!("{}", e));
+                // monitor_state(container, &docker).await?;
+            }
+            if config.interval.is_some() {
+                while running.load(Ordering::SeqCst)
+                    && now.elapsed().unwrap() < Duration::from_secs(config.interval.unwrap())
+                {
+                    sleep(Duration::from_millis(500)).await;
+                }
+                if !running.load(Ordering::SeqCst) {
+                    break;
+                }
+            } else {
+                break;
+            }
         }
     }
 
