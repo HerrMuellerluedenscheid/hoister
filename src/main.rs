@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             // monitor_state(container, &docker).await?;
         }
         if config.interval.is_some() {
-            tokio::time::sleep(Duration::from_secs(config.interval.unwrap().into())).await;
+            tokio::time::sleep(Duration::from_secs(config.interval.unwrap())).await;
         } else {
             break;
         }

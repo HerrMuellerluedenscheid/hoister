@@ -16,9 +16,8 @@ RUN apk update && \
     apk add --no-cache ca-certificates tzdata && \
     rm -rf /var/cache/apk/*
 
-
 RUN rm -rf /bin/ash /bin/sh /bin/bash /usr/bin/curl /usr/bin/wget
 WORKDIR /app
 COPY --from=builder /app/target/release/deploya .
 
-CMD /app/deploya --watch ${WATCH_INTERVAL}
+CMD ["/app/deploya", "--watch"]
