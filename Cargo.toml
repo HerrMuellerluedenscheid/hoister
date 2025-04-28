@@ -1,10 +1,10 @@
 [package]
-name = "deploya"
+name = "hoister"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
 description = "simple continuous CD container upgrades"
-repository = "https://github.com/HerrMuellerluedenscheid/deploya"
+repository = "https://github.com/HerrMuellerluedenscheid/hoister"
 authors = ["marius.kriegerowski@gmail.com"]
 
 [dependencies]

@@ -31,28 +31,28 @@ jobs:
 
       - name: Rename artifacts
         run: |
-          cp target/debian/deploya_*.deb target/debian/deploya-arm64-${{ github.ref_name }}.deb
-          cp target/release/deploya target/release/deploya-binary-arm64-${{ github.ref_name }}
+          cp target/debian/hoister_*.deb target/debian/hoister-arm64-${{ github.ref_name }}.deb
+          cp target/release/hoister target/release/hoister-binary-arm64-${{ github.ref_name }}
 
       - name: Upload .deb package
         uses: actions/upload-artifact@v4
         with:
-          name: deploya-arm64-${{ github.ref_name }}.deb
-          path: target/debian/deploya-arm64-${{ github.ref_name }}.deb
+          name: hoister-arm64-${{ github.ref_name }}.deb
+          path: target/debian/hoister-arm64-${{ github.ref_name }}.deb
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: deploya-binary-arm64-${{ github.ref_name }}
-          path: target/release/deploya-binary-arm64-${{ github.ref_name }}
+          name: hoister-binary-arm64-${{ github.ref_name }}
+          path: target/release/hoister-binary-arm64-${{ github.ref_name }}
 
       - name: Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            target/debian/deploya-arm64-${{ github.ref_name }}.deb
-            target/release/deploya-binary-arm64-${{ github.ref_name }}
+            target/debian/hoister-arm64-${{ github.ref_name }}.deb
+            target/release/hoister-binary-arm64-${{ github.ref_name }}
 
   release-linux:
     timeout-minutes: 15
@@ -66,24 +66,24 @@ jobs:
       - name: Build Debian
         run: cargo deb
       - name: Rename artifact
-        run: cp target/debian/deploya_*.deb target/debian/deploya-${{ github.ref_name }}.deb
+        run: cp target/debian/hoister_*.deb target/debian/hoister-${{ github.ref_name }}.deb
       - name: Upload .deb package
         uses: actions/upload-artifact@v4
         with:
-          name: deploya-${{ github.ref_name }}.deb
-          path: target/debian/deploya-${{ github.ref_name }}.deb
+          name: hoister-${{ github.ref_name }}.deb
+          path: target/debian/hoister-${{ github.ref_name }}.deb
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: deploya-binary-${{ github.ref_name }}
-          path: target/release/deploya
+          name: hoister-binary-${{ github.ref_name }}
+          path: target/release/hoister
       - name: Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            target/debian/deploya-*.deb
-            target/release/deploya
+            target/debian/hoister-*.deb
+            target/release/hoister
 
   release-windows:
     runs-on: windows-latest
@@ -95,14 +95,14 @@ jobs:
       - name: upload artefact
         uses: actions/upload-artifact@v4
         with:
-          name: deploya.exe
-          path: target/release/deploya.exe
+          name: hoister.exe
+          path: target/release/hoister.exe
 
       - name: Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: target/release/deploya.exe
+          files: target/release/hoister.exe
 
   release-osx:
     runs-on: macos-latest
@@ -112,16 +112,16 @@ jobs:
     - name: Build Release
       run: cargo build --release
     - name: Rename artifact
-      run: cp target/release/deploya target/release/deploya-osx
+      run: cp target/release/hoister target/release/hoister-osx
 
     - name: upload artefact
       uses: actions/upload-artifact@v4
       with:
-        name: deploya-osx
-        path: target/release/deploya-osx
+        name: hoister-osx
+        path: target/release/hoister-osx
 
     - name: Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: target/release/deploya-osx
+        files: target/release/hoister-osx

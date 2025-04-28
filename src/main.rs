@@ -27,7 +27,7 @@ use thiserror::Error;
 use tokio::time::sleep;
 
 #[derive(Debug, Error)]
-enum DeployaError {
+enum HoisterError {
     #[error("no update available")]
     NoUpdateAvailable,
     #[error(transparent)]
@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
         let config = configure_cli();
         let mut filters = HashMap::new();
-        let label_filters = vec!["deploya.enable=true".to_string()];
+        let label_filters = vec!["hoister.enable=true".to_string()];
         filters.insert("label".to_string(), label_filters);
 
         let options = ListContainersOptions {
@@ -70,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 .list_containers(Some(options.clone()))
                 .await?;
             info!(
-                "found {} containers with label `deploya.enable=true`",
+                "found {} containers with label `hoister.enable=true`",
                 containers.len()
             );
             for container in containers {
@@ -104,7 +104,7 @@ fn set_group_id() {
         .unwrap_or_else(|_| "999".to_string())
         .parse::<u32>()
         .expect("Invalid DOCKER_GID");
-
+    info!("Setting GID to {}", docker_gid);
     // Note: This requires CAP_SETGID capability
     unsafe {
         if libc::setgid(docker_gid) != 0 {
@@ -116,7 +116,7 @@ fn set_group_id() {
 async fn _monitor_state(
     container: ContainerCreateResponse,
     docker: &Docker,
-) -> Result<(), DeployaError> {
+) -> Result<(), HoisterError> {
     let container_to_monitor = container.id.clone();
     println!("Starting to monitor container: {}", container.id);
 

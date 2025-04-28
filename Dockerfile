@@ -12,6 +12,6 @@ LABEL maintainer="marius.kriegerowski@gmail.com"
 LABEL description="Deploy and roll back docker images"
 
 WORKDIR /app
-COPY --from=builder /app/target/release/deploya .
+COPY --from=builder /app/target/release/hoister .
 
-CMD ["/app/deploya", "--watch"]
+CMD ["/app/hoister", "--watch"]

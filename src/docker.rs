@@ -1,4 +1,4 @@
-use crate::DeployaError;
+use crate::HoisterError;
 use bollard::Docker;
 use bollard::models::{
     ContainerCreateBody, ContainerCreateResponse, ContainerSummary, HealthStatusEnum,
@@ -15,7 +15,7 @@ use std::time::Duration;
 pub(crate) async fn update_container(
     docker: &Docker,
     container: ContainerSummary,
-) -> Result<ContainerCreateResponse, DeployaError> {
+) -> Result<ContainerCreateResponse, HoisterError> {
     let container_id = container.id.unwrap_or_default();
     let image_name = container.image.expect("Container tag format wrong");
     debug!("Image: {}", image_name);
@@ -151,7 +151,7 @@ async fn download_image(
     docker: &Docker,
     image_name: &str,
     image_tag: &str,
-) -> Result<String, DeployaError> {
+) -> Result<String, HoisterError> {
     let mut update_available = false;
     let mut digest = String::new();
     let options = CreateImageOptions {
@@ -178,7 +178,7 @@ async fn download_image(
         }
     }
     if !update_available {
-        return Err(DeployaError::NoUpdateAvailable);
+        return Err(HoisterError::NoUpdateAvailable);
     }
     Ok(digest)
 }

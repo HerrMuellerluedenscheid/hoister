@@ -1,7 +1,7 @@
 services:
-  deploya:
+  hoister:
     build: .
-    image: emrius11/deploya:latest
+    image: emrius11/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
@@ -16,5 +16,5 @@ services:
       context: .
       dockerfile: works.Dockerfile
     labels:
-      - "deploya.enable=true"
+      - "hoister.enable=true"
     image: emrius11/example:latest

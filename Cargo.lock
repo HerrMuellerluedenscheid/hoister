@@ -264,22 +264,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deploya"
-version = "0.1.0"
-dependencies = [
- "bollard",
- "clap",
- "ctrlc",
- "env_logger",
- "futures-util",
- "libc",
- "log",
- "serde_json",
- "thiserror",
- "tokio",
-]
-
-[[package]]
 name = "deranged"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -419,6 +403,22 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
+name = "hoister"
+version = "0.1.0"
+dependencies = [
+ "bollard",
+ "clap",
+ "ctrlc",
+ "env_logger",
+ "futures-util",
+ "libc",
+ "log",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
 
 [[package]]
 name = "http"

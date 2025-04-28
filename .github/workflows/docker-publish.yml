@@ -11,7 +11,7 @@ env:
   # Use docker.io for Docker Hub if empty
   REGISTRY: registry.hub.docker.com
   REGISTRY_USERNAME: emrius11
-  IMAGE_NAME: emrius11/deploya
+  IMAGE_NAME: emrius11/hoister
 
 jobs:
   build:
