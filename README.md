@@ -18,7 +18,7 @@ services:
   example:
     image: emrius11/example:latest
     labels:
-      - "hoister.enable=true"
+      - "hoister.enable=true"         # <- Add this label to your service
 ```
 
 Then, **either** download the [latest release](https://github.com/HerrMuellerluedenscheid/hoister/releases) that matches your OS or
