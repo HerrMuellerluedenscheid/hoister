@@ -17,14 +17,14 @@ use futures_util::StreamExt;
 use std::collections::HashMap;
 use std::default::Default;
 
-#[cfg(target_os = "linux")]
-use std::{env, process};
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 use thiserror::Error;
 use tokio::time::sleep;
+
+#[allow(unused_imports)]
+use std::{env, process};
 
 #[derive(Debug, Error)]
 enum HoisterError {
@@ -50,51 +50,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    while running.load(Ordering::SeqCst) {
-        let docker = Docker::connect_with_local_defaults().unwrap();
+    let docker = Docker::connect_with_local_defaults().unwrap();
 
-        let config = configure_cli();
-        let mut filters = HashMap::new();
-        let label_filters = vec!["hoister.enable=true".to_string()];
-        filters.insert("label".to_string(), label_filters);
+    let config = configure_cli();
+    let mut filters = HashMap::new();
+    let label_filters = vec!["hoister.enable=true".to_string()];
+    filters.insert("label".to_string(), label_filters);
 
-        let options = ListContainersOptions {
-            filters: Some(filters),
-            ..Default::default()
-        };
+    let options = ListContainersOptions {
+        filters: Some(filters),
+        ..Default::default()
+    };
 
-        loop {
-            let now = SystemTime::now();
-            let containers = docker
-                .clone()
-                .list_containers(Some(options.clone()))
-                .await?;
-            info!(
-                "found {} containers with label `hoister.enable=true`",
-                containers.len()
-            );
-            for container in containers {
-                let _ = update_container(&docker, container)
-                    .await
-                    .inspect_err(|e| error!("{}", e));
-                // monitor_state(container, &docker).await?;
+    loop {
+        let now = SystemTime::now();
+        let containers = docker
+            .clone()
+            .list_containers(Some(options.clone()))
+            .await?;
+        info!(
+            "found {} containers with label `hoister.enable=true`",
+            containers.len()
+        );
+        for container in containers {
+            let image = container.clone().image.unwrap_or_default();
+            match update_container(&docker, container).await {
+                Ok(_) => {
+                    info!("deployed updated image {}", image);
+                }
+                Err(e) => match e {
+                    HoisterError::NoUpdateAvailable => {
+                        info!("no update available for {}", image);
+                    }
+                    _ => {
+                        error!("failed to deploy updated image {}", e);
+                    }
+                },
+            };
+            // monitor_state(container, &docker).await?;
+        }
+        if config.interval.is_some() {
+            while running.load(Ordering::SeqCst)
+                && now.elapsed().unwrap() < Duration::from_secs(config.interval.unwrap())
+            {
+                sleep(Duration::from_millis(500)).await;
             }
-            if config.interval.is_some() {
-                while running.load(Ordering::SeqCst)
-                    && now.elapsed().unwrap() < Duration::from_secs(config.interval.unwrap())
-                {
-                    sleep(Duration::from_millis(500)).await;
-                }
-                if !running.load(Ordering::SeqCst) {
-                    break;
-                }
-            } else {
+            if !running.load(Ordering::SeqCst) {
                 break;
             }
+        } else {
+            break;
         }
-        break;
     }
-
     Ok(())
 }
 

@@ -36,10 +36,7 @@ pub(crate) async fn update_container(
         serde_json::to_string_pretty(&image_details).unwrap()
     );
 
-    info!(
-        "Pulling latest version of the image...{}:{}",
-        image_name, image_tag
-    );
+    info!("Pulling update for: {}:{}", image_name, image_tag);
 
     let digest = download_image(docker, &image_name, &image_tag).await?;
     debug!("Image pulled successfully (digest: {})", digest);
