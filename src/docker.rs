@@ -41,12 +41,7 @@ pub(crate) async fn update_container(
     let digest = download_image(docker, &image_name, &image_tag).await?;
     debug!("Image pulled successfully (digest: {})", digest);
     let new_image_name = image_name + "@" + &digest;
-    info!("new image name: {}", new_image_name);
-    let image_details = docker.inspect_image(&new_image_name).await?;
-    info!(
-        "Image Details of new image: {}",
-        serde_json::to_string_pretty(&image_details).unwrap()
-    );
+    debug!("new image name: {}", new_image_name);
     info!("Stopping container {:?}...", &container_id);
     let options_stop_container = StopContainerOptionsBuilder::new().t(30).build();
 
@@ -55,7 +50,7 @@ pub(crate) async fn update_container(
         .await?;
 
     let backup_name = format!("{}-backup", container_id);
-    println!("rename old container to {}", &backup_name);
+    debug!("rename old container to {}", &backup_name);
 
     let rename_options = RenameContainerOptions {
         name: backup_name.clone(),
@@ -184,10 +179,8 @@ async fn check_container_health(
     docker: &Docker,
     container_name: &str,
 ) -> Result<(), Box<dyn Error>> {
-    // Wait a moment for container to initialize
     tokio::time::sleep(Duration::from_secs(5)).await;
 
-    // Check container state
     let container = docker
         .inspect_container(container_name, None::<InspectContainerOptions>)
         .await?;
@@ -195,7 +188,6 @@ async fn check_container_health(
     if let Some(state) = container.state {
         if let Some(running) = state.running {
             if running {
-                // For containers with healthcheck
                 if let Some(health) = state.health {
                     if let Some(status) = health.status {
                         if status == HealthStatusEnum::HEALTHY {
@@ -203,7 +195,6 @@ async fn check_container_health(
                         }
                     }
                 } else {
-                    // For containers without healthcheck, just verify it's running
                     return Ok(());
                 }
             }
