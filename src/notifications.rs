@@ -35,7 +35,7 @@ pub(crate) fn setup_dispatcher() -> Dispatcher {
         telegram,
         email: None,
     };
-    
+
     Dispatcher::new(sender)
 }
 

@@ -69,16 +69,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         ..Default::default()
     };
 
+    let mut n_containers = 0;
     loop {
         let now = SystemTime::now();
         let containers = docker
             .clone()
             .list_containers(Some(options.clone()))
             .await?;
-        info!(
-            "found {} containers with label `hoister.enable=true`",
-            containers.len()
-        );
+        if n_containers != containers.len() {
+            info!(
+                "found {} containers with label `hoister.enable=true`",
+                containers.len()
+            );
+            n_containers = containers.len();
+        }
+
         for container in containers {
             let image = container.clone().image.unwrap_or_default();
             let message = match update_container(&docker, container).await {
