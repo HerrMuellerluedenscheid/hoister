@@ -1,4 +1,5 @@
 use crate::HoisterError;
+use crate::HoisterError::UpdateFailed;
 use bollard::Docker;
 use bollard::models::{
     ContainerCreateBody, ContainerCreateResponse, ContainerSummary, HealthStatusEnum,
@@ -9,7 +10,6 @@ use bollard::query_parameters::{
 };
 use futures_util::StreamExt;
 use log::{debug, error, info, warn};
-use std::error::Error;
 use std::time::Duration;
 
 pub(crate) async fn update_container(
@@ -17,30 +17,26 @@ pub(crate) async fn update_container(
     container: ContainerSummary,
 ) -> Result<ContainerCreateResponse, HoisterError> {
     let container_id = container.id.unwrap_or_default();
-    let image_name = container.image.expect("Container tag format wrong");
-    debug!("Image: {}", image_name);
-    let (image_name, image_tag) = image_name.rsplit_once(":").unwrap_or_default();
-    let image_name = image_name.to_string();
-    let image_tag = image_tag.to_string();
     let container_details = docker
         .inspect_container(&container_id, None::<InspectContainerOptions>)
         .await?;
+    let old_config = container_details.clone().config.unwrap();
+    let image_name = old_config.image.unwrap();
+
+    let (image_name, image_tag) = image_name.rsplit_once(":").unwrap_or_default();
+    let image_name = image_name.to_string();
+    let image_tag = image_tag.to_string();
+
     debug!(
         "container details: {}",
         serde_json::to_string_pretty(&container_details).unwrap()
-    );
-    let image_id = container.image_id.unwrap_or_default();
-    let image_details = docker.inspect_image(&image_id).await?;
-    debug!(
-        "Image Details: {}",
-        serde_json::to_string_pretty(&image_details).unwrap()
     );
 
     info!("Pulling update for: {}:{}", image_name, image_tag);
 
     let digest = download_image(docker, &image_name, &image_tag).await?;
     debug!("Image pulled successfully (digest: {})", digest);
-    let new_image_name = image_name + "@" + &digest;
+    let new_image_name = image_name.clone() + "@" + &digest;
     debug!("new image name: {}", new_image_name);
     info!("Stopping container {:?}...", &container_id);
     let options_stop_container = StopContainerOptionsBuilder::new().t(30).build();
@@ -97,7 +93,7 @@ pub(crate) async fn update_container(
         .await?;
     info!("Container started");
 
-    if check_container_health(docker, &container.id).await.is_err() {
+    if let Err(e) = check_container_health(docker, &container.id).await {
         warn!("New container failed, rolling back to previous version");
 
         docker
@@ -124,6 +120,7 @@ pub(crate) async fn update_container(
             .start_container(&container_id, None::<StartContainerOptions>)
             .await?;
         info!("Rollback complete, old container restarted");
+        return Err(e);
     } else {
         debug!("Container updated successfully. deleting old container");
         let remove_options = RemoveContainerOptions {
@@ -155,6 +152,7 @@ async fn download_image(
     while let Some(result) = pull_stream.next().await {
         match result {
             Ok(output) => {
+                debug!("{:?}", output);
                 if let Some(status) = &output.status {
                     if status.contains("Download complete") || status.contains("Pull complete") {
                         update_available = true;
@@ -175,10 +173,7 @@ async fn download_image(
     Ok(digest)
 }
 
-async fn check_container_health(
-    docker: &Docker,
-    container_name: &str,
-) -> Result<(), Box<dyn Error>> {
+async fn check_container_health(docker: &Docker, container_name: &str) -> Result<(), HoisterError> {
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     let container = docker
@@ -201,5 +196,5 @@ async fn check_container_health(
         }
     }
 
-    Err("Container is not healthy".into())
+    Err(UpdateFailed(container_name.to_string()).into())
 }

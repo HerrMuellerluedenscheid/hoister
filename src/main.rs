@@ -23,6 +23,7 @@ use std::time::{Duration, SystemTime};
 use thiserror::Error;
 use tokio::time::sleep;
 
+use chatterbox::message::{Dispatcher, Message};
 #[allow(unused_imports)]
 use std::{env, process};
 
@@ -30,6 +31,8 @@ use std::{env, process};
 enum HoisterError {
     #[error("no update available")]
     NoUpdateAvailable,
+    #[error("update failed: {0}")]
+    UpdateFailed(String),
     #[error(transparent)]
     BollardError(#[from] BollardError),
 }
@@ -39,6 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     #[cfg(target_os = "linux")]
     set_group_id();
 
+    let dispatcher = setup_dispatcher();
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     let running = Arc::new(AtomicBool::new(true));
@@ -47,6 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     ctrlc::set_handler(move || {
         r.store(false, Ordering::SeqCst);
         info!("Received shutdown signal, gracefully shutting down...");
+        process::exit(0);
     })
     .expect("Error setting Ctrl-C handler");
 
@@ -74,21 +79,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         );
         for container in containers {
             let image = container.clone().image.unwrap_or_default();
-            match update_container(&docker, container).await {
+            let message = match update_container(&docker, container).await {
                 Ok(_) => {
                     info!("deployed updated image {}", image);
+                    Some(Message::new_now(
+                        "update successfully deployed",
+                        format!("image {} deployed", image),
+                    ))
                 }
                 Err(e) => match e {
                     HoisterError::NoUpdateAvailable => {
                         info!("no update available for {}", image);
+                        None
+                    }
+                    HoisterError::UpdateFailed(e) => {
+                        error!("failed to update image {}: {}", image, e);
+                        Some(Message::new_now(
+                            "update failed",
+                            format!("failed to update image {}: {}", image, e),
+                        ))
                     }
                     _ => {
-                        error!("failed to deploy updated image {}", e);
+                        error!("failed to update image {}: {}", image, e);
+                        None
                     }
                 },
             };
-            // monitor_state(container, &docker).await?;
+
+            if let Some(message) = message {
+                _ = dispatcher
+                    .dispatch(&message)
+                    .await
+                    .inspect_err(|e| error!("failed to dispatch message: {}", e));
+            }
         }
+
         if config.interval.is_some() {
             while running.load(Ordering::SeqCst)
                 && now.elapsed().unwrap() < Duration::from_secs(config.interval.unwrap())
@@ -103,6 +128,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         }
     }
     Ok(())
+}
+
+fn setup_dispatcher() -> Dispatcher {
+    let slack = match std::env::var("HOISTER_SLACK_WEBHOOK_URL") {
+        Ok(webhook_url) => {
+            info!("Using Slack dispatcher");
+            let channel =
+                std::env::var("HOISTER_SLACK_CHANNEL").expect("HOISTER_SLACK_CHANNEL not defined");
+            Some(chatterbox::dispatcher::slack::Slack {
+                webhook_url,
+                channel,
+            })
+        }
+        Err(_) => {
+            info!("HOISTER_SLACK_WEBHOOK_URL not defined");
+            None
+        }
+    };
+    let telegram = match std::env::var("HOISTER_TELEGRAM_BOT_TOKEN") {
+        Ok(bot_token) => {
+            info!("Using Telegram dispatcher");
+            let chat_id = std::env::var("HOISTER_TELEGRAM_CHAT_ID")
+                .expect("HOISTER_TELEGRAM_CHAT_ID not defined");
+            Some(chatterbox::dispatcher::telegram::Telegram { bot_token, chat_id })
+        }
+        Err(_) => {
+            info!("HOISTER_TELEGRAM_BOT_TOKEN not defined");
+            None
+        }
+    };
+    let sender = chatterbox::dispatcher::Sender {
+        slack,
+        telegram,
+        email: None,
+    };
+    let dispatcher = Dispatcher::new(sender);
+    dispatcher
 }
 
 #[cfg(target_os = "linux")]
