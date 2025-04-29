@@ -8,6 +8,7 @@ services:
       - no-new-privileges:true
     depends_on:
       - example
+    env_file: "hoister.env"
 
   example:
     image: emrius11/example:latest

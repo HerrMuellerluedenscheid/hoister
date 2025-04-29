@@ -8,8 +8,8 @@ Hoister checks if a new version of the image (under the same tag) is available.
 It will download and start the updated container with the same settings, volumes, and networks as before.
 In case of failure, it will automatically roll back to the last working state.
 
-Installation
-------------
+⚙️ Setup
+--------
 
 Add the hoister.enable=true label to any service you want to manage:
 
@@ -37,3 +37,15 @@ services:
 ```
 
 Finally, push a new image to your registry using the same tag, and Hoister will automatically update the container.
+
+📬 Notifications 
+-----------------
+
+Define the following environment variables to receive update and rollback notifications via telegram, slack or email:
+
+```shell
+export HOISTER_SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXX"
+export HOISTER_SLACK_CHANNEL="#my-update-channel"
+export HOISTER_TELEGRAM_BOT_TOKEN="12345656789:XXXXXXXXXX-XXXXXXXXX-XXXXXXXXX"
+export HOISTER_TELEGRAM_CHAT_ID="9999999999"
+```
