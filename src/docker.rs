@@ -196,5 +196,5 @@ async fn check_container_health(docker: &Docker, container_name: &str) -> Result
         }
     }
 
-    Err(UpdateFailed(container_name.to_string()).into())
+    Err(UpdateFailed(container.config.unwrap().image.unwrap()))
 }
