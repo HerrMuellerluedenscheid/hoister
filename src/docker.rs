@@ -32,7 +32,7 @@ pub(crate) async fn update_container(
         serde_json::to_string_pretty(&container_details).unwrap()
     );
 
-    info!("Pulling update for: {}:{}", image_name, image_tag);
+    info!("Checking for updates: {}:{}", image_name, image_tag);
 
     let digest = download_image(docker, &image_name, &image_tag).await?;
     debug!("Image pulled successfully (digest: {})", digest);
@@ -170,6 +170,7 @@ async fn download_image(
     if !update_available {
         return Err(HoisterError::NoUpdateAvailable);
     }
+    info!("New image pulled");
     Ok(digest)
 }
 
