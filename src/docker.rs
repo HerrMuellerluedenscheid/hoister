@@ -154,7 +154,10 @@ async fn download_image(
             Ok(output) => {
                 debug!("{:?}", output);
                 if let Some(status) = &output.status {
-                    if status.contains("Download complete") || status.contains("Pull complete") {
+                    if status.contains("Download complete")
+                        || status.contains("Pull complete")
+                        || status.contains("Downloaded newer image for")
+                    {
                         update_available = true;
                     }
                     if status.contains("Digest:") {

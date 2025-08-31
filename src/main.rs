@@ -89,8 +89,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             let message = match update_container(&docker, container).await {
                 Ok(_) => {
                     info!("deployed updated image {}", image);
-                    Some(Message::new_now(
-                        "update successfully deployed",
+                    Some(Message::new(
+                        "update successfully deployed".to_string(),
                         format!("image {} deployed", image),
                     ))
                 }

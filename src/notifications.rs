@@ -39,15 +39,15 @@ pub(crate) fn setup_dispatcher() -> Dispatcher {
     Dispatcher::new(sender)
 }
 
-impl From<HoisterError> for Option<Message<'_>> {
+impl From<HoisterError> for Option<Message> {
     fn from(value: HoisterError) -> Self {
         match value {
             HoisterError::NoUpdateAvailable => {
                 debug!("no update available");
                 None
             }
-            HoisterError::UpdateFailed(e) => Some(Message::new_now(
-                "update failed",
+            HoisterError::UpdateFailed(e) => Some(Message::new(
+                "update failed".to_string(),
                 format!("failed to update image {}", e),
             )),
             _ => {
