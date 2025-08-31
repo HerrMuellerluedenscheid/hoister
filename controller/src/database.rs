@@ -1,6 +1,8 @@
 use sqlx::{FromRow, Row, SqlitePool};
 use thiserror::Error;
 
+type Digest = String;
+
 #[derive(Error, Debug)]
 pub enum DbError {
     #[error("Database error: {0}")]
@@ -10,8 +12,7 @@ pub enum DbError {
 #[derive(FromRow, Debug, Clone)]
 pub struct Deployment {
     pub id: i64,
-    pub image_digest: String,
-    pub email: String,
+    pub digest: Digest,
     pub created_at: String,
 }
 
@@ -33,7 +34,7 @@ impl Database {
             r#"
             CREATE TABLE IF NOT EXISTS deployment (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
+                digest TEXT NOT NULL,
                 email TEXT NOT NULL UNIQUE,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -46,9 +47,9 @@ impl Database {
     }
 
     /// Create a new deployment
-    pub async fn create_deployment(&self, name: &str, email: &str) -> Result<i64, DbError> {
-        let result = sqlx::query("INSERT INTO deployment (name, email) VALUES (?, ?)")
-            .bind(name)
+    pub async fn create_deployment(&self, digest: &str, email: &str) -> Result<i64, DbError> {
+        let result = sqlx::query("INSERT INTO deployment (digest, email) VALUES (?, ?)")
+            .bind(digest)
             .bind(email)
             .execute(&self.pool)
             .await?;
@@ -59,7 +60,7 @@ impl Database {
     /// Get deployment by ID
     pub async fn get_deployment(&self, id: i64) -> Result<Option<Deployment>, DbError> {
         let deployment = sqlx::query_as::<_, Deployment>(
-            "SELECT id, name, email, created_at FROM deployment WHERE id = ?",
+            "SELECT id, digest, created_at FROM deployment WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -74,7 +75,7 @@ impl Database {
         email: &str,
     ) -> Result<Option<Deployment>, DbError> {
         let deployment = sqlx::query_as::<_, Deployment>(
-            "SELECT id, name, email, created_at FROM deployment WHERE email = ?",
+            "SELECT id, digest, email, created_at FROM deployment WHERE email = ?",
         )
         .bind(email)
         .fetch_optional(&self.pool)
@@ -86,7 +87,7 @@ impl Database {
     /// Get all deployment
     pub async fn get_all_deployment(&self) -> Result<Vec<Deployment>, DbError> {
         let deployment = sqlx::query_as::<_, Deployment>(
-            "SELECT id, name, email, created_at FROM deployment ORDER BY created_at DESC",
+            "SELECT id, digest, email, created_at FROM deployment ORDER BY created_at DESC",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -98,11 +99,11 @@ impl Database {
     pub async fn update_deployment(
         &self,
         id: i64,
-        name: &str,
+        digest: &str,
         email: &str,
     ) -> Result<bool, DbError> {
-        let result = sqlx::query("UPDATE deployment SET name = ?, email = ? WHERE id = ?")
-            .bind(name)
+        let result = sqlx::query("UPDATE deployment SET digest = ?, email = ? WHERE id = ?")
+            .bind(digest)
             .bind(email)
             .bind(id)
             .execute(&self.pool)
