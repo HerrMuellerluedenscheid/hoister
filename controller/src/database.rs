@@ -1,3 +1,4 @@
+use serde::Serialize;
 use sqlx::{FromRow, Row, SqlitePool};
 use thiserror::Error;
 
@@ -9,7 +10,7 @@ pub enum DbError {
     Database(#[from] sqlx::Error),
 }
 
-#[derive(FromRow, Debug, Clone)]
+#[derive(FromRow, Debug, Clone, Serialize)]
 pub struct Deployment {
     pub id: i64,
     pub digest: Digest,
