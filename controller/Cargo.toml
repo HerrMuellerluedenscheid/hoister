@@ -4,3 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+tokio = {workspace = true}
+thiserror = "2.0.16"
+sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio"] }
