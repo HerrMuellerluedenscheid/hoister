@@ -1,10 +1,10 @@
 use axum::{
-    extract::{Path, State, Request},
-    http::{StatusCode},
+    Router,
+    extract::{Path, Request, State},
+    http::StatusCode,
     middleware::{self, Next},
     response::{Json, Response},
-    routing::{get, post, delete},
-    Router,
+    routing::{delete, get, post},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -68,7 +68,7 @@ async fn auth_middleware(
         None => return Ok(next.run(request).await),
     };
     if request.uri().path() == "/health" {
-         return Ok(next.run(request).await)
+        return Ok(next.run(request).await);
     };
     let auth_header = request
         .headers()
@@ -123,17 +123,19 @@ async fn create_deployment(
     State(state): State<AppState>,
     Json(payload): Json<CreateDeployment>,
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
-    match state.database.create_deployment(&payload.digest, &payload.email).await {
-        Ok(id) => {
-            match state.database.get_deployment(id).await {
-                Ok(Some(deployment)) => Ok(Json(ApiResponse::success(deployment))),
-                Ok(None) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-                Err(e) => {
-                    eprintln!("Error retrieving created deployment: {:?}", e);
-                    Err(StatusCode::INTERNAL_SERVER_ERROR)
-                }
+    match state
+        .database
+        .create_deployment(&payload.digest, &payload.email)
+        .await
+    {
+        Ok(id) => match state.database.get_deployment(id).await {
+            Ok(Some(deployment)) => Ok(Json(ApiResponse::success(deployment))),
+            Ok(None) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+            Err(e) => {
+                eprintln!("Error retrieving created deployment: {:?}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
             }
-        }
+        },
         Err(e) => {
             eprintln!("Error creating deployment: {:?}", e);
             Err(StatusCode::BAD_REQUEST)
@@ -146,17 +148,19 @@ async fn update_deployment(
     Path(id): Path<i64>,
     Json(payload): Json<UpdateDeployment>,
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
-    match state.database.update_deployment(id, &payload.digest, &payload.email).await {
-        Ok(true) => {
-            match state.database.get_deployment(id).await {
-                Ok(Some(deployment)) => Ok(Json(ApiResponse::success(deployment))),
-                Ok(None) => Err(StatusCode::NOT_FOUND),
-                Err(e) => {
-                    eprintln!("Error retrieving updated deployment: {:?}", e);
-                    Err(StatusCode::INTERNAL_SERVER_ERROR)
-                }
+    match state
+        .database
+        .update_deployment(id, &payload.digest, &payload.email)
+        .await
+    {
+        Ok(true) => match state.database.get_deployment(id).await {
+            Ok(Some(deployment)) => Ok(Json(ApiResponse::success(deployment))),
+            Ok(None) => Err(StatusCode::NOT_FOUND),
+            Err(e) => {
+                eprintln!("Error retrieving updated deployment: {:?}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
             }
-        }
+        },
         Ok(false) => Err(StatusCode::NOT_FOUND),
         Err(e) => {
             eprintln!("Error updating deployment {}: {:?}", id, e);
@@ -179,7 +183,6 @@ async fn delete_deployment(
     }
 }
 
-
 pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> Router {
     let state = AppState {
         database,
@@ -192,16 +195,26 @@ pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> 
         .route("/deployments", post(create_deployment))
         .route("/deployments/{id}", get(get_deployment))
         .route("/deployments/{id}", delete(delete_deployment))
-        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ))
         .with_state(state)
 }
 
-pub async fn start_server(database: Arc<Database>, api_secret: Option<String>, port: u16) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn start_server(
+    database: Arc<Database>,
+    api_secret: Option<String>,
+    port: u16,
+) -> Result<(), Box<dyn std::error::Error>> {
     let app = create_app(database, api_secret).await;
     let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
 
     println!("Server running on http://0.0.0.0:{}", port);
-    println!("Health check: http://0.0.0.0:{}/health (no auth required)", port);
+    println!(
+        "Health check: http://0.0.0.0:{}/health (no auth required)",
+        port
+    );
     println!("Protected API endpoints (require Authorization: Bearer <secret>):");
     println!("  GET    /deployments           - Get all deployments");
     println!("  POST   /deployments           - Create deployment");

@@ -140,7 +140,6 @@ mod tests {
     // Example usage
     #[tokio::test]
     async fn test_this() -> Result<(), DbError> {
-        // For local SQLite file
         let db = Database::new("sqlite:///tmp/sqlite.db").await?;
 
         // Initialize the database
