@@ -7,8 +7,7 @@ mod server;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let port =
-        std::env::var("HOISTER_CONTROLLER_PORT").unwrap_or("8080".to_string());
+    let port = std::env::var("HOISTER_CONTROLLER_PORT").unwrap_or("8080".to_string());
     let db_path =
         std::env::var("HOISTER_DATABASE_PATH").expect("HOISTER_DATABASE_PATH must be set");
 

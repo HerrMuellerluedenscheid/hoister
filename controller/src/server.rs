@@ -4,14 +4,15 @@ use axum::{
     http::StatusCode,
     middleware::{self, Next},
     response::{Json, Response},
-    routing::{delete, get, post},
+    routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
 // Import your database module
-use crate::database::{Database, DbError, Deployment};
+use crate::database::{Database, Deployment};
+use sqlx::Type;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -19,16 +20,25 @@ pub struct AppState {
     pub api_secret: Option<String>,
 }
 
-#[derive(Deserialize)]
-pub struct CreateDeployment {
-    pub digest: String,
-    pub email: String,
+#[derive(Deserialize, Debug, Clone, Serialize, Type)]
+#[repr(u8)]
+pub enum DeploymentStatus {
+    Pending = 0,
+    Started = 1,
+    Success = 2,
+    Failure = 3,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
+pub struct CreateDeployment {
+    pub digest: String,
+    pub status: DeploymentStatus,
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct UpdateDeployment {
     pub digest: String,
-    pub email: String,
+    pub status: DeploymentStatus,
 }
 
 #[derive(Serialize)]
@@ -125,7 +135,7 @@ async fn create_deployment(
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
     match state
         .database
-        .create_deployment(&payload.digest, &payload.email)
+        .create_deployment(&payload.digest, &payload.status)
         .await
     {
         Ok(id) => match state.database.get_deployment(id).await {
@@ -150,7 +160,7 @@ async fn update_deployment(
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
     match state
         .database
-        .update_deployment(id, &payload.digest, &payload.email)
+        .update_deployment(id, &payload.digest, &payload.status)
         .await
     {
         Ok(true) => match state.database.get_deployment(id).await {
@@ -169,20 +179,6 @@ async fn update_deployment(
     }
 }
 
-async fn delete_deployment(
-    State(state): State<AppState>,
-    Path(id): Path<i64>,
-) -> Result<Json<ApiResponse<()>>, StatusCode> {
-    match state.database.delete_deployment(id).await {
-        Ok(true) => Ok(Json(ApiResponse::success(()))),
-        Ok(false) => Err(StatusCode::NOT_FOUND),
-        Err(e) => {
-            eprintln!("Error deleting deployment {}: {:?}", id, e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-    }
-}
-
 pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> Router {
     let state = AppState {
         database,
@@ -194,7 +190,6 @@ pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> 
         .route("/deployments", get(get_deployments))
         .route("/deployments", post(create_deployment))
         .route("/deployments/{id}", get(get_deployment))
-        .route("/deployments/{id}", delete(delete_deployment))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
@@ -220,8 +215,6 @@ pub async fn start_server(
     println!("  POST   /deployments           - Create deployment");
     println!("  GET    /deployments/:id       - Get deployment by ID");
     println!("  PUT    /deployments/:id       - Update deployment");
-    println!("  DELETE /deployments/:id       - Delete deployment");
-    println!("  GET    /deployments/email/:email - Get deployment by email");
 
     axum::serve(listener, app).await?;
     Ok(())
