@@ -7,11 +7,12 @@ mod server;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let port = std::env::var("HOISTER_CONTROLLER_PORT").unwrap_or("8080".to_string());
-    let db_path =
+    let port = std::env::var("HOISTER_CONTROLLER_PORT").unwrap_or("3000".to_string());
+    let mut db_path =
         std::env::var("HOISTER_DATABASE_PATH").expect("HOISTER_DATABASE_PATH must be set");
 
     println!("Connecting to database: {}", db_path);
+    db_path.push_str("/sqlite.db");
     let db = Database::new(&db_path).await?;
     let db = Arc::new(db);
 

@@ -160,7 +160,9 @@ async fn download_image(
                     {
                         update_available = true;
                     }
-                    if status.contains("Digest:") && let Some(pos) = status.find("sha256:") {
+                    if status.contains("Digest:")
+                        && let Some(pos) = status.find("sha256:")
+                    {
                         status[pos..].clone_into(&mut digest);
                     }
                 }
@@ -186,7 +188,9 @@ async fn check_container_health(docker: &Docker, container_name: &str) -> Result
         if let Some(running) = state.running {
             if running {
                 if let Some(health) = state.health {
-                    if let Some(status) = health.status && status == HealthStatusEnum::HEALTHY {
+                    if let Some(status) = health.status
+                        && status == HealthStatusEnum::HEALTHY
+                    {
                         return Ok(());
                     }
                 } else {

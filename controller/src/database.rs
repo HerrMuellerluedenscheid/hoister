@@ -123,12 +123,12 @@ mod tests {
         let deployment_id = db
             .create_deployment(
                 "sdfsdfsasdfasdfaosdifjoaijsdofijaosidjfoajosdfjoiajsdfoijaosdifjoasdjfoij",
-                &DeploymentStatus::PENDING,
+                &DeploymentStatus::Pending,
             )
             .await?;
         println!("Created deployment with ID: {}", deployment_id);
 
-        db.create_deployment("Bob Wilson", &DeploymentStatus::PENDING)
+        db.create_deployment("Bob Wilson", &DeploymentStatus::Pending)
             .await?;
 
         // Get all deployment
@@ -142,7 +142,7 @@ mod tests {
         db.update_deployment(
             deployment_id,
             "Alice Johnson-Smith",
-            &DeploymentStatus::PENDING,
+            &DeploymentStatus::Pending,
         )
         .await?;
 
