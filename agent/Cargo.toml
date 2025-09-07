@@ -11,6 +11,7 @@ authors = ["marius.kriegerowski@gmail.com"]
 tokio = {workspace = true}
 
 bollard = { git = "https://github.com/fussybeaver/bollard.git" , rev = "50a25a0d81bf7b9085a69e6b5bfb56a28855f158"}
+controller = {path = "../controller"}
 futures-util = "0.3.31"
 log = "0.4.27"
 env_logger = "0.11.8"
@@ -20,3 +21,4 @@ clap = { version = "4.5.37", features = ["string"] }
 ctrlc = "3.4"
 libc = "0.2.172"
 chatterbox = "1.1"
+reqwest = "0.12.23"

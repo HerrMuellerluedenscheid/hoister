@@ -24,10 +24,31 @@ use std::time::{Duration, SystemTime};
 use thiserror::Error;
 use tokio::time::sleep;
 
-use crate::notifications::setup_dispatcher;
+use crate::notifications::{send, setup_dispatcher};
 use chatterbox::message::Message;
+use controller::server::{CreateDeployment, DeploymentStatus};
 #[allow(unused_imports)]
 use std::{env, process};
+
+struct DeploymentResult {
+    image: String,
+    status: DeploymentStatus,
+}
+
+impl Into<Message> for &DeploymentResult {
+    fn into(self) -> Message {
+        Message::new(self.status.to_string(), self.image.clone())
+    }
+}
+
+impl From<&DeploymentResult> for CreateDeployment {
+    fn from(result: &DeploymentResult) -> Self {
+        CreateDeployment {
+            image: result.image.clone(),
+            status: result.status.clone(),
+        }
+    }
+}
 
 #[derive(Debug, Error)]
 enum HoisterError {
@@ -86,23 +107,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
         for container in containers {
             let image = container.clone().image.unwrap_or_default();
-            let message = match update_container(&docker, container).await {
-                Ok(_) => {
-                    info!("deployed updated image {}", image);
-                    Some(Message::new(
-                        "update successfully deployed".to_string(),
-                        format!("image {} deployed", image),
-                    ))
-                }
-                Err(e) => e.into(),
+            let result = match update_container(&docker, container).await {
+                Ok(response) => DeploymentResult {
+                    image: image.clone(),
+                    status: DeploymentStatus::Success,
+                },
+                Err(e) => DeploymentResult {
+                    image: image.clone(),
+                    status: DeploymentStatus::Failure,
+                },
             };
-
-            if let Some(message) = message {
-                _ = dispatcher
-                    .dispatch(&message)
-                    .await
-                    .inspect_err(|e| error!("failed to dispatch message: {}", e));
-            }
+            send(&result, &dispatcher).await;
         }
 
         if config.interval.is_some() {
