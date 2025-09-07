@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use axum::{
     Router,
     extract::{Path, Request, State},
@@ -29,15 +30,26 @@ pub enum DeploymentStatus {
     Failure = 3,
 }
 
+impl Display for DeploymentStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DeploymentStatus::Pending => write!(f, "Pending"),
+            DeploymentStatus::Started => write!(f, "Started"),
+            DeploymentStatus::Success => write!(f, "Success"),
+            DeploymentStatus::Failure => write!(f, "Failure"),
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize)]
 pub struct CreateDeployment {
-    pub digest: String,
+    pub image: String,
     pub status: DeploymentStatus,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct UpdateDeployment {
-    pub digest: String,
+    pub image: String,
     pub status: DeploymentStatus,
 }
 
@@ -135,7 +147,7 @@ async fn create_deployment(
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
     match state
         .database
-        .create_deployment(&payload.digest, &payload.status)
+        .create_deployment(&payload.image, &payload.status)
         .await
     {
         Ok(id) => match state.database.get_deployment(id).await {
@@ -160,7 +172,7 @@ async fn update_deployment(
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
     match state
         .database
-        .update_deployment(id, &payload.digest, &payload.status)
+        .update_deployment(id, &payload.image, &payload.status)
         .await
     {
         Ok(true) => match state.database.get_deployment(id).await {
