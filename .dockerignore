@@ -1,5 +1,9 @@
 Dockerfile
-target
+**/target
 .git
 .docker-compose.yaml
 *.env
+.gitignore
+README.md
+Dockerfile*
+.dockerignore

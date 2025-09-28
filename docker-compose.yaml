@@ -1,6 +1,8 @@
 services:
   hoister:
-    build: .
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
     image: emrius11/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -8,7 +10,13 @@ services:
       - no-new-privileges:true
     depends_on:
       - example
-    env_file: "hoister.env"
+#    env_file: "hoister.env"
+
+  hoister-controller:
+    build:
+      context: .
+      dockerfile: controller/Dockerfile
+    image: emrius11/hoister-controller:latest
 
   example:
     image: emrius11/example:latest
