@@ -35,9 +35,9 @@ struct DeploymentResult {
     status: DeploymentStatus,
 }
 
-impl Into<Message> for &DeploymentResult {
-    fn into(self) -> Message {
-        Message::new(self.status.to_string(), self.image.clone())
+impl From<&DeploymentResult> for Message {
+    fn from(val: &DeploymentResult) -> Self {
+        Message::new(val.status.to_string(), val.image.clone())
     }
 }
 
@@ -108,11 +108,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         for container in containers {
             let image = container.clone().image.unwrap_or_default();
             let result = match update_container(&docker, container).await {
-                Ok(response) => DeploymentResult {
+                Ok(_response) => DeploymentResult {
                     image: image.clone(),
                     status: DeploymentStatus::Success,
                 },
-                Err(e) => DeploymentResult {
+                Err(_e) => DeploymentResult {
                     image: image.clone(),
                     status: DeploymentStatus::Failure,
                 },
@@ -172,8 +172,8 @@ async fn _monitor_state(
 
     while let Some(event) = events_stream.next().await {
         match event {
-            Ok(event) => println!("event {:?}", event),
-            Err(e) => eprintln!("Error receiving event: {:?}", e),
+            Ok(event) => println!("event {event:?}"),
+            Err(e) => eprintln!("Error receiving event: {e:?}"),
         }
     }
 

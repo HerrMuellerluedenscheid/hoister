@@ -3,6 +3,7 @@ use serde::Serialize;
 use sqlx::migrate::MigrateDatabase;
 use sqlx::{FromRow, SqlitePool};
 use thiserror::Error;
+use log::info;
 
 type Digest = String;
 
@@ -28,6 +29,7 @@ pub struct Database {
 impl Database {
     /// Create a new database connection
     pub async fn new(database_url: &str) -> Result<Self, DbError> {
+        info!("Connecting to database: {database_url}");
         if !sqlx::Sqlite::database_exists(database_url).await? {
             sqlx::Sqlite::create_database(database_url).await?;
         }
@@ -91,23 +93,6 @@ impl Database {
 
         Ok(deployment)
     }
-
-    /// Update deployment
-    pub async fn update_deployment(
-        &self,
-        id: i64,
-        digest: &str,
-        status: &DeploymentStatus,
-    ) -> Result<bool, DbError> {
-        let result = sqlx::query("UPDATE deployment SET digest = ?, status = ? WHERE id = ?")
-            .bind(digest)
-            .bind(status)
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
-
-        Ok(result.rows_affected() > 0)
-    }
 }
 
 #[cfg(test)]
@@ -126,7 +111,7 @@ mod tests {
                 &DeploymentStatus::Pending,
             )
             .await?;
-        println!("Created deployment with ID: {}", deployment_id);
+        println!("Created deployment with ID: {deployment_id}");
 
         db.create_deployment("Bob Wilson", &DeploymentStatus::Pending)
             .await?;
@@ -135,20 +120,12 @@ mod tests {
         let deployment = db.get_all_deployment().await?;
         println!("All deployment:");
         for deployment in deployment {
-            println!("  {:?}", deployment);
+            println!("  {deployment:?}");
         }
-
-        // Update a deployment
-        db.update_deployment(
-            deployment_id,
-            "Alice Johnson-Smith",
-            &DeploymentStatus::Pending,
-        )
-        .await?;
 
         // Get updated deployment
         if let Some(deployment) = db.get_deployment(deployment_id).await? {
-            println!("Updated deployment: {:?}", deployment);
+            println!("Updated deployment: {deployment:?}");
         }
 
         Ok(())

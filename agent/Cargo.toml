@@ -10,7 +10,7 @@ authors = ["marius.kriegerowski@gmail.com"]
 [dependencies]
 tokio = {workspace = true}
 
-bollard = { git = "https://github.com/fussybeaver/bollard.git" , rev = "50a25a0d81bf7b9085a69e6b5bfb56a28855f158"}
+bollard = "0.19.3"
 controller = {path = "../controller"}
 futures-util = "0.3.31"
 log = "0.4.27"

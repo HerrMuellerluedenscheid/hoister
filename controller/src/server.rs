@@ -9,6 +9,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use log::info;
 use tokio::net::TcpListener;
 
 // Import your database module
@@ -42,6 +43,7 @@ impl Display for DeploymentStatus {
 }
 
 #[derive(Deserialize, Serialize)]
+#[derive(Debug)]
 pub struct CreateDeployment {
     pub image: String,
     pub status: DeploymentStatus,
@@ -121,7 +123,7 @@ async fn get_deployments(
     match state.database.get_all_deployment().await {
         Ok(deployments) => Ok(Json(ApiResponse::success(deployments))),
         Err(e) => {
-            eprintln!("Error getting deployments: {:?}", e);
+            eprintln!("Error getting deployments: {e:?}");
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
@@ -135,7 +137,7 @@ async fn get_deployment(
         Ok(Some(deployment)) => Ok(Json(ApiResponse::success(deployment))),
         Ok(None) => Err(StatusCode::NOT_FOUND),
         Err(e) => {
-            eprintln!("Error getting deployment {}: {:?}", id, e);
+            eprintln!("Error getting deployment {id}: {e:?}");
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
@@ -145,6 +147,7 @@ async fn create_deployment(
     State(state): State<AppState>,
     Json(payload): Json<CreateDeployment>,
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
+    info!("Creating deployment: {:?}", payload);
     match state
         .database
         .create_deployment(&payload.image, &payload.status)
@@ -154,42 +157,17 @@ async fn create_deployment(
             Ok(Some(deployment)) => Ok(Json(ApiResponse::success(deployment))),
             Ok(None) => Err(StatusCode::INTERNAL_SERVER_ERROR),
             Err(e) => {
-                eprintln!("Error retrieving created deployment: {:?}", e);
+                eprintln!("Error retrieving created deployment: {e:?}");
                 Err(StatusCode::INTERNAL_SERVER_ERROR)
             }
         },
         Err(e) => {
-            eprintln!("Error creating deployment: {:?}", e);
+            eprintln!("Error creating deployment: {e:?}");
             Err(StatusCode::BAD_REQUEST)
         }
     }
 }
 
-async fn update_deployment(
-    State(state): State<AppState>,
-    Path(id): Path<i64>,
-    Json(payload): Json<UpdateDeployment>,
-) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
-    match state
-        .database
-        .update_deployment(id, &payload.image, &payload.status)
-        .await
-    {
-        Ok(true) => match state.database.get_deployment(id).await {
-            Ok(Some(deployment)) => Ok(Json(ApiResponse::success(deployment))),
-            Ok(None) => Err(StatusCode::NOT_FOUND),
-            Err(e) => {
-                eprintln!("Error retrieving updated deployment: {:?}", e);
-                Err(StatusCode::INTERNAL_SERVER_ERROR)
-            }
-        },
-        Ok(false) => Err(StatusCode::NOT_FOUND),
-        Err(e) => {
-            eprintln!("Error updating deployment {}: {:?}", id, e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-    }
-}
 
 pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> Router {
     let state = AppState {
@@ -215,18 +193,17 @@ pub async fn start_server(
     port: u16,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let app = create_app(database, api_secret).await;
-    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
+    let listener = TcpListener::bind(format!("0.0.0.0:{port}")).await?;
 
-    println!("Server running on http://0.0.0.0:{}", port);
-    println!(
-        "Health check: http://0.0.0.0:{}/health (no auth required)",
-        port
+    info!("Server running on http://0.0.0.0:{port}");
+    info!(
+        "Health check: http://0.0.0.0:{port}/health (no auth required)"
     );
-    println!("Protected API endpoints (require Authorization: Bearer <secret>):");
-    println!("  GET    /deployments           - Get all deployments");
-    println!("  POST   /deployments           - Create deployment");
-    println!("  GET    /deployments/:id       - Get deployment by ID");
-    println!("  PUT    /deployments/:id       - Update deployment");
+    info!("Protected API endpoints (require Authorization: Bearer <secret>):");
+    info!("  GET    /deployments           - Get all deployments");
+    info!("  POST   /deployments           - Create deployment");
+    info!("  GET    /deployments/:id       - Get deployment by ID");
+    info!("  PUT    /deployments/:id       - Update deployment");
 
     axum::serve(listener, app).await?;
     Ok(())

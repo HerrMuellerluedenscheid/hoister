@@ -7,8 +7,11 @@ pub(crate) async fn send(result: &DeploymentResult, dispatcher: &Dispatcher) {
     info!("sending deployment request");
     let create = CreateDeployment::from(result);
     let client = reqwest::Client::new();
+    let mut url = std::env::var("HOISTER_SERVER_URL").expect("HOISTER_SERVER_URL not defined");
+
+    url.push_str("/deployments");
     let res = client
-        .post("http://localhost:3000/deployments")
+        .post(url)
         .header("Content-Type", "application/json")
         .header("Authorization", "Bearer my-super-secret-key")
         .json(&create)
@@ -23,14 +26,14 @@ pub(crate) async fn send(result: &DeploymentResult, dispatcher: &Dispatcher) {
             error!("deployment request failed: {}", response.status());
         }
         Err(e) => {
-            error!("http request error: {}", e);
+            error!("http request error: {e}");
         }
     }
     let message: Message = result.into();
     _ = dispatcher
         .dispatch(&message)
         .await
-        .inspect_err(|e| error!("failed to dispatch message: {}", e));
+        .inspect_err(|e| error!("failed to dispatch message: {e}"));
 }
 
 pub(crate) fn setup_dispatcher() -> Dispatcher {
@@ -79,10 +82,10 @@ impl From<HoisterError> for Option<Message> {
             }
             HoisterError::UpdateFailed(e) => Some(Message::new(
                 "update failed".to_string(),
-                format!("failed to update image {}", e),
+                format!("failed to update image {e}"),
             )),
             _ => {
-                error!("unexpected error: {:?}", value);
+                error!("unexpected error: {value:?}");
                 None
             }
         }
