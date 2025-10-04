@@ -1,4 +1,3 @@
-use std::fmt::{Display, Formatter};
 use axum::{
     Router,
     extract::{Path, Request, State},
@@ -7,9 +6,10 @@ use axum::{
     response::{Json, Response},
     routing::{get, post},
 };
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use log::info;
+use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
+use std::sync::Arc;
 use tokio::net::TcpListener;
 
 // Import your database module
@@ -29,6 +29,7 @@ pub enum DeploymentStatus {
     Started = 1,
     Success = 2,
     Failure = 3,
+    NoUpdate = 4,
 }
 
 impl Display for DeploymentStatus {
@@ -38,12 +39,12 @@ impl Display for DeploymentStatus {
             DeploymentStatus::Started => write!(f, "Started"),
             DeploymentStatus::Success => write!(f, "Success"),
             DeploymentStatus::Failure => write!(f, "Failure"),
+            &DeploymentStatus::NoUpdate => write!(f, "NoUpdate"),
         }
     }
 }
 
-#[derive(Deserialize, Serialize)]
-#[derive(Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct CreateDeployment {
     pub image: String,
     pub status: DeploymentStatus,
@@ -168,7 +169,6 @@ async fn create_deployment(
     }
 }
 
-
 pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> Router {
     let state = AppState {
         database,
@@ -196,9 +196,7 @@ pub async fn start_server(
     let listener = TcpListener::bind(format!("0.0.0.0:{port}")).await?;
 
     info!("Server running on http://0.0.0.0:{port}");
-    info!(
-        "Health check: http://0.0.0.0:{port}/health (no auth required)"
-    );
+    info!("Health check: http://0.0.0.0:{port}/health (no auth required)");
     info!("Protected API endpoints (require Authorization: Bearer <secret>):");
     info!("  GET    /deployments           - Get all deployments");
     info!("  POST   /deployments           - Create deployment");

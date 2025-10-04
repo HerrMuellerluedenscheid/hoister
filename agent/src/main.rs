@@ -112,10 +112,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     image: image.clone(),
                     status: DeploymentStatus::Success,
                 },
-                Err(_e) => DeploymentResult {
+                Err(HoisterError::NoUpdateAvailable) => DeploymentResult {
                     image: image.clone(),
-                    status: DeploymentStatus::Failure,
+                    status: DeploymentStatus::NoUpdate,
                 },
+                Err(e) => {
+                    error!("failed to update container: {}", e);
+                    DeploymentResult {
+                        image: image.clone(),
+                        status: DeploymentStatus::Failure,
+                    }
+                }
             };
             send(&result, &dispatcher).await;
         }

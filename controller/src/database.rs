@@ -1,9 +1,9 @@
 use crate::server::DeploymentStatus;
+use log::info;
 use serde::Serialize;
 use sqlx::migrate::MigrateDatabase;
 use sqlx::{FromRow, SqlitePool};
 use thiserror::Error;
-use log::info;
 
 type Digest = String;
 
@@ -45,7 +45,7 @@ impl Database {
             CREATE TABLE IF NOT EXISTS deployment (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 digest TEXT NOT NULL,
-                status INTEGER NOT NULL CHECK (status IN (0, 1, 2, 3)),
+                status INTEGER NOT NULL CHECK (status IN (0, 1, 2, 3, 4)),
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             "#,
