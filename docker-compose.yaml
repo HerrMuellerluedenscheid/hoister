@@ -18,6 +18,10 @@ services:
       dockerfile: controller/Dockerfile
     image: emrius11/hoister-controller:latest
 
+  frontend:
+    build:
+      context: frontend
+
   example:
     image: emrius11/example:latest
     build:

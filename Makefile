@@ -9,7 +9,7 @@ test-fails:
 	docker image rm emrius11/example:latest
 
 dev-frontend:
-	cd frontend && npm run dev
+	export $$(cat .env.template | xargs) && cd frontend && npm run dev
 
 dev-controller:
 	export $$(cat .env.template | xargs) &&	cargo run --bin controller
