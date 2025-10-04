@@ -15,6 +15,7 @@ use tokio::net::TcpListener;
 // Import your database module
 use crate::database::{Database, Deployment};
 use sqlx::Type;
+use ts_rs::TS;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -22,6 +23,8 @@ pub struct AppState {
     pub api_secret: Option<String>,
 }
 
+#[derive(TS)]
+#[ts(export)]
 #[derive(Deserialize, Debug, Clone, Serialize, Type)]
 #[repr(u8)]
 pub enum DeploymentStatus {

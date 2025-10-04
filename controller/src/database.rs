@@ -4,6 +4,7 @@ use serde::Serialize;
 use sqlx::migrate::MigrateDatabase;
 use sqlx::{FromRow, SqlitePool};
 use thiserror::Error;
+use ts_rs::TS;
 
 type Digest = String;
 
@@ -13,6 +14,8 @@ pub enum DbError {
     Database(#[from] sqlx::Error),
 }
 
+#[derive(TS)]
+#[ts(export)]
 #[derive(FromRow, Debug, Clone, Serialize)]
 pub struct Deployment {
     pub id: i64,

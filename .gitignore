@@ -2,3 +2,4 @@
 **/target
 *.Dockerfile
 .env
+frontend/src/bindings
