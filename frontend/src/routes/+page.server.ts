@@ -10,7 +10,7 @@ interface DeploymentsResponse {
 }
 
 export const load: PageServerLoad = async ({ fetch }) => {
-    const backendUrl = env.HOISTER_SERVER_URL;
+    const backendUrl = env.HOISTER_CONTROLLER_URL;
 
     if (!backendUrl) {
         throw error(500, 'Backend URL not configured');

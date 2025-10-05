@@ -11,6 +11,8 @@ services:
     depends_on:
       - example
     env_file: ".env"
+    environment:
+      HOISTER_CONTROLLER_URL: "http://hoister-controller:3033"
 
   hoister-controller:
     image: emrius11/hoister-controller:latest
@@ -20,12 +22,14 @@ services:
     ports:
       - "3033:3033"
 
-  frontend:
+  hoister-frontend:
     image: emrius11/hoister-frontend:latest
     build:
       context: frontend
     ports:
       - "3000:3000"
+    environment:
+      HOISTER_CONTROLLER_URL: "http://hoister-controller:3033"
 
   example:
     image: emrius11/example:latest

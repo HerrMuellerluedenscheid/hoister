@@ -6,9 +6,9 @@ use log::{debug, error, info};
 async fn send_to_controller(result: &DeploymentResult) {
     let create = CreateDeployment::from(result);
     let client = reqwest::Client::new();
-    let url = std::env::var("HOISTER_SERVER_URL");
+    let url = std::env::var("HOISTER_CONTROLLER_URL");
     if url.is_err() {
-        info!("HOISTER_SERVER_URL not defined");
+        info!("HOISTER_CONTROLLER_URL not defined");
         return;
     }
     let mut url = url.unwrap();

@@ -10,7 +10,7 @@ mod server;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
-    let port = std::env::var("HOISTER_CONTROLLER_PORT").unwrap_or("3003".to_string());
+    let port = std::env::var("HOISTER_CONTROLLER_PORT").unwrap_or("3033".to_string());
     let db_path = std::env::var("HOISTER_DATABASE_PATH")
         .expect("HOISTER_DATABASE_PATH must be set (full path to sqlite file)");
 
