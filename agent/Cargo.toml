@@ -19,5 +19,5 @@ thiserror = "2.0.12"
 clap = { version = "4.5.37", features = ["string"] }
 ctrlc = "3.4"
 libc = "0.2.172"
-chatterbox = "1.1"
+chatterbox = "2.0.0"
 reqwest = "0.12.23"

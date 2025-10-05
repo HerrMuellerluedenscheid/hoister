@@ -74,14 +74,6 @@ impl<T> ApiResponse<T> {
             error: None,
         }
     }
-
-    fn error(message: String) -> Self {
-        Self {
-            success: false,
-            data: None,
-            error: Some(message),
-        }
-    }
 }
 
 // Authentication middleware

@@ -67,7 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     let dispatcher = setup_dispatcher();
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
-
+    info!("Starting hoister");
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
 
@@ -92,6 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     let mut n_containers = 0;
     loop {
+        info!("checking for updates");
         let now = SystemTime::now();
         let containers = docker
             .clone()

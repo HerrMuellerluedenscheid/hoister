@@ -27,7 +27,6 @@ async fn send_to_chatterbox(result: &DeploymentResult, dispatcher: &Dispatcher) 
     let message: Message = result.into();
     _ = dispatcher
         .dispatch(&message)
-        .await
         .inspect_err(|e| error!("failed to dispatch message: {e}"));
 }
 
