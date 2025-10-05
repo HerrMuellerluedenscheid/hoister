@@ -1,14 +1,35 @@
 services:
   hoister:
-    build: .
     image: emrius11/hoister:latest
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
       - no-new-privileges:true
     depends_on:
       - example
-    env_file: "hoister.env"
+    env_file: ".env"
+    environment:
+      HOISTER_CONTROLLER_URL: "http://hoister-controller:3033"
+
+  hoister-controller:
+    image: emrius11/hoister-controller:latest
+    build:
+      context: .
+      dockerfile: controller/Dockerfile
+    ports:
+      - "3033:3033"
+
+  hoister-frontend:
+    image: emrius11/hoister-frontend:latest
+    build:
+      context: frontend
+    ports:
+      - "3000:3000"
+    environment:
+      HOISTER_CONTROLLER_URL: "http://hoister-controller:3033"
 
   example:
     image: emrius11/example:latest

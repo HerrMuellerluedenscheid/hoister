@@ -1,6 +1,41 @@
-use crate::HoisterError;
+use crate::{DeploymentResult, HoisterError};
 use chatterbox::message::{Dispatcher, Message};
+use controller::server::CreateDeployment;
 use log::{debug, error, info};
+
+async fn send_to_controller(result: &DeploymentResult) {
+    let create = CreateDeployment::from(result);
+    let client = reqwest::Client::new();
+    let url = std::env::var("HOISTER_CONTROLLER_URL");
+    if url.is_err() {
+        info!("HOISTER_CONTROLLER_URL not defined");
+        return;
+    }
+    let mut url = url.unwrap();
+    url.push_str("/deployments");
+    let res = client
+        .post(url)
+        .header("Content-Type", "application/json")
+        .header("Authorization", "Bearer my-super-secret-key")
+        .json(&create)
+        .send()
+        .await;
+    debug!("response: {:?}", res);
+}
+
+async fn send_to_chatterbox(result: &DeploymentResult, dispatcher: &Dispatcher) {
+    let message: Message = result.into();
+    _ = dispatcher
+        .dispatch(&message)
+        .await
+        .inspect_err(|e| error!("failed to dispatch message: {e}"));
+}
+
+pub(crate) async fn send(result: &DeploymentResult, dispatcher: &Dispatcher) {
+    debug!("sending deployment request");
+    send_to_controller(result).await;
+    send_to_chatterbox(result, dispatcher).await;
+}
 
 pub(crate) fn setup_dispatcher() -> Dispatcher {
     let slack = match std::env::var("HOISTER_SLACK_WEBHOOK_URL") {
@@ -48,10 +83,10 @@ impl From<HoisterError> for Option<Message> {
             }
             HoisterError::UpdateFailed(e) => Some(Message::new(
                 "update failed".to_string(),
-                format!("failed to update image {}", e),
+                format!("failed to update image {e}"),
             )),
             _ => {
-                error!("unexpected error: {:?}", value);
+                error!("unexpected error: {value:?}");
                 None
             }
         }

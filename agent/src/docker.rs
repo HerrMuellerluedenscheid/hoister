@@ -9,7 +9,7 @@ use bollard::query_parameters::{
     RenameContainerOptions, StartContainerOptions, StopContainerOptionsBuilder,
 };
 use futures_util::StreamExt;
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use std::time::Duration;
 
 pub(crate) async fn update_container(
@@ -27,17 +27,17 @@ pub(crate) async fn update_container(
     let image_name = image_name.to_string();
     let image_tag = image_tag.to_string();
 
-    debug!(
+    trace!(
         "container details: {}",
         serde_json::to_string_pretty(&container_details).unwrap()
     );
 
-    info!("Checking for updates: {}:{}", image_name, image_tag);
+    info!("Checking for updates: {image_name}:{image_tag}");
 
     let digest = download_image(docker, &image_name, &image_tag).await?;
-    debug!("Image pulled successfully (digest: {})", digest);
+    debug!("Image pulled successfully (digest: {digest})");
     let new_image_name = image_name.clone() + "@" + &digest;
-    debug!("new image name: {}", new_image_name);
+    debug!("new image name: {new_image_name}");
     info!("Stopping container {:?}...", &container_id);
     let options_stop_container = StopContainerOptionsBuilder::new().t(30).build();
 
@@ -45,7 +45,7 @@ pub(crate) async fn update_container(
         .stop_container(&container_id, Some(options_stop_container.clone()))
         .await?;
 
-    let backup_name = format!("{}-backup", container_id);
+    let backup_name = format!("{container_id}-backup");
     debug!("rename old container to {}", &backup_name);
 
     let rename_options = RenameContainerOptions {
@@ -152,7 +152,7 @@ async fn download_image(
     while let Some(result) = pull_stream.next().await {
         match result {
             Ok(output) => {
-                debug!("{:?}", output);
+                debug!("{output:?}");
                 if let Some(status) = &output.status {
                     if status.contains("Download complete")
                         || status.contains("Pull complete")
@@ -160,12 +160,14 @@ async fn download_image(
                     {
                         update_available = true;
                     }
-                    if status.contains("Digest:") && let Some(pos) = status.find("sha256:") {
+                    if status.contains("Digest:")
+                        && let Some(pos) = status.find("sha256:")
+                    {
                         status[pos..].clone_into(&mut digest);
                     }
                 }
             }
-            Err(e) => error!("Error pulling image: {:?}", e),
+            Err(e) => error!("Error pulling image: {e:?}"),
         }
     }
     if !update_available {
@@ -186,7 +188,9 @@ async fn check_container_health(docker: &Docker, container_name: &str) -> Result
         if let Some(running) = state.running {
             if running {
                 if let Some(health) = state.health {
-                    if let Some(status) = health.status && status == HealthStatusEnum::HEALTHY {
+                    if let Some(status) = health.status
+                        && status == HealthStatusEnum::HEALTHY
+                    {
                         return Ok(());
                     }
                 } else {

@@ -1,5 +1,12 @@
-use sqlx::{FromRow, Row, SqlitePool};
+use crate::server::DeploymentStatus;
+use log::info;
+use serde::Serialize;
+use sqlx::migrate::MigrateDatabase;
+use sqlx::{FromRow, SqlitePool};
 use thiserror::Error;
+use ts_rs::TS;
+
+type Digest = String;
 
 #[derive(Error, Debug)]
 pub enum DbError {
@@ -7,11 +14,13 @@ pub enum DbError {
     Database(#[from] sqlx::Error),
 }
 
-#[derive(FromRow, Debug, Clone)]
+#[derive(TS)]
+#[ts(export)]
+#[derive(FromRow, Debug, Clone, Serialize)]
 pub struct Deployment {
     pub id: i64,
-    pub image_digest: String,
-    pub email: String,
+    pub digest: Digest,
+    pub status: DeploymentStatus,
     pub created_at: String,
 }
 
@@ -23,6 +32,11 @@ pub struct Database {
 impl Database {
     /// Create a new database connection
     pub async fn new(database_url: &str) -> Result<Self, DbError> {
+        info!("Connecting to database: {database_url}");
+        if !sqlx::Sqlite::database_exists(database_url).await? {
+            sqlx::Sqlite::create_database(database_url).await?;
+        }
+
         let pool = SqlitePool::connect(database_url).await?;
         Ok(Database { pool })
     }
@@ -33,8 +47,8 @@ impl Database {
             r#"
             CREATE TABLE IF NOT EXISTS deployment (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                email TEXT NOT NULL UNIQUE,
+                digest TEXT NOT NULL,
+                status INTEGER NOT NULL CHECK (status IN (0, 1, 2, 3, 4)),
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             "#,
@@ -46,10 +60,24 @@ impl Database {
     }
 
     /// Create a new deployment
-    pub async fn create_deployment(&self, name: &str, email: &str) -> Result<i64, DbError> {
-        let result = sqlx::query("INSERT INTO deployment (name, email) VALUES (?, ?)")
-            .bind(name)
-            .bind(email)
+    pub async fn create_deployment(
+        &self,
+        digest: &str,
+        status: &DeploymentStatus,
+    ) -> Result<i64, DbError> {
+        match status {
+            DeploymentStatus::NoUpdate => {
+                sqlx::query("DELETE FROM deployment WHERE status = ?")
+                    .bind(DeploymentStatus::NoUpdate as u8)
+                    .execute(&self.pool)
+                    .await?;
+            }
+            _ => {}
+        }
+
+        let result = sqlx::query("INSERT INTO deployment (digest, status) VALUES (?, ?)")
+            .bind(digest)
+            .bind(status)
             .execute(&self.pool)
             .await?;
 
@@ -59,24 +87,9 @@ impl Database {
     /// Get deployment by ID
     pub async fn get_deployment(&self, id: i64) -> Result<Option<Deployment>, DbError> {
         let deployment = sqlx::query_as::<_, Deployment>(
-            "SELECT id, name, email, created_at FROM deployment WHERE id = ?",
+            "SELECT id, digest, status, created_at FROM deployment WHERE id = ?",
         )
         .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(deployment)
-    }
-
-    /// Get deployment by email
-    pub async fn get_deployment_by_email(
-        &self,
-        email: &str,
-    ) -> Result<Option<Deployment>, DbError> {
-        let deployment = sqlx::query_as::<_, Deployment>(
-            "SELECT id, name, email, created_at FROM deployment WHERE email = ?",
-        )
-        .bind(email)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -86,48 +99,12 @@ impl Database {
     /// Get all deployment
     pub async fn get_all_deployment(&self) -> Result<Vec<Deployment>, DbError> {
         let deployment = sqlx::query_as::<_, Deployment>(
-            "SELECT id, name, email, created_at FROM deployment ORDER BY created_at DESC",
+            "SELECT id, digest, status, created_at FROM deployment ORDER BY created_at DESC",
         )
         .fetch_all(&self.pool)
         .await?;
 
         Ok(deployment)
-    }
-
-    /// Update deployment
-    pub async fn update_deployment(
-        &self,
-        id: i64,
-        name: &str,
-        email: &str,
-    ) -> Result<bool, DbError> {
-        let result = sqlx::query("UPDATE deployment SET name = ?, email = ? WHERE id = ?")
-            .bind(name)
-            .bind(email)
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
-
-        Ok(result.rows_affected() > 0)
-    }
-
-    /// Delete deployment
-    pub async fn delete_deployment(&self, id: i64) -> Result<bool, DbError> {
-        let result = sqlx::query("DELETE FROM deployment WHERE id = ?")
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
-
-        Ok(result.rows_affected() > 0)
-    }
-
-    /// Count total deployment
-    pub async fn count_deployment(&self) -> Result<i64, DbError> {
-        let row = sqlx::query("SELECT COUNT(*) as count FROM deployment")
-            .fetch_one(&self.pool)
-            .await?;
-
-        Ok(row.get("count"))
     }
 }
 
@@ -138,42 +115,31 @@ mod tests {
     // Example usage
     #[tokio::test]
     async fn test_this() -> Result<(), DbError> {
-        // For local SQLite file
         let db = Database::new("sqlite:///tmp/sqlite.db").await?;
-
-        // Initialize the database
         db.init().await?;
 
-        // Create some deployment
         let deployment_id = db
-            .create_deployment("Alice Johnson", "alice@example.com")
+            .create_deployment(
+                "sdfsdfsasdfasdfaosdifjoaijsdofijaosidjfoajosdfjoiajsdfoijaosdifjoasdjfoij",
+                &DeploymentStatus::Pending,
+            )
             .await?;
-        println!("Created deployment with ID: {}", deployment_id);
+        println!("Created deployment with ID: {deployment_id}");
 
-        db.create_deployment("Bob Wilson", "bob@example.com")
+        db.create_deployment("Bob Wilson", &DeploymentStatus::Pending)
             .await?;
 
         // Get all deployment
         let deployment = db.get_all_deployment().await?;
         println!("All deployment:");
         for deployment in deployment {
-            println!("  {:?}", deployment);
+            println!("  {deployment:?}");
         }
-
-        // Update a deployment
-        db.update_deployment(
-            deployment_id,
-            "Alice Johnson-Smith",
-            "alice.smith@example.com",
-        )
-        .await?;
 
         // Get updated deployment
         if let Some(deployment) = db.get_deployment(deployment_id).await? {
-            println!("Updated deployment: {:?}", deployment);
+            println!("Updated deployment: {deployment:?}");
         }
-
-        println!("Total deployment: {}", db.count_deployment().await?);
 
         Ok(())
     }
