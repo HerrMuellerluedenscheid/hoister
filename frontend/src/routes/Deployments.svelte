@@ -41,7 +41,26 @@
                             {item.digest}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                            {item.status}
+                            <div class="flex items-center gap-2">
+                                {#if item.status === 'Pending'}
+                                    <span class="text-lg">⏳</span>
+                                    <span>Pending</span>
+                                {:else if item.status === 'Started'}
+                                    <span class="text-lg">🚀</span>
+                                    <span>Started</span>
+                                {:else if item.status === 'Success'}
+                                    <span class="text-lg">✅</span>
+                                    <span class="text-green-600 font-medium">Success</span>
+                                {:else if item.status === 'Failure'}
+                                    <span class="text-lg">❌</span>
+                                    <span class="text-red-600 font-medium">Failure</span>
+                                {:else if item.status === 'NoUpdate'}
+                                    <span class="text-lg">➖</span>
+                                    <span class="text-gray-500">No Update</span>
+                                {:else}
+                                    <span>{item.status}</span>
+                                {/if}
+                            </div>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {item.created_at}
