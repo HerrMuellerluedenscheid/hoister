@@ -9,7 +9,7 @@ use bollard::query_parameters::{
     RenameContainerOptions, StartContainerOptions, StopContainerOptionsBuilder,
 };
 use futures_util::StreamExt;
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use std::time::Duration;
 
 pub(crate) async fn update_container(
@@ -27,7 +27,7 @@ pub(crate) async fn update_container(
     let image_name = image_name.to_string();
     let image_tag = image_tag.to_string();
 
-    debug!(
+    trace!(
         "container details: {}",
         serde_json::to_string_pretty(&container_details).unwrap()
     );

@@ -3,12 +3,15 @@ use chatterbox::message::{Dispatcher, Message};
 use controller::server::CreateDeployment;
 use log::{debug, error, info};
 
-pub(crate) async fn send(result: &DeploymentResult, dispatcher: &Dispatcher) {
-    info!("sending deployment request");
+async fn send_to_controller(result: &DeploymentResult) {
     let create = CreateDeployment::from(result);
     let client = reqwest::Client::new();
-    let mut url = std::env::var("HOISTER_SERVER_URL").expect("HOISTER_SERVER_URL not defined");
-
+    let url = std::env::var("HOISTER_SERVER_URL");
+    if url.is_err() {
+        info!("HOISTER_SERVER_URL not defined");
+        return;
+    }
+    let mut url = url.unwrap();
     url.push_str("/deployments");
     let res = client
         .post(url)
@@ -17,23 +20,21 @@ pub(crate) async fn send(result: &DeploymentResult, dispatcher: &Dispatcher) {
         .json(&create)
         .send()
         .await;
+    debug!("response: {:?}", res);
+}
 
-    match res {
-        Ok(response) if response.status().is_success() => {
-            info!("deployment sent successfully");
-        }
-        Ok(response) => {
-            error!("deployment request failed: {}", response.status());
-        }
-        Err(e) => {
-            error!("http request error: {e}");
-        }
-    }
+async fn send_to_chatterbox(result: &DeploymentResult, dispatcher: &Dispatcher) {
     let message: Message = result.into();
     _ = dispatcher
         .dispatch(&message)
         .await
         .inspect_err(|e| error!("failed to dispatch message: {e}"));
+}
+
+pub(crate) async fn send(result: &DeploymentResult, dispatcher: &Dispatcher) {
+    debug!("sending deployment request");
+    send_to_controller(result).await;
+    send_to_chatterbox(result, dispatcher).await;
 }
 
 pub(crate) fn setup_dispatcher() -> Dispatcher {

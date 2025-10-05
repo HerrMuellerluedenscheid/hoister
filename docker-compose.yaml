@@ -1,24 +1,27 @@
 services:
   hoister:
+    image: emrius11/hoister:latest
     build:
       context: .
       dockerfile: agent/Dockerfile
-    image: emrius11/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
       - no-new-privileges:true
     depends_on:
       - example
-#    env_file: "hoister.env"
+    env_file: ".env"
 
   hoister-controller:
+    image: emrius11/hoister-controller:latest
     build:
       context: .
       dockerfile: controller/Dockerfile
-    image: emrius11/hoister-controller:latest
+    ports:
+      - "3033:3033"
 
   frontend:
+    image: emrius11/hoister-frontend:latest
     build:
       context: frontend
     ports:

@@ -65,7 +65,7 @@ impl Database {
         digest: &str,
         status: &DeploymentStatus,
     ) -> Result<i64, DbError> {
-        match status{
+        match status {
             DeploymentStatus::NoUpdate => {
                 sqlx::query("DELETE FROM deployment WHERE status = ?")
                     .bind(DeploymentStatus::NoUpdate as u8)
@@ -74,7 +74,6 @@ impl Database {
             }
             _ => {}
         }
-
 
         let result = sqlx::query("INSERT INTO deployment (digest, status) VALUES (?, ?)")
             .bind(digest)

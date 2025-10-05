@@ -30,7 +30,7 @@
                         Status
                     </th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider border-b">
-                        Created At
+                        Date
                     </th>
                 </tr>
                 </thead>
