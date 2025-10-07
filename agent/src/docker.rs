@@ -186,17 +186,18 @@ async fn check_container_health(docker: &Docker, container_name: &str) -> Result
 
     if let Some(state) = container.state
         && let Some(running) = state.running
-            && running {
-                if let Some(health) = state.health {
-                    if let Some(status) = health.status
-                        && status == HealthStatusEnum::HEALTHY
-                    {
-                        return Ok(());
-                    }
-                } else {
-                    return Ok(());
-                }
+        && running
+    {
+        if let Some(health) = state.health {
+            if let Some(status) = health.status
+                && status == HealthStatusEnum::HEALTHY
+            {
+                return Ok(());
             }
+        } else {
+            return Ok(());
+        }
+    }
 
     Err(UpdateFailed(container.config.unwrap().image.unwrap()))
 }
