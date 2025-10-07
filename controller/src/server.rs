@@ -53,12 +53,6 @@ pub struct CreateDeployment {
     pub status: DeploymentStatus,
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct UpdateDeployment {
-    pub image: String,
-    pub status: DeploymentStatus,
-}
-
 #[derive(Serialize)]
 pub struct ApiResponse<T> {
     pub success: bool,
