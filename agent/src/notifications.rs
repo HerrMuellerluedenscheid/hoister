@@ -1,6 +1,6 @@
 use crate::{DeploymentResult, HoisterError};
 use chatterbox::message::{Dispatcher, Message};
-use controller::server::CreateDeployment;
+use controller::server::{CreateDeployment, DeploymentStatus};
 use log::{debug, error, info};
 
 async fn send_to_controller(result: &DeploymentResult) {
@@ -11,12 +11,14 @@ async fn send_to_controller(result: &DeploymentResult) {
         info!("HOISTER_CONTROLLER_URL not defined");
         return;
     }
+    let token = std::env::var("HOISTER_CONTROLLER_TOKEN").unwrap_or_default();
+
     let mut url = url.unwrap();
     url.push_str("/deployments");
     let res = client
         .post(url)
         .header("Content-Type", "application/json")
-        .header("Authorization", "Bearer my-super-secret-key")
+        .header("Authorization", format!("Bearer {token})"))
         .json(&create)
         .send()
         .await;
@@ -24,10 +26,15 @@ async fn send_to_controller(result: &DeploymentResult) {
 }
 
 async fn send_to_chatterbox(result: &DeploymentResult, dispatcher: &Dispatcher) {
-    let message: Message = result.into();
-    _ = dispatcher
-        .dispatch(&message)
-        .inspect_err(|e| error!("failed to dispatch message: {e}"));
+    match result.status {
+        DeploymentStatus::NoUpdate => {}
+        _ => {
+            let message: Message = result.into();
+            _ = dispatcher
+                .dispatch(&message)
+                .inspect_err(|e| error!("failed to dispatch message: {e}"));
+        }
+    }
 }
 
 pub(crate) async fn send(result: &DeploymentResult, dispatcher: &Dispatcher) {
