@@ -30,6 +30,11 @@ on:
         required: false
         type: string
         default: 'linux/arm64,linux/amd64'
+      runs-on:
+        description: 'Build platform'
+        required: false
+        type: string
+        default: 'ubuntu-24.04-arm'
     secrets:
       registry_password:
         description: 'Docker registry password'
@@ -37,7 +42,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04-arm
+    runs-on: ${{ inputs.runs-on }}
     permissions:
       contents: read
       packages: write

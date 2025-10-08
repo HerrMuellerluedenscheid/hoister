@@ -35,5 +35,6 @@ jobs:
       context: frontend
       dockerfile: frontend/Dockerfile
       image_name: emrius11/hoister-frontend
+      runs-on: 'ubuntu-24.04'
     secrets:
       registry_password: ${{ secrets.DOCKERHUB_PASSWORD }}
