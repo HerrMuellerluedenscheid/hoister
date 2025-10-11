@@ -1,5 +1,5 @@
-use crate::HoisterError;
 use crate::HoisterError::UpdateFailed;
+use crate::{DeploymentResult, HoisterError};
 use bollard::Docker;
 use bollard::models::{
     ContainerCreateBody, ContainerCreateResponse, ContainerSummary, HealthStatusEnum,
@@ -11,6 +11,7 @@ use bollard::query_parameters::{
 use futures_util::StreamExt;
 use log::{debug, error, info, trace, warn};
 use std::time::Duration;
+use tokio::sync::mpsc::Sender;
 
 pub(crate) async fn update_container(
     docker: &Docker,
@@ -40,7 +41,6 @@ pub(crate) async fn update_container(
     debug!("new image name: {new_image_name}");
     info!("Stopping container {:?}...", &container_id);
     let options_stop_container = StopContainerOptionsBuilder::new().t(30).build();
-
     docker
         .stop_container(&container_id, Some(options_stop_container.clone()))
         .await?;

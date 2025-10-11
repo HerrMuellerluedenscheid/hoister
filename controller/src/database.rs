@@ -1,5 +1,5 @@
 use crate::server::DeploymentStatus;
-use log::info;
+use log::{debug, info};
 use serde::Serialize;
 use sqlx::migrate::MigrateDatabase;
 use sqlx::{FromRow, SqlitePool};
@@ -65,11 +65,14 @@ impl Database {
         digest: &str,
         status: &DeploymentStatus,
     ) -> Result<i64, DbError> {
-        if let DeploymentStatus::NoUpdate = status {
+        if matches!(status, DeploymentStatus::NoUpdate) {
             sqlx::query("DELETE FROM deployment WHERE status = ?")
                 .bind(DeploymentStatus::NoUpdate as u8)
                 .execute(&self.pool)
                 .await?;
+            debug!("{} - {}", digest, status)
+        } else {
+            info!("{} - {}", digest, status)
         }
 
         let result = sqlx::query("INSERT INTO deployment (digest, status) VALUES (?, ?)")

@@ -137,7 +137,6 @@ async fn create_deployment(
     State(state): State<AppState>,
     Json(payload): Json<CreateDeployment>,
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
-    info!("Creating deployment: {:?}", payload);
     match state
         .database
         .create_deployment(&payload.image, &payload.status)
