@@ -2,6 +2,17 @@ use crate::{DeploymentResult, HoisterError};
 use chatterbox::message::{Dispatcher, Message};
 use controller::server::{CreateDeployment, DeploymentStatus};
 use log::{debug, error, info};
+use tokio::sync::mpsc::Receiver;
+
+pub(super) async fn start_notification_handler(
+    mut rx: Receiver<DeploymentResult>,
+    dispatcher: Dispatcher,
+) {
+    while let Some(message) = rx.recv().await {
+        println!("GOT = {:?}", message);
+        send(&message, &dispatcher).await;
+    }
+}
 
 async fn send_to_controller(result: &DeploymentResult) {
     let create = CreateDeployment::from(result);

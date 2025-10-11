@@ -24,12 +24,14 @@ use std::time::{Duration, SystemTime};
 use thiserror::Error;
 use tokio::time::sleep;
 
-use crate::notifications::{send, setup_dispatcher};
+use crate::notifications::{setup_dispatcher, start_notification_handler};
 use chatterbox::message::Message;
 use controller::server::{CreateDeployment, DeploymentStatus};
 #[allow(unused_imports)]
 use std::{env, process};
+use tokio::sync::mpsc;
 
+#[derive(Debug)]
 struct DeploymentResult {
     image: String,
     status: DeploymentStatus,
@@ -65,8 +67,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     #[cfg(target_os = "linux")]
     set_group_id();
 
+    let (tx, rx) = mpsc::channel(32);
+
     let dispatcher = setup_dispatcher();
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    tokio::spawn(async move {
+        start_notification_handler(rx, dispatcher).await;
+    });
     info!("Starting hoister");
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
@@ -125,7 +132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     }
                 }
             };
-            send(&result, &dispatcher).await;
+            tx.send(result).await.unwrap();
         }
 
         if config.interval.is_some() {
