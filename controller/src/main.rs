@@ -1,11 +1,13 @@
 use crate::database::Database;
 use crate::server::start_server;
+use crate::sse::sse_handler;
 use env_logger::Env;
 use log::info;
 use std::sync::Arc;
 
 mod database;
 mod server;
+mod sse;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

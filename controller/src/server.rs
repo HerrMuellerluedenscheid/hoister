@@ -14,6 +14,7 @@ use tokio::net::TcpListener;
 
 // Import your database module
 use crate::database::{Database, Deployment};
+use crate::sse::sse_handler;
 use sqlx::Type;
 use ts_rs::TS;
 
@@ -165,6 +166,7 @@ pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> 
 
     Router::new()
         .route("/health", get(health))
+        .route("/sse", get(sse_handler))
         .route("/deployments", get(get_deployments))
         .route("/deployments", post(create_deployment))
         .route("/deployments/{id}", get(get_deployment))
@@ -186,6 +188,7 @@ pub async fn start_server(
     info!("Server running on http://0.0.0.0:{port}");
     info!("Health check: http://0.0.0.0:{port}/health (no auth required)");
     info!("Protected API endpoints (require Authorization: Bearer <secret>):");
+    info!("  GET    /sse                   - server side events");
     info!("  GET    /deployments           - Get all deployments");
     info!("  POST   /deployments           - Create deployment");
     info!("  GET    /deployments/:id       - Get deployment by ID");
