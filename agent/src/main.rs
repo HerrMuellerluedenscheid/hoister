@@ -91,12 +91,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let config = configure_cli();
 
     loop {
+        info!("========= start ==========");
         info!("checking for updates");
         let now = SystemTime::now();
         let containers = get_containers(&docker).await?;
         for container in containers {
-            debug!("Checking container {:?}", container);
             let image = container.clone().image.unwrap_or_default();
+
+            // TODO: nachdem das neue image gebaute wurde aendert sich hier bei naechster loop
+            // image von image name (example...) auf image id. Naechster test:
+            //    remote bauen und pushen.
+            //     Checking container ContainerSummary { id: Some("993c7095f907036bc75650c68f6fa1e2b6dfd40fa1bfe627931adb8771b569d7"), names: Some(["/hoister-example-1"]), image: Some("emrius11/example:latest"), image_id: Some("sha256:6bba4b0beb29b37d15aacbae5281c9b8609189508b58d264e1c1e21d6feb71f1")
+            //    wird zu:
+            //     Checking container ContainerSummary { id: Some("993c7095f907036bc75650c68f6fa1e2b6dfd40fa1bfe627931adb8771b569d7"), names: Some(["/hoister-example-1"]), image: Some("sha256:6bba4b0beb29b37d15aacbae5281c9b8609189508b58d264e1c1e21d6feb71f1"), image_id: Some("sha256:6bba4b0beb29b37d15aacbae5281c9b8609189508b58d264e1c1e21d6feb71f1"), image_manifest_descriptor: None
+            //
+            debug!("Checking container {:?} \n image: {:?}", container, image);
+
             let result = match update_container(&docker, container).await {
                 Ok(_response) => DeploymentResult {
                     image: image.clone(),
@@ -115,6 +125,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 }
             };
             tx.send(result).await.unwrap();
+            info!("========= finished ==========");
         }
 
         if config.interval.is_some() {
