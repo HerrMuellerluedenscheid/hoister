@@ -2,7 +2,8 @@ use crate::HoisterError::UpdateFailed;
 use crate::{DeploymentResult, HoisterError};
 use bollard::Docker;
 use bollard::models::{
-    ContainerCreateBody, ContainerCreateResponse, ContainerSummary, HealthStatusEnum,
+    ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary,
+    HealthStatusEnum,
 };
 use bollard::query_parameters::{
     CreateContainerOptions, CreateImageOptions, InspectContainerOptions, RemoveContainerOptions,
@@ -12,6 +13,12 @@ use futures_util::StreamExt;
 use log::{debug, error, info, trace, warn};
 use std::time::Duration;
 use tokio::sync::mpsc::Sender;
+
+const REMOVE_OPTIONS: RemoveContainerOptions = RemoveContainerOptions {
+    v: false,
+    force: false,
+    link: false,
+};
 
 pub(crate) async fn update_container(
     docker: &Docker,
@@ -55,37 +62,7 @@ pub(crate) async fn update_container(
         .rename_container(&container_id, rename_options)
         .await?;
 
-    let host_config = container_details.host_config.unwrap_or_default();
-
-    let name = container_details
-        .name
-        .unwrap_or_default()
-        .trim_start_matches('/')
-        .to_string();
-
-    let mut config = ContainerCreateBody {
-        host_config: Some(host_config),
-        ..Default::default()
-    };
-
-    if let Some(old_config) = container_details.config {
-        config.env = old_config.env;
-        // config.cmd = old_config.cmd;
-        // config.entrypoint = old_config.entrypoint;
-        config.labels = old_config.labels;
-        config.exposed_ports = old_config.exposed_ports;
-        config.image = old_config.image;
-        config.attach_stderr = old_config.attach_stderr;
-        config.attach_stdout = old_config.attach_stdout;
-        config.tty = old_config.tty;
-    }
-
-    let options = CreateContainerOptions {
-        name: Some(name),
-        ..Default::default()
-    };
-
-    let container = docker.create_container(Some(options), config).await?;
+    let container = create_container(docker, container_details).await?;
     debug!("Container created with ID: {}", container.id);
 
     docker
@@ -123,16 +100,49 @@ pub(crate) async fn update_container(
         return Err(e);
     } else {
         debug!("Container updated successfully. deleting old container");
-        let remove_options = RemoveContainerOptions {
-            v: false,
-            force: false,
-            link: false,
-        };
         docker
-            .remove_container(&container_id, Some(remove_options))
+            .remove_container(&container_id, Some(REMOVE_OPTIONS))
             .await?;
         info!("Container updated successfully. backup container removed");
     }
+    Ok(container)
+}
+
+async fn create_container(
+    docker: &Docker,
+    container_details: ContainerInspectResponse,
+) -> Result<ContainerCreateResponse, HoisterError> {
+    let host_config = container_details.host_config.unwrap_or_default();
+
+    let mut config = ContainerCreateBody {
+        host_config: Some(host_config),
+        ..Default::default()
+    };
+
+    if let Some(last_config) = container_details.config {
+        config.env = last_config.env;
+        // config.cmd = last_config.cmd;
+        // config.entrypoint = last_config.entrypoint;
+        config.labels = last_config.labels;
+        config.exposed_ports = last_config.exposed_ports;
+        config.image = last_config.image;
+        config.attach_stderr = last_config.attach_stderr;
+        config.attach_stdout = last_config.attach_stdout;
+        config.tty = last_config.tty;
+    }
+
+    let name = container_details
+        .name
+        .unwrap_or_default()
+        .trim_start_matches('/')
+        .to_string();
+
+    let options = CreateContainerOptions {
+        name: Some(name),
+        ..Default::default()
+    };
+
+    let container = docker.create_container(Some(options), config).await?;
     Ok(container)
 }
 
