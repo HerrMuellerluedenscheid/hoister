@@ -6,13 +6,13 @@ mod notifications;
 use bollard::Docker;
 
 use bollard::query_parameters::{EventsOptions, ListContainersOptions};
-use log::{error, info};
+use log::{debug, error, info};
 
 use bollard::errors::Error as BollardError;
 
 use crate::cli::configure_cli;
 use crate::docker::update_container;
-use bollard::models::ContainerCreateResponse;
+use bollard::models::{ContainerCreateResponse, ContainerSummary};
 use env_logger::Env;
 use futures_util::StreamExt;
 use std::collections::HashMap;
@@ -27,6 +27,7 @@ use tokio::time::sleep;
 use crate::notifications::{setup_dispatcher, start_notification_handler};
 use chatterbox::message::Message;
 use controller::server::{CreateDeployment, DeploymentStatus};
+use std::error::Error;
 #[allow(unused_imports)]
 use std::{env, process};
 use tokio::sync::mpsc;
@@ -88,32 +89,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let docker = Docker::connect_with_local_defaults().unwrap();
 
     let config = configure_cli();
-    let mut filters = HashMap::new();
-    let label_filters = vec!["hoister.enable=true".to_string()];
-    filters.insert("label".to_string(), label_filters);
 
-    let options = ListContainersOptions {
-        filters: Some(filters),
-        ..Default::default()
-    };
-
-    let mut n_containers = 0;
     loop {
         info!("checking for updates");
         let now = SystemTime::now();
-        let containers = docker
-            .clone()
-            .list_containers(Some(options.clone()))
-            .await?;
-        if n_containers != containers.len() {
-            info!(
-                "found {} containers with label `hoister.enable=true`",
-                containers.len()
-            );
-            n_containers = containers.len();
-        }
-
+        let containers = get_containers(&docker).await?;
         for container in containers {
+            debug!("Checking container {:?}", container);
             let image = container.clone().image.unwrap_or_default();
             let result = match update_container(&docker, container).await {
                 Ok(_response) => DeploymentResult {
@@ -149,6 +131,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         }
     }
     Ok(())
+}
+
+async fn get_containers(docker: &Docker) -> Result<Vec<ContainerSummary>, Box<dyn Error>> {
+    let mut filters = HashMap::new();
+    let label_filters = vec!["hoister.enable=true".to_string()];
+    filters.insert("label".to_string(), label_filters);
+
+    let options = ListContainersOptions {
+        filters: Some(filters),
+        ..Default::default()
+    };
+    let containers = docker
+        .clone()
+        .list_containers(Some(options.clone()))
+        .await?;
+
+    debug!(
+        "found {} containers with label `hoister.enable=true`",
+        containers.len()
+    );
+    Ok(containers)
 }
 
 #[cfg(target_os = "linux")]

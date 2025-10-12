@@ -18,4 +18,4 @@ dev-controller:
 	export $$(cat .env.template | xargs) &&	cargo run --bin controller
 
 dev-hoister:
-	export $$(cat .env.template | xargs) && export $$(cat .env | xargs) &&	RUST_LOG=debug,bollard=info,hyper_util=info cargo run --bin hoister -- --watch 5
+	export $$(cat .env.template | xargs) && export $$(cat .env | xargs) &&	RUST_LOG=debug,bollard=info,hyper_util=info cargo run --bin hoister -- --watch 20
