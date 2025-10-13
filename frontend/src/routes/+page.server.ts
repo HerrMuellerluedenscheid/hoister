@@ -2,6 +2,7 @@ import type { PageServerLoad } from './$types';
 import { error } from "@sveltejs/kit";
 import { env } from '$env/dynamic/private';
 import type { Deployment } from "../bindings/Deployment";
+import { produce } from 'sveltekit-sse'
 
 interface DeploymentsResponse {
     success: boolean;
