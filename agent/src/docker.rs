@@ -62,7 +62,9 @@ impl DockerHandler {
             .inspect_image(&container_details.clone().config.unwrap().image.unwrap())
             .await?;
 
-        let repo_digests = image_inspect.repo_digests.unwrap();
+        let repo_digests = image_inspect.repo_digests.unwrap_or(
+            vec![container_details.name.unwrap_or("unknown".to_string())]
+        );
         Ok(repo_digests.first().clone().unwrap().to_string())
     }
 
