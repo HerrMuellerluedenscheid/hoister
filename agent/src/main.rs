@@ -128,23 +128,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         let containers = docker.get_containers().await?;
         for container in containers {
             debug!("Checking container {:?}", container);
-            let image = container.clone().image.unwrap_or_default();
             let container_id: ContainerID = container.id.unwrap_or_default();
+            let image_inspect = docker
+                .inspect_image_of_container(&container_id)
+                .await
+                .unwrap();
+            let repo_digests = image_inspect.repo_digests.unwrap();
             let result = match docker.update_container(&container_id).await {
                 Ok(_response) => DeploymentResult {
-                    image: image.clone(),
+                    image: repo_digests.first().unwrap().clone(),
                     container_id: container_id.clone(),
                     status: DeploymentStatus::Success,
                 },
                 Err(HoisterError::NoUpdateAvailable) => DeploymentResult {
-                    image: image.clone(),
+                    image: repo_digests.first().unwrap().clone(),
                     container_id: container_id.clone(),
                     status: DeploymentStatus::NoUpdate,
                 },
                 Err(e) => {
                     error!("failed to update container: {}", e);
                     DeploymentResult {
-                        image: image.clone(),
+                        image: repo_digests.first().unwrap().clone(),
                         container_id: container_id.clone(),
                         status: DeploymentStatus::Failure,
                     }

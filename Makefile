@@ -5,7 +5,6 @@ generate-bindings:
 
 test-works:
 	docker build --no-cache -f test/works.Dockerfile --push -t emrius11/example:latest .
-	docker image rm emrius11/example:latest
 
 test-fails:
 	docker build --no-cache -f test/fails.Dockerfile --push -t emrius11/example:latest .

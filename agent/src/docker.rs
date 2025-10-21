@@ -3,7 +3,7 @@ use crate::{DeploymentResult, HoisterError};
 use bollard::Docker;
 use bollard::models::{
     ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary,
-    HealthStatusEnum,
+    HealthStatusEnum, ImageInspect,
 };
 use bollard::query_parameters::{
     CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions,
@@ -34,6 +34,19 @@ impl DockerHandler {
         Self { docker }
     }
 
+    pub(crate) async fn inspect_image_of_container(
+        &self,
+        container_id: &ContainerID,
+    ) -> Result<ImageInspect, bollard::errors::Error> {
+        let container_details = self
+            .docker
+            .inspect_container(&container_id, None::<InspectContainerOptions>)
+            .await?;
+        self.docker
+            .inspect_image(&container_details.clone().config.unwrap().image.unwrap())
+            .await
+    }
+
     pub(crate) async fn update_container(
         &self,
         container_id: &ContainerID,
@@ -42,6 +55,11 @@ impl DockerHandler {
             .docker
             .inspect_container(&container_id, None::<InspectContainerOptions>)
             .await?;
+        let image_details = self
+            .docker
+            .inspect_image(&container_details.clone().config.unwrap().image.unwrap())
+            .await?;
+        let digests = image_details.repo_digests.unwrap();
         let old_config = container_details.clone().config.unwrap();
         let image_name = old_config.image.unwrap();
 
