@@ -1,3 +1,5 @@
+use crate::server::AppState;
+use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures_util::stream::{self, Stream};
 use log::info;
@@ -7,19 +9,23 @@ use tokio_stream::StreamExt as _;
 
 pub type ContainerID = String;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum ControllerEvent {
     Retry(ContainerID),
 }
 
-pub(super) async fn sse_handler() -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let stream = stream::repeat_with(|| {
-        info!("senthi");
-        let x = ControllerEvent::Retry("hi".to_string());
-        Event::default().json_data(x).unwrap()
-    })
-    .map(Ok)
-    .throttle(Duration::from_secs(1));
+pub(crate) async fn sse_handler(
+    State(state): State<AppState>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let mut rx = state.event_tx.subscribe();
+
+    let stream = async_stream::stream! {
+        while let Ok(event) = rx.recv().await {
+            if let Ok(sse_event) = Event::default().json_data(event) {
+                yield Ok(sse_event);
+            }
+        }
+    };
 
     Sse::new(stream).keep_alive(KeepAlive::default())
 }

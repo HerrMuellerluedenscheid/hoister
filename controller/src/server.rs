@@ -14,14 +14,16 @@ use tokio::net::TcpListener;
 
 // Import your database module
 use crate::database::{Database, Deployment};
-use crate::sse::sse_handler;
+use crate::sse::{ControllerEvent, sse_handler};
 use sqlx::Type;
+use tokio::sync::{broadcast, mpsc};
 use ts_rs::TS;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub database: Arc<Database>,
-    pub api_secret: Option<String>,
+    pub(crate) database: Arc<Database>,
+    pub(crate) api_secret: Option<String>,
+    pub(crate) event_tx: broadcast::Sender<ControllerEvent>,
 }
 
 #[derive(TS)]
@@ -159,9 +161,12 @@ async fn create_deployment(
 }
 
 pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> Router {
+    let (event_tx, _) = broadcast::channel::<ControllerEvent>(100);
+
     let state = AppState {
         database,
         api_secret,
+        event_tx,
     };
 
     Router::new()

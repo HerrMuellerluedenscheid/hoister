@@ -17,6 +17,7 @@ use std::error::Error;
 use std::time::Duration;
 
 pub(crate) type ContainerID = String;
+pub(crate) type ContainerIdentifier = String; // used to identify the image across hoister services
 
 const REMOVE_OPTIONS: RemoveContainerOptions = RemoveContainerOptions {
     v: false,
@@ -34,17 +35,35 @@ impl DockerHandler {
         Self { docker }
     }
 
-    pub(crate) async fn inspect_image_of_container(
+    pub(crate) async fn get_image_identifier(
         &self,
         container_id: &ContainerID,
-    ) -> Result<ImageInspect, bollard::errors::Error> {
+    ) -> Result<ContainerIdentifier, HoisterError> {
         let container_details = self
             .docker
             .inspect_container(&container_id, None::<InspectContainerOptions>)
             .await?;
-        self.docker
+
+        // if hoister.identifier is set use that as the identifier
+        let identifier = container_details
+            .clone()
+            .config
+            .unwrap()
+            .labels
+            .unwrap_or_default()
+            .get("hoister.identifier")
+            .cloned();
+        if let Some(id) = identifier {
+            return Ok(id.to_string());
+        }
+
+        let image_inspect = self
+            .docker
             .inspect_image(&container_details.clone().config.unwrap().image.unwrap())
-            .await
+            .await?;
+
+        let repo_digests = image_inspect.repo_digests.unwrap();
+        Ok(repo_digests.first().clone().unwrap().to_string())
     }
 
     pub(crate) async fn update_container(
