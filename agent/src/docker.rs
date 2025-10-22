@@ -42,7 +42,8 @@ impl DockerHandler {
         let container_details = self
             .docker
             .inspect_container(&container_id, None::<InspectContainerOptions>)
-            .await?;
+            .await
+            .inspect_err(|x| error!("Error inspecting container: {x:?}"))?;
 
         // if hoister.identifier is set use that as the identifier
         let identifier = container_details
@@ -60,11 +61,12 @@ impl DockerHandler {
         let image_inspect = self
             .docker
             .inspect_image(&container_details.clone().config.unwrap().image.unwrap())
-            .await?;
+            .await
+            .inspect_err(|x| error!("Error inspecting image: {x:?}"))?;
 
-        let repo_digests = image_inspect.repo_digests.unwrap_or(
-            vec![container_details.name.unwrap_or("unknown".to_string())]
-        );
+        let repo_digests = image_inspect.repo_digests.unwrap_or(vec![
+            container_details.name.unwrap_or("unknown".to_string()),
+        ]);
         Ok(repo_digests.first().clone().unwrap().to_string())
     }
 

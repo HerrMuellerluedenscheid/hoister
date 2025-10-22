@@ -12,7 +12,7 @@ use log::{debug, error, info};
 use bollard::errors::Error as BollardError;
 
 use crate::cli::configure_cli;
-use crate::docker::{ContainerID, DockerHandler};
+use crate::docker::{ContainerID, ContainerIdentifier, DockerHandler};
 use bollard::models::{ContainerCreateResponse, ContainerSummary};
 use env_logger::Env;
 use futures_util::StreamExt;
@@ -129,7 +129,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         for container in containers {
             debug!("Checking container {:?}", container);
             let container_id: ContainerID = container.id.unwrap_or_default();
-            let image_identifier = docker.get_image_identifier(&container_id).await.unwrap();
+            let image_identifier = match docker.get_image_identifier(&container_id).await {
+                Ok(id) => id,
+                Err(e) => {
+                    error!("failed to get image identifier: {}", e);
+                    continue;
+                }
+            };
+
             let result = match docker.update_container(&container_id).await {
                 Ok(_response) => DeploymentResult {
                     image: image_identifier,
