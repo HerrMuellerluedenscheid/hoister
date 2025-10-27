@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 mod database;
 mod server;
+mod sse;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

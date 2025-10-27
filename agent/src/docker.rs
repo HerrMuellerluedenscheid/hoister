@@ -1,18 +1,23 @@
+use crate::HoisterError;
 use crate::HoisterError::UpdateFailed;
-use crate::{DeploymentResult, HoisterError};
 use bollard::Docker;
 use bollard::models::{
     ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary,
     HealthStatusEnum,
 };
 use bollard::query_parameters::{
-    CreateContainerOptions, CreateImageOptions, InspectContainerOptions, RemoveContainerOptions,
-    RenameContainerOptions, StartContainerOptions, StopContainerOptionsBuilder,
+    CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions,
+    RemoveContainerOptions, RenameContainerOptions, StartContainerOptions,
+    StopContainerOptionsBuilder,
 };
 use futures_util::StreamExt;
 use log::{debug, error, info, trace, warn};
+use std::collections::HashMap;
+use std::error::Error;
 use std::time::Duration;
-use tokio::sync::mpsc::Sender;
+
+pub(crate) type ContainerID = String;
+pub(crate) type ContainerIdentifier = String; // used to identify the image across hoister services
 
 const REMOVE_OPTIONS: RemoveContainerOptions = RemoveContainerOptions {
     v: false,
@@ -20,92 +25,161 @@ const REMOVE_OPTIONS: RemoveContainerOptions = RemoveContainerOptions {
     link: false,
 };
 
-pub(crate) async fn update_container(
-    docker: &Docker,
-    container: ContainerSummary,
-) -> Result<ContainerCreateResponse, HoisterError> {
-    let container_id = container.id.unwrap_or_default();
-    let container_details = docker
-        .inspect_container(&container_id, None::<InspectContainerOptions>)
-        .await?;
-    let old_config = container_details.clone().config.unwrap();
-    let image_name = old_config.image.unwrap();
+pub(crate) struct DockerHandler {
+    docker: Docker,
+}
 
-    let (image_name, image_tag) = image_name.rsplit_once(":").unwrap_or_default();
-    let image_name = image_name.to_string();
-    let image_tag = image_tag.to_string();
-
-    trace!(
-        "container details: {}",
-        serde_json::to_string_pretty(&container_details).unwrap()
-    );
-
-    info!("Checking for updates: {image_name}:{image_tag}");
-
-    let digest = download_image(docker, &image_name, &image_tag).await?;
-    debug!("Image pulled successfully (digest: {digest})");
-    let new_image_name = image_name.clone() + "@" + &digest;
-    debug!("new image name: {new_image_name}");
-    info!("Stopping container {:?}...", &container_id);
-    let options_stop_container = StopContainerOptionsBuilder::new().t(30).build();
-    docker
-        .stop_container(&container_id, Some(options_stop_container.clone()))
-        .await?;
-
-    let backup_name = format!("{container_id}-backup");
-    debug!("rename old container to {}", &backup_name);
-
-    let rename_options = RenameContainerOptions {
-        name: backup_name.clone(),
-    };
-    docker
-        .rename_container(&container_id, rename_options)
-        .await?;
-
-    let container = create_container(docker, container_details).await?;
-    debug!("Container created with ID: {}", container.id);
-
-    docker
-        .start_container(&container.id, None::<StartContainerOptions>)
-        .await?;
-    info!("Container started");
-
-    if let Err(e) = check_container_health(docker, &container.id).await {
-        warn!("New container failed, rolling back to previous version");
-
-        docker
-            .stop_container(&container.id, Some(options_stop_container))
-            .await?;
-        docker
-            .remove_container(
-                &container.id,
-                Some(RemoveContainerOptions {
-                    force: true,
-                    ..Default::default()
-                }),
-            )
-            .await?;
-
-        let rename_back_options = RenameContainerOptions {
-            name: container_id.clone(),
-        };
-        docker
-            .rename_container(&backup_name, rename_back_options)
-            .await?;
-
-        docker
-            .start_container(&container_id, None::<StartContainerOptions>)
-            .await?;
-        info!("Rollback complete, old container restarted");
-        return Err(e);
-    } else {
-        debug!("Container updated successfully. deleting old container");
-        docker
-            .remove_container(&container_id, Some(REMOVE_OPTIONS))
-            .await?;
-        info!("Container updated successfully. backup container removed");
+impl DockerHandler {
+    pub(crate) fn new() -> Self {
+        let docker = Docker::connect_with_local_defaults().unwrap();
+        Self { docker }
     }
-    Ok(container)
+
+    pub(crate) async fn get_image_identifier(
+        &self,
+        container_id: &ContainerID,
+    ) -> Result<ContainerIdentifier, HoisterError> {
+        let container_details = self
+            .docker
+            .inspect_container(container_id, None::<InspectContainerOptions>)
+            .await
+            .inspect_err(|x| error!("Error inspecting container: {x:?}"))?;
+
+        // if hoister.identifier is set use that as the identifier
+        let identifier = container_details
+            .clone()
+            .config
+            .unwrap()
+            .labels
+            .unwrap_or_default()
+            .get("hoister.identifier")
+            .cloned();
+        if let Some(id) = identifier {
+            return Ok(id.to_string());
+        }
+
+        let image_inspect = self
+            .docker
+            .inspect_image(&container_details.clone().config.unwrap().image.unwrap())
+            .await
+            .inspect_err(|x| error!("Error inspecting image: {x:?}"))?;
+
+        let repo_digests = image_inspect.repo_digests.unwrap_or(vec![
+            container_details.name.unwrap_or("unknown".to_string()),
+        ]);
+        Ok(repo_digests.first().unwrap().to_string())
+    }
+
+    pub(crate) async fn update_container(
+        &self,
+        container_id: &ContainerID,
+    ) -> Result<ContainerCreateResponse, HoisterError> {
+        let container_details = self
+            .docker
+            .inspect_container(container_id, None::<InspectContainerOptions>)
+            .await?;
+
+        let old_config = container_details.clone().config.unwrap();
+        let image_name = old_config.image.unwrap();
+
+        let (image_name, image_tag) = image_name.rsplit_once(":").unwrap_or_default();
+        let image_name = image_name.to_string();
+        let image_tag = image_tag.to_string();
+
+        trace!(
+            "container details: {}",
+            serde_json::to_string_pretty(&container_details).unwrap()
+        );
+
+        info!("Checking for updates: {image_name}:{image_tag}");
+
+        let digest = download_image(&self.docker, &image_name, &image_tag).await?;
+        debug!("Image pulled successfully (digest: {digest})");
+        let new_image_name = image_name.clone() + "@" + &digest;
+        debug!("new image name: {new_image_name}");
+        info!("Stopping container {:?}...", &container_id);
+        let options_stop_container = StopContainerOptionsBuilder::new().t(30).build();
+        self.docker
+            .stop_container(container_id, Some(options_stop_container.clone()))
+            .await?;
+
+        let backup_name = format!("{container_id}-backup");
+        debug!("rename old container to {}", &backup_name);
+
+        let rename_options = RenameContainerOptions {
+            name: backup_name.clone(),
+        };
+        self.docker
+            .rename_container(container_id, rename_options)
+            .await?;
+
+        let container = create_container(&self.docker, container_details).await?;
+        debug!("Container created with ID: {}", container.id);
+
+        self.docker
+            .start_container(&container.id, None::<StartContainerOptions>)
+            .await?;
+        info!("Container started");
+
+        if let Err(e) = check_container_health(&self.docker, &container.id).await {
+            warn!("New container failed, rolling back to previous version");
+
+            self.docker
+                .stop_container(&container.id, Some(options_stop_container))
+                .await?;
+            self.docker
+                .remove_container(
+                    &container.id,
+                    Some(RemoveContainerOptions {
+                        force: true,
+                        ..Default::default()
+                    }),
+                )
+                .await?;
+
+            let rename_back_options = RenameContainerOptions {
+                name: container_id.clone(),
+            };
+            self.docker
+                .rename_container(&backup_name, rename_back_options)
+                .await?;
+
+            self.docker
+                .start_container(container_id, None::<StartContainerOptions>)
+                .await?;
+            info!("Rollback complete, old container restarted");
+            return Err(e);
+        } else {
+            debug!("Container updated successfully. deleting old container");
+            self.docker
+                .remove_container(container_id, Some(REMOVE_OPTIONS))
+                .await?;
+            info!("Container updated successfully. backup container removed");
+        }
+        Ok(container)
+    }
+
+    pub(crate) async fn get_containers(&self) -> Result<Vec<ContainerSummary>, Box<dyn Error>> {
+        let mut filters = HashMap::new();
+        let label_filters = vec!["hoister.enable=true".to_string()];
+        filters.insert("label".to_string(), label_filters);
+
+        let options = ListContainersOptions {
+            filters: Some(filters),
+            ..Default::default()
+        };
+        let containers = self
+            .docker
+            .clone()
+            .list_containers(Some(options.clone()))
+            .await?;
+
+        debug!(
+            "found {} containers with label `hoister.enable=true`",
+            containers.len()
+        );
+        Ok(containers)
+    }
 }
 
 async fn create_container(

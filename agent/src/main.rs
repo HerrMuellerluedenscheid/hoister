@@ -2,17 +2,18 @@
 mod cli;
 mod docker;
 mod notifications;
+mod sse;
 
 use bollard::Docker;
 
-use bollard::query_parameters::{EventsOptions, ListContainersOptions};
+use bollard::query_parameters::EventsOptions;
 use log::{debug, error, info};
 
 use bollard::errors::Error as BollardError;
 
 use crate::cli::configure_cli;
-use crate::docker::update_container;
-use bollard::models::{ContainerCreateResponse, ContainerSummary};
+use crate::docker::{ContainerID, DockerHandler};
+use bollard::models::ContainerCreateResponse;
 use env_logger::Env;
 use futures_util::StreamExt;
 use std::collections::HashMap;
@@ -27,7 +28,7 @@ use tokio::time::sleep;
 use crate::notifications::{setup_dispatcher, start_notification_handler};
 use chatterbox::message::Message;
 use controller::server::{CreateDeployment, DeploymentStatus};
-use std::error::Error;
+use controller::sse::ControllerEvent;
 #[allow(unused_imports)]
 use std::{env, process};
 use tokio::sync::mpsc;
@@ -35,6 +36,7 @@ use tokio::sync::mpsc;
 #[derive(Debug)]
 struct DeploymentResult {
     image: String,
+    container_id: ContainerID,
     status: DeploymentStatus,
 }
 
@@ -48,6 +50,7 @@ impl From<&DeploymentResult> for CreateDeployment {
     fn from(result: &DeploymentResult) -> Self {
         CreateDeployment {
             image: result.image.clone(),
+            container_id: result.container_id.clone(),
             status: result.status.clone(),
         }
     }
@@ -63,17 +66,42 @@ enum HoisterError {
     BollardError(#[from] BollardError),
 }
 
+struct SSEHandler {
+    docker: Arc<DockerHandler>,
+    rx: mpsc::Receiver<ControllerEvent>,
+}
+
+impl SSEHandler {
+    fn new(docker: Arc<DockerHandler>, rx: mpsc::Receiver<ControllerEvent>) -> Self {
+        Self { docker, rx }
+    }
+
+    async fn start(&mut self) {
+        while let Some(message) = self.rx.recv().await {
+            match message {
+                ControllerEvent::Retry(container_id) => {
+                    self.docker
+                        .update_container(&container_id)
+                        .await
+                        .expect("TODO: panic message");
+                }
+            }
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     #[cfg(target_os = "linux")]
     set_group_id();
 
-    let (tx, rx) = mpsc::channel(32);
-
+    let (tx_notification, rx_notification) = mpsc::channel(32);
+    let (tx_sse, rx_sse) = mpsc::channel(32);
+    tokio::spawn(async move { sse::consume_sse("http://localhost:3033/sse", tx_sse).await });
     let dispatcher = setup_dispatcher();
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     tokio::spawn(async move {
-        start_notification_handler(rx, dispatcher).await;
+        start_notification_handler(rx_notification, dispatcher).await;
     });
     info!("Starting hoister");
     let running = Arc::new(AtomicBool::new(true));
@@ -86,35 +114,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    let docker = Docker::connect_with_local_defaults().unwrap();
+    let docker = Arc::new(DockerHandler::new());
 
+    let mut sse_handler = SSEHandler::new(docker.clone(), rx_sse);
+    tokio::spawn(async move {
+        sse_handler.start().await;
+    });
     let config = configure_cli();
 
     loop {
         info!("checking for updates");
         let now = SystemTime::now();
-        let containers = get_containers(&docker).await?;
+        let containers = docker.get_containers().await?;
         for container in containers {
             debug!("Checking container {:?}", container);
-            let image = container.clone().image.unwrap_or_default();
-            let result = match update_container(&docker, container).await {
+            let container_id: ContainerID = container.id.unwrap_or_default();
+            let image_identifier = match docker.get_image_identifier(&container_id).await {
+                Ok(id) => id,
+                Err(e) => {
+                    error!("failed to get image identifier: {}", e);
+                    continue;
+                }
+            };
+
+            let result = match docker.update_container(&container_id).await {
                 Ok(_response) => DeploymentResult {
-                    image: image.clone(),
+                    image: image_identifier,
+                    container_id: container_id.clone(),
                     status: DeploymentStatus::Success,
                 },
                 Err(HoisterError::NoUpdateAvailable) => DeploymentResult {
-                    image: image.clone(),
+                    image: image_identifier,
+                    container_id: container_id.clone(),
                     status: DeploymentStatus::NoUpdate,
                 },
                 Err(e) => {
                     error!("failed to update container: {}", e);
                     DeploymentResult {
-                        image: image.clone(),
+                        image: image_identifier,
+                        container_id: container_id.clone(),
                         status: DeploymentStatus::Failure,
                     }
                 }
             };
-            tx.send(result).await.unwrap();
+            tx_notification.send(result).await.unwrap();
         }
 
         if config.interval.is_some() {
@@ -131,27 +174,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         }
     }
     Ok(())
-}
-
-async fn get_containers(docker: &Docker) -> Result<Vec<ContainerSummary>, Box<dyn Error>> {
-    let mut filters = HashMap::new();
-    let label_filters = vec!["hoister.enable=true".to_string()];
-    filters.insert("label".to_string(), label_filters);
-
-    let options = ListContainersOptions {
-        filters: Some(filters),
-        ..Default::default()
-    };
-    let containers = docker
-        .clone()
-        .list_containers(Some(options.clone()))
-        .await?;
-
-    debug!(
-        "found {} containers with label `hoister.enable=true`",
-        containers.len()
-    );
-    Ok(containers)
 }
 
 #[cfg(target_os = "linux")]
