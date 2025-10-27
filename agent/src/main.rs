@@ -6,14 +6,14 @@ mod sse;
 
 use bollard::Docker;
 
-use bollard::query_parameters::{EventsOptions, ListContainersOptions};
+use bollard::query_parameters::EventsOptions;
 use log::{debug, error, info};
 
 use bollard::errors::Error as BollardError;
 
 use crate::cli::configure_cli;
-use crate::docker::{ContainerID, ContainerIdentifier, DockerHandler};
-use bollard::models::{ContainerCreateResponse, ContainerSummary};
+use crate::docker::{ContainerID, DockerHandler};
+use bollard::models::ContainerCreateResponse;
 use env_logger::Env;
 use futures_util::StreamExt;
 use std::collections::HashMap;
@@ -25,11 +25,10 @@ use std::time::{Duration, SystemTime};
 use thiserror::Error;
 use tokio::time::sleep;
 
-use crate::notifications::{send, setup_dispatcher, start_notification_handler};
+use crate::notifications::{setup_dispatcher, start_notification_handler};
 use chatterbox::message::Message;
 use controller::server::{CreateDeployment, DeploymentStatus};
 use controller::sse::ControllerEvent;
-use std::error::Error;
 #[allow(unused_imports)]
 use std::{env, process};
 use tokio::sync::mpsc;
@@ -51,6 +50,7 @@ impl From<&DeploymentResult> for CreateDeployment {
     fn from(result: &DeploymentResult) -> Self {
         CreateDeployment {
             image: result.image.clone(),
+            container_id: result.container_id.clone(),
             status: result.status.clone(),
         }
     }

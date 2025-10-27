@@ -1,9 +1,9 @@
+use crate::HoisterError;
 use crate::HoisterError::UpdateFailed;
-use crate::{DeploymentResult, HoisterError};
 use bollard::Docker;
 use bollard::models::{
     ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary,
-    HealthStatusEnum, ImageInspect,
+    HealthStatusEnum,
 };
 use bollard::query_parameters::{
     CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions,
@@ -41,7 +41,7 @@ impl DockerHandler {
     ) -> Result<ContainerIdentifier, HoisterError> {
         let container_details = self
             .docker
-            .inspect_container(&container_id, None::<InspectContainerOptions>)
+            .inspect_container(container_id, None::<InspectContainerOptions>)
             .await
             .inspect_err(|x| error!("Error inspecting container: {x:?}"))?;
 
@@ -67,7 +67,7 @@ impl DockerHandler {
         let repo_digests = image_inspect.repo_digests.unwrap_or(vec![
             container_details.name.unwrap_or("unknown".to_string()),
         ]);
-        Ok(repo_digests.first().clone().unwrap().to_string())
+        Ok(repo_digests.first().unwrap().to_string())
     }
 
     pub(crate) async fn update_container(
@@ -76,13 +76,9 @@ impl DockerHandler {
     ) -> Result<ContainerCreateResponse, HoisterError> {
         let container_details = self
             .docker
-            .inspect_container(&container_id, None::<InspectContainerOptions>)
+            .inspect_container(container_id, None::<InspectContainerOptions>)
             .await?;
-        let image_details = self
-            .docker
-            .inspect_image(&container_details.clone().config.unwrap().image.unwrap())
-            .await?;
-        let digests = image_details.repo_digests.unwrap();
+
         let old_config = container_details.clone().config.unwrap();
         let image_name = old_config.image.unwrap();
 
@@ -104,7 +100,7 @@ impl DockerHandler {
         info!("Stopping container {:?}...", &container_id);
         let options_stop_container = StopContainerOptionsBuilder::new().t(30).build();
         self.docker
-            .stop_container(&container_id, Some(options_stop_container.clone()))
+            .stop_container(container_id, Some(options_stop_container.clone()))
             .await?;
 
         let backup_name = format!("{container_id}-backup");
@@ -114,7 +110,7 @@ impl DockerHandler {
             name: backup_name.clone(),
         };
         self.docker
-            .rename_container(&container_id, rename_options)
+            .rename_container(container_id, rename_options)
             .await?;
 
         let container = create_container(&self.docker, container_details).await?;
@@ -149,14 +145,14 @@ impl DockerHandler {
                 .await?;
 
             self.docker
-                .start_container(&container_id, None::<StartContainerOptions>)
+                .start_container(container_id, None::<StartContainerOptions>)
                 .await?;
             info!("Rollback complete, old container restarted");
             return Err(e);
         } else {
             debug!("Container updated successfully. deleting old container");
             self.docker
-                .remove_container(&container_id, Some(REMOVE_OPTIONS))
+                .remove_container(container_id, Some(REMOVE_OPTIONS))
                 .await?;
             info!("Container updated successfully. backup container removed");
         }

@@ -16,7 +16,7 @@ use tokio::net::TcpListener;
 use crate::database::{Database, Deployment};
 use crate::sse::{ControllerEvent, sse_handler};
 use sqlx::Type;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::broadcast;
 use ts_rs::TS;
 
 #[derive(Clone)]
@@ -53,6 +53,7 @@ impl Display for DeploymentStatus {
 #[derive(Deserialize, Serialize, Debug)]
 pub struct CreateDeployment {
     pub image: String,
+    pub container_id: String,
     pub status: DeploymentStatus,
 }
 

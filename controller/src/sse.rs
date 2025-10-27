@@ -1,11 +1,9 @@
 use crate::server::AppState;
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
-use futures_util::stream::{self, Stream};
-use log::info;
+use futures_util::stream::Stream;
 use serde::{Deserialize, Serialize};
-use std::{convert::Infallible, time::Duration};
-use tokio_stream::StreamExt as _;
+use std::convert::Infallible;
 
 pub type ContainerID = String;
 

@@ -1,6 +1,5 @@
 use crate::database::Database;
 use crate::server::start_server;
-use crate::sse::sse_handler;
 use env_logger::Env;
 use log::info;
 use std::sync::Arc;
