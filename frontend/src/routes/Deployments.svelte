@@ -51,9 +51,9 @@
                                 {:else if item.status === 'Success'}
                                     <span class="text-lg">✅</span>
                                     <span class="text-green-600 font-medium">Success</span>
-                                {:else if item.status === 'Failure'}
+                                {:else if item.status === 'RollbackFinished'}
                                     <span class="text-lg">❌</span>
-                                    <span class="text-red-600 font-medium">Failure</span>
+                                    <span class="text-red-600 font-medium">Rolled back</span>
                                 {:else if item.status === 'NoUpdate'}
                                     <span class="text-lg">➖</span>
                                     <span class="text-gray-500">No Update</span>

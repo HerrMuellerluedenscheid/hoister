@@ -1,5 +1,6 @@
 use crate::HoisterError;
 use crate::HoisterError::UpdateFailed;
+use crate::notifications::DeploymentResultHandler;
 use bollard::Docker;
 use bollard::models::{
     ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary,
@@ -27,12 +28,16 @@ const REMOVE_OPTIONS: RemoveContainerOptions = RemoveContainerOptions {
 
 pub(crate) struct DockerHandler {
     docker: Docker,
+    deployment_handler: DeploymentResultHandler,
 }
 
 impl DockerHandler {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(deployment_handler: DeploymentResultHandler) -> Self {
         let docker = Docker::connect_with_local_defaults().unwrap();
-        Self { docker }
+        Self {
+            docker,
+            deployment_handler,
+        }
     }
 
     pub(crate) async fn get_image_identifier(
@@ -73,7 +78,9 @@ impl DockerHandler {
     pub(crate) async fn update_container(
         &self,
         container_id: &ContainerID,
-    ) -> Result<ContainerCreateResponse, HoisterError> {
+    ) -> Result<(), HoisterError> {
+        let image_identifier = self.get_image_identifier(&container_id).await?;
+
         let container_details = self
             .docker
             .inspect_container(container_id, None::<InspectContainerOptions>)
@@ -121,7 +128,10 @@ impl DockerHandler {
             .await?;
         info!("Container started");
 
-        if let Err(e) = check_container_health(&self.docker, &container.id).await {
+        if let Err(_e) = check_container_health(&self.docker, &container.id).await {
+            self.deployment_handler
+                .inform_container_failed(image_identifier.clone(), container.id.clone())
+                .await;
             warn!("New container failed, rolling back to previous version");
 
             self.docker
@@ -148,15 +158,20 @@ impl DockerHandler {
                 .start_container(container_id, None::<StartContainerOptions>)
                 .await?;
             info!("Rollback complete, old container restarted");
-            return Err(e);
+            self.deployment_handler
+                .inform_rollback_complete(image_identifier, container_id.clone())
+                .await;
         } else {
             debug!("Container updated successfully. deleting old container");
             self.docker
                 .remove_container(container_id, Some(REMOVE_OPTIONS))
                 .await?;
             info!("Container updated successfully. backup container removed");
+            self.deployment_handler
+                .inform_update_success(image_identifier, container)
+                .await;
         }
-        Ok(container)
+        Ok(())
     }
 
     pub(crate) async fn get_containers(&self) -> Result<Vec<ContainerSummary>, Box<dyn Error>> {

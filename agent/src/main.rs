@@ -25,7 +25,7 @@ use std::time::{Duration, SystemTime};
 use thiserror::Error;
 use tokio::time::sleep;
 
-use crate::notifications::{setup_dispatcher, start_notification_handler};
+use crate::notifications::{DeploymentResultHandler, setup_dispatcher, start_notification_handler};
 use chatterbox::message::Message;
 use controller::server::{CreateDeployment, DeploymentStatus};
 use controller::sse::ControllerEvent;
@@ -97,6 +97,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     let (tx_notification, rx_notification) = mpsc::channel(32);
     let (tx_sse, rx_sse) = mpsc::channel(32);
+
+    let result_handler = DeploymentResultHandler::new(tx_notification);
+
     tokio::spawn(async move { sse::consume_sse("http://localhost:3033/sse", tx_sse).await });
     let dispatcher = setup_dispatcher();
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
@@ -114,7 +117,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    let docker = Arc::new(DockerHandler::new());
+    let docker = Arc::new(DockerHandler::new(result_handler));
 
     let mut sse_handler = SSEHandler::new(docker.clone(), rx_sse);
     tokio::spawn(async move {
@@ -129,35 +132,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         for container in containers {
             debug!("Checking container {:?}", container);
             let container_id: ContainerID = container.id.unwrap_or_default();
-            let image_identifier = match docker.get_image_identifier(&container_id).await {
-                Ok(id) => id,
-                Err(e) => {
-                    error!("failed to get image identifier: {}", e);
-                    continue;
-                }
-            };
-
-            let result = match docker.update_container(&container_id).await {
-                Ok(_response) => DeploymentResult {
-                    image: image_identifier,
-                    container_id: container_id.clone(),
-                    status: DeploymentStatus::Success,
-                },
-                Err(HoisterError::NoUpdateAvailable) => DeploymentResult {
-                    image: image_identifier,
-                    container_id: container_id.clone(),
-                    status: DeploymentStatus::NoUpdate,
-                },
-                Err(e) => {
-                    error!("failed to update container: {}", e);
-                    DeploymentResult {
-                        image: image_identifier,
-                        container_id: container_id.clone(),
-                        status: DeploymentStatus::Failure,
-                    }
-                }
-            };
-            tx_notification.send(result).await.unwrap();
+            let result = docker.update_container(&container_id).await;
+            info!("result: {:?}", result);
         }
 
         if config.interval.is_some() {

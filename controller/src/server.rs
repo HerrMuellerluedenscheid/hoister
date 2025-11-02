@@ -34,8 +34,9 @@ pub enum DeploymentStatus {
     Pending = 0,
     Started = 1,
     Success = 2,
-    Failure = 3,
+    RollbackFinished = 3,
     NoUpdate = 4,
+    Failed,
 }
 
 impl Display for DeploymentStatus {
@@ -44,8 +45,9 @@ impl Display for DeploymentStatus {
             DeploymentStatus::Pending => write!(f, "Pending"),
             DeploymentStatus::Started => write!(f, "Started"),
             DeploymentStatus::Success => write!(f, "Success"),
-            DeploymentStatus::Failure => write!(f, "Failure"),
+            DeploymentStatus::RollbackFinished => write!(f, "Rolled back"),
             &DeploymentStatus::NoUpdate => write!(f, "NoUpdate"),
+            &DeploymentStatus::Failed => write!(f, "Failed"),
         }
     }
 }

@@ -1,8 +1,66 @@
+use crate::docker::{ContainerID, ContainerIdentifier};
 use crate::{DeploymentResult, HoisterError};
+use bollard::models::ContainerCreateResponse;
 use chatterbox::message::{Dispatcher, Message};
 use controller::server::{CreateDeployment, DeploymentStatus};
 use log::{debug, error, info};
 use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::Sender;
+
+pub struct DeploymentResultHandler {
+    tx: Sender<DeploymentResult>,
+}
+
+impl DeploymentResultHandler {
+    pub(crate) fn new(tx: Sender<DeploymentResult>) -> Self {
+        Self { tx }
+    }
+
+    pub(crate) async fn inform_container_failed(
+        &self,
+        image: ContainerIdentifier,
+        container_id: ContainerID,
+    ) {
+        self.tx
+            .send(DeploymentResult {
+                image,
+                container_id,
+                status: DeploymentStatus::Failed,
+            })
+            .await
+            .unwrap();
+    }
+
+    pub(crate) async fn inform_rollback_complete(
+        &self,
+        image: ContainerIdentifier,
+        container_id: ContainerID,
+    ) {
+        self.tx
+            .send(DeploymentResult {
+                image,
+                container_id,
+                status: DeploymentStatus::RollbackFinished,
+            })
+            .await
+            .unwrap();
+    }
+
+    pub(crate) async fn inform_update_success(
+        &self,
+        image: ContainerIdentifier,
+        container_create: ContainerCreateResponse,
+    ) {
+        self.tx
+            .send(DeploymentResult {
+                image,
+                container_id: container_create.id,
+                status: DeploymentStatus::Success,
+            })
+            .await
+            .unwrap();
+    }
+}
 
 pub(super) async fn start_notification_handler(
     mut rx: Receiver<DeploymentResult>,

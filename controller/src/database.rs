@@ -48,7 +48,7 @@ impl Database {
             CREATE TABLE IF NOT EXISTS deployment (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 digest TEXT NOT NULL,
-                status INTEGER NOT NULL CHECK (status IN (0, 1, 2, 3, 4)),
+                status INTEGER NOT NULL CHECK (status IN (0, 1, 2, 3, 4, 5)),
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             "#,
