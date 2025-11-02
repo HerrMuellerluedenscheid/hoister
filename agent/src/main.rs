@@ -112,7 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         start_notification_handler(rx_notification, dispatcher).await;
     });
     info!("Starting hoister");
-    if config.send_test_message.is_some() {
+    if let Some(true) = config.send_test_message {
         info!("Sending test message");
         result_handler.test_message().await;
         // await 1 second to allow the message to be sent
