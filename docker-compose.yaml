@@ -35,6 +35,6 @@ services:
     image: emrius11/example:latest
     build:
       context: .
-      dockerfile: agent/works.Dockerfile
+      dockerfile: test/works.Dockerfile
     labels:
       - "hoister.enable=true"

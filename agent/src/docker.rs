@@ -79,7 +79,7 @@ impl DockerHandler {
         &self,
         container_id: &ContainerID,
     ) -> Result<(), HoisterError> {
-        let image_identifier = self.get_image_identifier(&container_id).await?;
+        let image_identifier = self.get_image_identifier(container_id).await?;
 
         let container_details = self
             .docker
