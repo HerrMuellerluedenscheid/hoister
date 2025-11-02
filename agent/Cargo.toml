@@ -19,6 +19,6 @@ thiserror = "2.0.12"
 clap = { version = "4.5.37", features = ["string"] }
 ctrlc = "3.4"
 libc = "0.2.172"
-chatterbox = "2.0.1"
+chatterbox = "2.0.2"
 reqwest = { version = "0.12.23", default-features = false, features = ["rustls-tls-webpki-roots", "json", "stream"] }
 tokio-stream = "0.1.17"

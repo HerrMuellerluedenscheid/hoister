@@ -36,7 +36,8 @@ pub enum DeploymentStatus {
     Success = 2,
     RollbackFinished = 3,
     NoUpdate = 4,
-    Failed,
+    Failed = 5,
+    TestMessage = 6,
 }
 
 impl Display for DeploymentStatus {
@@ -48,6 +49,7 @@ impl Display for DeploymentStatus {
             DeploymentStatus::RollbackFinished => write!(f, "Rolled back"),
             &DeploymentStatus::NoUpdate => write!(f, "NoUpdate"),
             &DeploymentStatus::Failed => write!(f, "Failed"),
+            &DeploymentStatus::TestMessage => write!(f, "Test Message"),
         }
     }
 }

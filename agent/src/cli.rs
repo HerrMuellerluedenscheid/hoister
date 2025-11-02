@@ -3,12 +3,14 @@ use std::env;
 
 pub struct Config {
     pub interval: Option<u64>,
+    pub send_test_message: Option<bool>,
 }
 
 impl From<ArgMatches> for Config {
     fn from(matches: ArgMatches) -> Self {
         Config {
             interval: matches.get_one::<u64>("watch").copied(),
+            send_test_message: matches.get_one::<bool>("test_message").copied(),
         }
     }
 }
@@ -30,6 +32,13 @@ pub(crate) fn configure_cli() -> Config {
                 .num_args(0..=1)
                 .default_missing_value(default_watch_interval)
                 .value_parser(clap::value_parser!(u64)),
+        )
+        .arg(
+            Arg::new("test_message")
+                .long("test-message")
+                .help("send a test message".to_string())
+                .num_args(0)
+                .required(false),
         )
         .get_matches();
     matches.into()

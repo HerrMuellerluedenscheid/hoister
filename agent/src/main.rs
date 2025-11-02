@@ -94,23 +94,31 @@ impl SSEHandler {
 async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     #[cfg(target_os = "linux")]
     set_group_id();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+
+    let config = configure_cli();
 
     let (tx_notification, rx_notification) = mpsc::channel(32);
     let (tx_sse, rx_sse) = mpsc::channel(32);
 
     let result_handler = DeploymentResultHandler::new(tx_notification);
-
     if let Ok(controller_url) = env::var("HOISTER_CONTROLLER_URL") {
         tokio::spawn(async move {
             sse::consume_sse(format!("{controller_url}/sse").as_str(), tx_sse).await
         });
     }
     let dispatcher = setup_dispatcher();
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     tokio::spawn(async move {
         start_notification_handler(rx_notification, dispatcher).await;
     });
     info!("Starting hoister");
+    if config.send_test_message.is_some() {
+        info!("Sending test message");
+        result_handler.test_message().await;
+        // await 1 second to allow the message to be sent
+        sleep(Duration::from_secs(1)).await;
+        return Ok(());
+    }
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
 
@@ -127,7 +135,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     tokio::spawn(async move {
         sse_handler.start().await;
     });
-    let config = configure_cli();
 
     loop {
         info!("checking for updates");

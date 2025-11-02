@@ -60,6 +60,17 @@ impl DeploymentResultHandler {
             .await
             .unwrap();
     }
+
+    pub(crate) async fn test_message(&self) {
+        self.tx
+            .send(DeploymentResult {
+                image: "test-image".to_string(),
+                container_id: "test-container-id".to_string(),
+                status: DeploymentStatus::TestMessage,
+            })
+            .await
+            .unwrap();
+    }
 }
 
 pub(super) async fn start_notification_handler(
