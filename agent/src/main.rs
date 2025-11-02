@@ -100,7 +100,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     let result_handler = DeploymentResultHandler::new(tx_notification);
 
-    tokio::spawn(async move { sse::consume_sse("http://localhost:3033/sse", tx_sse).await });
+    if let Ok(controller_url) = env::var("HOISTER_CONTROLLER_URL") {
+        tokio::spawn(async move {
+            sse::consume_sse(format!("{controller_url}/sse").as_str(), tx_sse).await
+        });
+    }
     let dispatcher = setup_dispatcher();
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     tokio::spawn(async move {
@@ -130,7 +134,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         let now = SystemTime::now();
         let containers = docker.get_containers().await?;
         for container in containers {
-            debug!("Checking container {:?}", container);
+            debug!("Checking container {:?}", container.id);
             let container_id: ContainerID = container.id.unwrap_or_default();
             let result = docker.update_container(&container_id).await;
             info!("result: {:?}", result);

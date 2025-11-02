@@ -50,11 +50,10 @@ impl DockerHandler {
             .await
             .inspect_err(|x| error!("Error inspecting container: {x:?}"))?;
 
+        let container_config = container_details.clone().config.unwrap();
+
         // if hoister.identifier is set use that as the identifier
-        let identifier = container_details
-            .clone()
-            .config
-            .unwrap()
+        let identifier = container_config
             .labels
             .unwrap_or_default()
             .get("hoister.identifier")
@@ -72,7 +71,18 @@ impl DockerHandler {
         let repo_digests = image_inspect.repo_digests.unwrap_or(vec![
             container_details.name.unwrap_or("unknown".to_string()),
         ]);
-        Ok(repo_digests.first().unwrap().to_string())
+
+        // debug!("repo digests: {:?}", repo_digests);
+        // debug!("repo digests: {:?}", container_config.image.clone().unwrap().clone());
+        let image_identifier = match repo_digests.first() {
+            Some(repo_digest) => repo_digest.clone(),
+            None => {
+                // There is no repo digest, if the image was not pulled from a registry
+                container_config.image.unwrap().clone()
+            }
+        };
+        debug!("image identifier: {image_identifier}");
+        Ok(image_identifier)
     }
 
     pub(crate) async fn update_container(

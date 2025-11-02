@@ -11,8 +11,6 @@ services:
     depends_on:
       - example
     env_file: ".env"
-    environment:
-      HOISTER_CONTROLLER_URL: "http://hoister-controller:3033"
 
   hoister-controller:
     image: emrius11/hoister-controller:latest
