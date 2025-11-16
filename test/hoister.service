@@ -1,0 +1,35 @@
+[Unit]
+Description=Hoister Service
+After=network.target
+Documentation=https://github.com/yourusername/hoister
+
+[Service]
+Type=simple
+User=hoister
+Group=hoister
+WorkingDirectory=/opt/hoister
+ExecStart=/opt/hoister/hoister
+Restart=always
+RestartSec=5
+
+# Environment variables
+# EnvironmentFile=/etc/hoister/hoister.env
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/hoister
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=1G
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hoister
+
+[Install]
+WantedBy=multi-user.target
