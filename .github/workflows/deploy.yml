@@ -27,7 +27,7 @@ jobs:
         run: cargo build --release
 
       - name: Build Debian package
-        run: cargo deb
+        run: cargo deb -p hoister
 
       - name: Rename artifacts
         run: |
