@@ -10,18 +10,21 @@ use log::info;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
+use http::HeaderMap;
 use tokio::net::TcpListener;
 
 // Import your database module
-use crate::database::{Database, Deployment};
+use crate::database::DataStore;
+use crate::database::{LocalSQLite, Deployment};
 use crate::sse::{ControllerEvent, sse_handler};
+use crate::authentication::{auth_middleware, extract_token_header};
 use sqlx::Type;
 use tokio::sync::broadcast;
 use ts_rs::TS;
 
 #[derive(Clone)]
-pub struct AppState {
-    pub(crate) database: Arc<Database>,
+pub struct AppState<T: DataStore> {
+    pub(crate) database: Arc<T>,
     pub(crate) api_secret: Option<String>,
     pub(crate) event_tx: broadcast::Sender<ControllerEvent>,
 }
@@ -78,45 +81,13 @@ impl<T> ApiResponse<T> {
     }
 }
 
-// Authentication middleware
-async fn auth_middleware(
-    State(state): State<AppState>,
-    request: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
-    // Skip auth for health check
-    let api_secret = match state.api_secret {
-        Some(secret) => secret,
-        None => return Ok(next.run(request).await),
-    };
-    if request.uri().path() == "/health" {
-        return Ok(next.run(request).await);
-    };
-    let auth_header = request
-        .headers()
-        .get("Authorization")
-        .and_then(|header| header.to_str().ok());
-
-    match auth_header {
-        Some(header) if header.starts_with("Bearer ") => {
-            let token = &header[7..]; // Remove "Bearer " prefix
-            if token == api_secret {
-                Ok(next.run(request).await)
-            } else {
-                Err(StatusCode::UNAUTHORIZED)
-            }
-        }
-        _ => Err(StatusCode::UNAUTHORIZED),
-    }
-}
-
 // Web handlers
 async fn health() -> &'static str {
     "OK"
 }
 
-async fn get_deployments(
-    State(state): State<AppState>,
+async fn get_deployments<T: DataStore>(
+    State(state): State<AppState<T>>,
 ) -> Result<Json<ApiResponse<Vec<Deployment>>>, StatusCode> {
     match state.database.get_all_deployment().await {
         Ok(deployments) => Ok(Json(ApiResponse::success(deployments))),
@@ -127,8 +98,8 @@ async fn get_deployments(
     }
 }
 
-async fn get_deployment(
-    State(state): State<AppState>,
+async fn get_deployment<T: DataStore>(
+    State(state): State<AppState<T>>,
     Path(id): Path<i64>,
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
     match state.database.get_deployment(id).await {
@@ -141,13 +112,15 @@ async fn get_deployment(
     }
 }
 
-async fn create_deployment(
-    State(state): State<AppState>,
+async fn create_deployment<T: DataStore>(
+    State(state): State<AppState<T>>,
     Json(payload): Json<CreateDeployment>,
+    headers: HeaderMap,
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
+    let claim = extract_token_header(headers).ok_or(StatusCode::UNAUTHORIZED)?;
     match state
         .database
-        .create_deployment(&payload.image, &payload.status)
+        .create_deployment(&payload.image, &payload.status, claim)
         .await
     {
         Ok(id) => match state.database.get_deployment(id).await {
@@ -165,7 +138,7 @@ async fn create_deployment(
     }
 }
 
-pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> Router {
+pub async fn create_app(database: Arc<LocalSQLite>, api_secret: Option<String>) -> Router {
     let (event_tx, _) = broadcast::channel::<ControllerEvent>(100);
 
     let state = AppState {
@@ -188,7 +161,7 @@ pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> 
 }
 
 pub async fn start_server(
-    database: Arc<Database>,
+    database: Arc<LocalSQLite>,
     api_secret: Option<String>,
     port: u16,
 ) -> Result<(), Box<dyn std::error::Error>> {

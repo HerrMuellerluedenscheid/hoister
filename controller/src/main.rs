@@ -1,4 +1,4 @@
-use crate::database::Database;
+use crate::database::LocalSQLite;
 use crate::server::start_server;
 use env_logger::Env;
 use log::info;
@@ -7,6 +7,7 @@ use std::sync::Arc;
 mod database;
 mod server;
 mod sse;
+mod authentication;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("HOISTER_DATABASE_PATH must be set (full path to sqlite file)");
 
     info!("Connecting to database: {db_path}");
-    let db = Database::new(&db_path).await?;
+    let db = LocalSQLite::new(&db_path).await?;
     let db = Arc::new(db);
 
     db.init().await?;

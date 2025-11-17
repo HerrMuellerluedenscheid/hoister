@@ -1,3 +1,4 @@
+use crate::database::DataStore;
 use crate::server::AppState;
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
@@ -12,8 +13,8 @@ pub enum ControllerEvent {
     Retry(ContainerID),
 }
 
-pub(crate) async fn sse_handler(
-    State(state): State<AppState>,
+pub(crate) async fn sse_handler<T: DataStore>(
+    State(state): State<AppState<T>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let mut rx = state.event_tx.subscribe();
 
