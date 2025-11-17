@@ -17,3 +17,8 @@ ts-rs = "11.0.1"
 tokio-stream = "0.1.17"
 futures-util = "0.3.31"
 async-stream = "0.3.6"
+
+jwt-simple = { version = "0.12.13" , optional = true}
+
+[features]
+jwt_auth = ["dep:jwt-simple"]
