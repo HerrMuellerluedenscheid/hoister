@@ -64,7 +64,7 @@ jobs:
       - name: Build
         run: cargo build --release
       - name: Build Debian
-        run: cargo deb
+        run: cargo deb -p hoister
       - name: Rename artifact
         run: cp target/debian/hoister_*.deb target/debian/hoister-${{ github.ref_name }}.deb
       - name: Upload .deb package
