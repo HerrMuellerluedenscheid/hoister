@@ -3,6 +3,7 @@ mod cli;
 mod docker;
 mod notifications;
 mod sse;
+mod monitor;
 
 use bollard::Docker;
 
@@ -103,8 +104,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     let result_handler = DeploymentResultHandler::new(tx_notification);
     if let Ok(controller_url) = env::var("HOISTER_CONTROLLER_URL") {
+        let url = controller_url.clone();
         tokio::spawn(async move {
-            sse::consume_sse(format!("{controller_url}/sse").as_str(), tx_sse).await
+            sse::consume_sse(format!("{url}/sse").as_str(), tx_sse).await
+        });
+
+        tokio::spawn(async move {
+            monitor::start(controller_url).await.expect("Failed to start monitor");
         });
     }
     let dispatcher = setup_dispatcher();

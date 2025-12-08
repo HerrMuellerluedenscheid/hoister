@@ -10,3 +10,4 @@ members = [
 tokio = { version = "1.44.2", features = ["rt", "rt-multi-thread", "macros", "full"] }
 log = "0.4.28"
 env_logger = "0.11.8"
+bollard = { version = "0.19.3", features = ["rustls"] }

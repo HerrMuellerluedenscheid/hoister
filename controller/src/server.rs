@@ -10,17 +10,20 @@ use log::info;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
+use axum::response::IntoResponse;
+use bollard::models::ContainerInspectResponse;
 use tokio::net::TcpListener;
 
 // Import your database module
 use crate::database::{Database, Deployment};
 use crate::sse::{ControllerEvent, sse_handler};
 use sqlx::Type;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, RwLock};
 use ts_rs::TS;
 
 #[derive(Clone)]
 pub struct AppState {
+    container_state: Arc<RwLock<Option<ContainerInspectResponse>>>,
     pub(crate) database: Arc<Database>,
     pub(crate) api_secret: Option<String>,
     pub(crate) event_tx: broadcast::Sender<ControllerEvent>,
@@ -165,10 +168,33 @@ async fn create_deployment(
     }
 }
 
+
+async fn post_container_state(
+    State(state): State<AppState>,
+    Json(payload): Json<ContainerInspectResponse>,
+) -> impl IntoResponse {
+    info!("Received container state update");
+    *state.container_state.write().await = Some(payload);
+    StatusCode::OK.into_response()
+}
+
+
+async fn get_container_state(
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    info!("Received request for container state");
+    let container_state = state.container_state.read().await;
+    match container_state.as_ref() {
+        Some(cs) => Json(cs.clone()).into_response(),
+        None => StatusCode::NOT_FOUND.into_response()
+    }
+}
+
 pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> Router {
     let (event_tx, _) = broadcast::channel::<ControllerEvent>(100);
 
     let state = AppState {
+        container_state: Arc::new(RwLock::new(None)),
         database,
         api_secret,
         event_tx,
@@ -180,6 +206,8 @@ pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> 
         .route("/deployments", get(get_deployments))
         .route("/deployments", post(create_deployment))
         .route("/deployments/{id}", get(get_deployment))
+        .route("/container/state", post(post_container_state))
+        .route("/container/state", get(get_container_state))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
