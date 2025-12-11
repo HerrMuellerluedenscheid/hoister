@@ -1,6 +1,7 @@
 <script lang="ts">
 
     import * as Card from "$lib/components/ui/card/index.js";
+    import {onDestroy, onMount} from "svelte";
 
     type Inspection = {
         Id: string;
@@ -18,6 +19,19 @@
     };
 
     let { inspection }: { inspection: Inspection } = $props();
+
+    let uptime = $state(getUptime(inspection.State.StartedAt));
+    let interval: number;
+
+    onMount(() => {
+        interval = setInterval(() => {
+            uptime = getUptime(inspection.State.StartedAt);
+        }, 1000);
+    });
+
+    onDestroy(() => {
+        clearInterval(interval);
+    });
 
     function getUptime(startedAt: string): string {
         const start = new Date(startedAt);
@@ -54,7 +68,7 @@
         </Card.Title>
         <Card.Description>
             <p class="text-sm text-gray-500">
-                Uptime: {getUptime(inspection.State.StartedAt)}
+                Uptime: {uptime}
             </p>
         </Card.Description>
     </Card.Header>

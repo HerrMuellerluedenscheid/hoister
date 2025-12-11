@@ -73,8 +73,6 @@ async fn send_to_backend(controller_url: &str, states: &[ContainerInspectRespons
         "{}/container/state",
         controller_url,
     );
-    info!("Sending to backend: {:?} to {}", states, url);
-    // let x : Json<ContainerStatsInsertRequest> = serde_json::json!({ "stats": states });
     client
         .post(&url)
         .json(&serde_json::json!(states))
