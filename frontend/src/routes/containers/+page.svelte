@@ -1,13 +1,17 @@
 <script lang="ts">
+    import type { PageData } from './$types';
+    import InspectionCard from "$lib/components/InspectionCard.svelte";
 
-    let { data } = $props();
+    let { data }: { data: PageData } = $props();
 
 </script>
-{data.inspections}
 
-{#each data.inspections as item}
-    <div class="item">
-        <h2>{item.Id}</h2>
-        <p>{item.State.Status}</p>
+<div class="max-w-4xl mx-auto p-6">
+    <h1 class="text-2xl font-bold mb-6 text-gray-900">Inspections</h1>
+
+    <div class="columns-2 gap-4 space-y-4">
+        {#each data.inspections as inspection}
+            <InspectionCard {inspection} />
+        {/each}
     </div>
-{/each}
+</div>
