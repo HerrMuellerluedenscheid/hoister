@@ -34,7 +34,7 @@ impl From<&ContainerInspectResponse> for ContainerState {
 
 async fn fetch_container_info(
     docker: &Docker,
-) -> Result<Vec<ContainerState>, bollard::errors::Error> {
+) -> Result<Vec<ContainerInspectResponse>, bollard::errors::Error> {
     let mut list_container_filters = HashMap::new();
     list_container_filters.insert(String::from("status"), vec![String::from("running")]);
 
@@ -58,7 +58,7 @@ async fn fetch_container_info(
                 )
                 .await
             {
-                Ok(inspect) => states.push(ContainerState::from(&inspect)),
+                Ok(inspect) => states.push(inspect),
                 Err(e) => eprintln!("Error inspecting container {}: {}", id, e),
             }
         }
@@ -67,19 +67,17 @@ async fn fetch_container_info(
     Ok(states)
 }
 
-async fn send_to_backend(controller_url: &str, states: &[ContainerState]) -> Result<(), reqwest::Error> {
+async fn send_to_backend(controller_url: &str, states: &[ContainerInspectResponse]) -> Result<(), reqwest::Error> {
     let client = reqwest::Client::new();
     let url = format!(
         "{}/container/state",
         controller_url,
     );
-    info!("Sending to backend: {}", url);
+    info!("Sending to backend: {:?} to {}", states, url);
     // let x : Json<ContainerStatsInsertRequest> = serde_json::json!({ "stats": states });
     client
         .post(&url)
-        .json(&serde_json::json!({
-            "stats": states
-        }))
+        .json(&serde_json::json!(states))
         .send()
         .await?;
     info!("done Sending to backend: {}", url);
@@ -91,32 +89,32 @@ pub(crate) async fn start(controller_url: String) -> Result<(), Box<dyn std::err
     info!("Starting monitor");
     let docker = Docker::connect_with_socket_defaults()?;
     let mut interval = time::interval(Duration::from_secs(10));
-    let mut previous_state: HashSet<ContainerState> = HashSet::new();
+    let mut previous_state: HashSet<ContainerInspectResponse> = HashSet::new();
 
     loop {
         interval.tick().await;
 
         match fetch_container_info(&docker).await {
             Ok(current_states) => {
-                let current_set: HashSet<ContainerState> = current_states.iter().cloned().collect();
+                // let current_set: HashSet<ContainerInspectResponse> = current_states.iter().cloned().collect();
 
-                // Check if anything changed
-                if current_set != previous_state {
-                    println!("Container state changed, sending to backend...");
-
-                    if let Err(e) = send_to_backend(&controller_url, &current_states).await {
-                        eprintln!("Failed to send to backend: {}", e);
-                    } else {
-                        println!(
-                            "Successfully sent {} containers to backend",
-                            current_states.len()
-                        );
-                    }
-
-                    previous_state = current_set;
+                // // Check if anything changed
+                // if current_set != previous_state {
+                //     println!("Container state changed, sending to backend...");
+                //
+                if let Err(e) = send_to_backend(&controller_url, &current_states).await {
+                    eprintln!("Failed to send to backend: {}", e);
                 } else {
-                    println!("No changes detected");
+                    println!(
+                        "Successfully sent {} containers to backend",
+                        current_states.len()
+                    );
                 }
+
+                    // previous_state = current_set;
+                // } else {
+                //     println!("No changes detected");
+                // }
             }
             Err(e) => eprintln!("Error fetching container info: {}", e),
         }

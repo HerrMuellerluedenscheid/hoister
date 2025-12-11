@@ -21,17 +21,17 @@ use sqlx::Type;
 use tokio::sync::{broadcast, RwLock};
 use ts_rs::TS;
 
+
 #[derive(Clone)]
 pub struct AppState {
-    container_state: Arc<RwLock<Option<ContainerInspectResponse>>>,
+    container_state: Arc<RwLock<Option<Vec<ContainerInspectResponse>>>>,
     pub(crate) database: Arc<Database>,
     pub(crate) api_secret: Option<String>,
     pub(crate) event_tx: broadcast::Sender<ControllerEvent>,
 }
 
-#[derive(TS)]
+#[derive(TS, Deserialize, Debug, Clone, Serialize, Type)]
 #[ts(export)]
-#[derive(Deserialize, Debug, Clone, Serialize, Type)]
 #[repr(u8)]
 pub enum DeploymentStatus {
     Pending = 0,
@@ -171,9 +171,9 @@ async fn create_deployment(
 
 async fn post_container_state(
     State(state): State<AppState>,
-    Json(payload): Json<ContainerInspectResponse>,
+    Json(payload): Json<Vec<ContainerInspectResponse>>,
 ) -> impl IntoResponse {
-    info!("Received container state update");
+    info!("Received container state update: {:?}", payload);
     *state.container_state.write().await = Some(payload);
     StatusCode::OK.into_response()
 }
@@ -185,7 +185,11 @@ async fn get_container_state(
     info!("Received request for container state");
     let container_state = state.container_state.read().await;
     match container_state.as_ref() {
-        Some(cs) => Json(cs.clone()).into_response(),
+        Some(cs) => {
+            info!("Sending container state: {:?}", cs);
+            // Json(ApiResponse::success(cs.clone())).into_response()
+            StatusCode::OK.into_response()
+        },
         None => StatusCode::NOT_FOUND.into_response()
     }
 }
