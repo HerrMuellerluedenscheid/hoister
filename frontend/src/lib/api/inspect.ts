@@ -15,10 +15,11 @@ export async function getInspections() {
     if (!response.ok) {
         throw error(response.status, 'Failed to load container state from backend');
     }
-    const result = await response.json() as [any];
-    console.info(JSON.stringify(result[0], null, 2));
+    const result = await response.json();
+    const inspections = result.data["container_inspections"];
+
     return {
-        inspections: result,
+        inspections: inspections,
         error: null
     };
 }

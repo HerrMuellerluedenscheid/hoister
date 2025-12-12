@@ -3,7 +3,7 @@
     import * as Card from "$lib/components/ui/card/index.js";
     import {onDestroy, onMount} from "svelte";
 
-    type Inspection = {
+    type InspectionType = {
         Id: string;
         State: {
             Status: string;
@@ -18,7 +18,7 @@
         };
     };
 
-    let { inspection }: { inspection: Inspection } = $props();
+    let { inspection }: { inspection: InspectionType } = $props();
 
     let uptime = $state(getUptime(inspection.State.StartedAt));
     let interval: number;

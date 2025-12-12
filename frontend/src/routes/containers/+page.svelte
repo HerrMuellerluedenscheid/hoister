@@ -1,11 +1,9 @@
 <script lang="ts">
-    import type { PageData } from './$types';
     import InspectionCard from "$lib/components/InspectionCard.svelte";
 
     let { data }: { data: PageData } = $props();
 
 </script>
-
 <div class="max-w-4xl mx-auto p-6">
     <h1 class="text-2xl font-bold mb-6 text-gray-900">Inspections</h1>
 

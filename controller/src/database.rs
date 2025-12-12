@@ -14,9 +14,8 @@ pub enum DbError {
     Database(#[from] sqlx::Error),
 }
 
-#[derive(TS)]
+#[derive(FromRow, Debug, Clone, Serialize, TS)]
 #[ts(export)]
-#[derive(FromRow, Debug, Clone, Serialize)]
 pub struct Deployment {
     pub id: i64,
     pub digest: Digest,

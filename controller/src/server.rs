@@ -173,11 +173,15 @@ async fn post_container_state(
     State(state): State<AppState>,
     Json(payload): Json<Vec<ContainerInspectResponse>>,
 ) -> impl IntoResponse {
-    info!("Received container state update: {:?}", payload);
+    info!("Received container state update");
     *state.container_state.write().await = Some(payload);
     StatusCode::OK.into_response()
 }
 
+#[derive(Serialize)]
+struct ContainerStateResponse {
+    container_inspections: Vec<ContainerInspectResponse>
+}
 
 async fn get_container_state(
     State(state): State<AppState>,
@@ -186,9 +190,10 @@ async fn get_container_state(
     let container_state = state.container_state.read().await;
     match container_state.as_ref() {
         Some(cs) => {
-            info!("Sending container state: {:?}", cs);
-            // Json(ApiResponse::success(cs.clone())).into_response()
-            StatusCode::OK.into_response()
+            info!("{:?}", cs);
+            let response = ContainerStateResponse{container_inspections: cs.clone()};
+            Json(ApiResponse::success(response)).into_response()
+            // StatusCode::OK.into_response()
         },
         None => StatusCode::NOT_FOUND.into_response()
     }
