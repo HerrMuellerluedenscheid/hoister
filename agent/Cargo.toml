@@ -22,3 +22,4 @@ libc = "0.2.172"
 chatterbox = "2.0.2"
 reqwest = { version = "0.12.23", default-features = false, features = ["rustls-tls-webpki-roots", "json", "stream"] }
 tokio-stream = "0.1.17"
+chrono = "0.4.41"
