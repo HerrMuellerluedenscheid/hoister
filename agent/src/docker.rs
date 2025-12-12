@@ -2,23 +2,22 @@ use crate::HoisterError;
 use crate::HoisterError::UpdateFailed;
 use crate::notifications::DeploymentResultHandler;
 use bollard::Docker;
-use bollard::models::{
-    ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary,
-    HealthStatusEnum,
-};
+use bollard::models::{ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary, HealthStatusEnum, Mount, MountPointTypeEnum, MountTypeEnum};
 use bollard::query_parameters::{
     CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions,
     RemoveContainerOptions, RenameContainerOptions, StartContainerOptions,
     StopContainerOptionsBuilder,
 };
-use futures_util::StreamExt;
+use bollard::volume::CreateVolumeOptions;
+use futures_util::{StreamExt, TryStreamExt};
 use log::{debug, error, info, trace, warn};
 use std::collections::HashMap;
 use std::error::Error;
 use std::time::Duration;
 
 pub(crate) type ContainerID = String;
-pub(crate) type ContainerIdentifier = String; // used to identify the image across hoister services
+pub(crate) type ContainerIdentifier = String;
+pub(crate) type VolumeName = String;
 
 const REMOVE_OPTIONS: RemoveContainerOptions = RemoveContainerOptions {
     v: false,
@@ -29,6 +28,11 @@ const REMOVE_OPTIONS: RemoveContainerOptions = RemoveContainerOptions {
 pub(crate) struct DockerHandler {
     docker: Docker,
     deployment_handler: DeploymentResultHandler,
+}
+
+struct VolumeBackup {
+    original_name: VolumeName,
+    backup_name: VolumeName,
 }
 
 impl DockerHandler {
@@ -52,7 +56,6 @@ impl DockerHandler {
 
         let container_config = container_details.clone().config.unwrap();
 
-        // if hoister.identifier is set use that as the identifier
         let identifier = container_config
             .labels
             .unwrap_or_default()
@@ -72,17 +75,163 @@ impl DockerHandler {
             container_details.name.unwrap_or("unknown".to_string()),
         ]);
 
-        // debug!("repo digests: {:?}", repo_digests);
-        // debug!("repo digests: {:?}", container_config.image.clone().unwrap().clone());
         let image_identifier = match repo_digests.first() {
             Some(repo_digest) => repo_digest.clone(),
-            None => {
-                // There is no repo digest, if the image was not pulled from a registry
-                container_config.image.unwrap().clone()
-            }
+            None => container_config.image.unwrap().clone(),
         };
         debug!("image identifier: {image_identifier}");
         Ok(image_identifier)
+    }
+
+    /// Backup volumes by creating copies
+    async fn backup_volumes(
+        &self,
+        container_details: &ContainerInspectResponse,
+    ) -> Result<Vec<VolumeBackup>, HoisterError> {
+        let mounts = container_details
+            .mounts
+            .as_ref()
+            .unwrap_or(&vec![])
+            .clone();
+
+        let mut backups = Vec::new();
+
+        for mount in mounts {
+            // Only backup named volumes (not bind mounts)
+            if mount.typ != Some(MountPointTypeEnum::VOLUME) {
+                continue;
+            }
+
+            let volume_name = match &mount.name {
+                Some(name) => name.clone(),
+                None => continue,
+            };
+
+            let backup_name = format!("{}-backup-{}", volume_name, chrono::Utc::now().timestamp());
+            info!("Creating volume backup: {} -> {}", volume_name, backup_name);
+
+            // Create backup volume
+            let create_options = CreateVolumeOptions {
+                name: backup_name.clone(),
+                driver: mount.driver.clone().unwrap_or("local".to_string()),
+                driver_opts: HashMap::new(),
+                labels: HashMap::new(),
+            };
+
+            self.docker.create_volume(create_options).await?;
+
+            // Copy data from original to backup using a temporary container
+            self.copy_volume_data(&volume_name, &backup_name).await?;
+
+            backups.push(VolumeBackup {
+                original_name: volume_name,
+                backup_name: backup_name.clone(),
+            });
+
+            info!("Volume backup created: {}", backup_name);
+        }
+
+        Ok(backups)
+    }
+
+    /// Copy data between volumes using a temporary container
+    async fn copy_volume_data(
+        &self,
+        source_volume: &str,
+        dest_volume: &str,
+    ) -> Result<(), HoisterError> {
+        debug!("Copying volume data: {} -> {}", source_volume, dest_volume);
+
+        // Create a temporary container to copy data
+        let config = ContainerCreateBody {
+            image: Some("alpine:latest".to_string()),
+            cmd: Some(vec![
+                "sh".to_string(),
+                "-c".to_string(),
+                "cp -a /source/. /dest/".to_string(),
+            ]),
+            host_config: Some(bollard::models::HostConfig {
+                binds: Some(vec![
+                    format!("{}:/source:ro", source_volume),
+                    format!("{}:/dest", dest_volume),
+                ]),
+                auto_remove: Some(true),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let temp_container = self
+            .docker
+            .create_container(None::<CreateContainerOptions>, config)
+            .await?;
+
+        // Start and wait for completion
+        self.docker
+            .start_container(&temp_container.id, None::<StartContainerOptions>)
+            .await?;
+
+        // Wait for container to finish
+        self.docker
+            .wait_container(&temp_container.id, None::<bollard::container::WaitContainerOptions<String>>)
+            .try_collect::<Vec<_>>()
+            .await?;
+
+        debug!("Volume copy completed");
+        Ok(())
+    }
+
+    /// Remove volume backups
+    async fn remove_volume_backups(
+        &self,
+        backups: &[VolumeBackup],
+    ) -> Result<(), HoisterError> {
+        for backup in backups {
+            info!("Removing backup volume: {}", backup.backup_name);
+            if let Err(e) = self.docker.remove_volume(&backup.backup_name, None).await {
+                warn!("Failed to remove backup volume {}: {}", backup.backup_name, e);
+            }
+        }
+        Ok(())
+    }
+
+    /// Restore volumes from backups
+    async fn restore_volumes_from_backup(
+        &self,
+        backups: &[VolumeBackup],
+    ) -> Result<(), HoisterError> {
+        for backup in backups {
+            info!(
+                "Restoring volume from backup: {} <- {}",
+                backup.original_name, backup.backup_name
+            );
+
+            // Remove the failed volume
+            if let Err(e) = self.docker.remove_volume(&backup.original_name, None).await {
+                warn!("Failed to remove volume {}: {}", backup.original_name, e);
+            }
+
+            // Rename backup to original name
+            // Note: Docker doesn't have a rename volume command, so we need to:
+            // 1. Create new volume with original name
+            // 2. Copy data from backup to new volume
+            // 3. Remove backup
+
+            let create_options = CreateVolumeOptions {
+                name: backup.original_name.clone(),
+                driver: "local".to_string(),
+                driver_opts: HashMap::new(),
+                labels: HashMap::new(),
+            };
+            self.docker.create_volume(create_options).await?;
+
+            self.copy_volume_data(&backup.backup_name, &backup.original_name)
+                .await?;
+            self.docker.remove_volume(&backup.backup_name, None).await?;
+
+            info!("Volume restored: {}", backup.original_name);
+        }
+        Ok(())
     }
 
     pub(crate) async fn update_container(
@@ -110,10 +259,26 @@ impl DockerHandler {
 
         info!("Checking for updates: {image_name}:{image_tag}");
 
+        // Check if volume backup is enabled via label
+        let enable_volume_backup = container_details
+            .config
+            .as_ref()
+            .and_then(|c| c.labels.as_ref())
+            .and_then(|l| l.get("hoister.backup-volumes"))
+            .map(|v| v == "true")
+            .unwrap_or(false);
+
         let digest = download_image(&self.docker, &image_name, &image_tag).await?;
         debug!("Image pulled successfully (digest: {digest})");
-        let new_image_name = image_name.clone() + "@" + &digest;
-        debug!("new image name: {new_image_name}");
+
+        // Backup volumes if enabled
+        let volume_backups = if enable_volume_backup {
+            info!("Volume backup enabled, creating backups...");
+            self.backup_volumes(&container_details).await?
+        } else {
+            vec![]
+        };
+
         info!("Stopping container {:?}...", &container_id);
         let options_stop_container = StopContainerOptionsBuilder::new().t(30).build();
         self.docker
@@ -157,6 +322,12 @@ impl DockerHandler {
                 )
                 .await?;
 
+            // Restore volumes from backup if they were backed up
+            if !volume_backups.is_empty() {
+                info!("Restoring volumes from backup...");
+                self.restore_volumes_from_backup(&volume_backups).await?;
+            }
+
             let rename_back_options = RenameContainerOptions {
                 name: container_id.clone(),
             };
@@ -174,8 +345,15 @@ impl DockerHandler {
         } else {
             debug!("Container updated successfully. deleting old container");
             self.docker
-                .remove_container(container_id, Some(REMOVE_OPTIONS))
+                .remove_container(&backup_name, Some(REMOVE_OPTIONS))
                 .await?;
+
+            // Remove volume backups if update was successful
+            if !volume_backups.is_empty() {
+                info!("Update successful, removing volume backups...");
+                self.remove_volume_backups(&volume_backups).await?;
+            }
+
             info!("Container updated successfully. backup container removed");
             self.deployment_handler
                 .inform_update_success(image_identifier, container)
@@ -220,8 +398,6 @@ async fn create_container(
 
     if let Some(last_config) = container_details.config {
         config.env = last_config.env;
-        // config.cmd = last_config.cmd;
-        // config.entrypoint = last_config.entrypoint;
         config.labels = last_config.labels;
         config.exposed_ports = last_config.exposed_ports;
         config.image = last_config.image;

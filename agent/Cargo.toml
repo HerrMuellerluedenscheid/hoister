@@ -24,3 +24,4 @@ reqwest = { version = "0.12.23", default-features = false, features = ["rustls-t
 tokio-stream = "0.1.17"
 lazy_static = "1.5.0"
 serde = { version = "1.0.228", features = ["derive"] }
+chrono = "0.4.41"
