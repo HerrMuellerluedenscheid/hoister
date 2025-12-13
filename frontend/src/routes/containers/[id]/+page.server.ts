@@ -1,14 +1,12 @@
-import type {PageServerLoad} from './$types';
-import {error} from "@sveltejs/kit";
-
 
 import {getDeployments} from "$lib/api/deployments";
+import type {PageServerLoad} from "../../../../.svelte-kit/types/src/routes/$types";
+import {getInspections} from "$lib/api/inspect";
 
-export const load: PageServerLoad = async ({ fetch }) => {
-
-
+export const load: PageServerLoad = async ({ params }) => {
+    const id = params.id;
     try {
-        return await getDeployments();
+        return await getInspections(id);
     } catch (err) {
         console.error('Failed to load deployments:', err);
 

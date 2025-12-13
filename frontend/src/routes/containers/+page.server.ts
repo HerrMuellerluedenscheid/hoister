@@ -1,21 +1,14 @@
 import type {PageServerLoad} from './$types';
-import {error} from "@sveltejs/kit";
+import {getInspections} from "$lib/api/inspect";
 
 
-import {getDeployments} from "$lib/api/deployments";
 
 export const load: PageServerLoad = async ({ fetch }) => {
 
-
     try {
-        return await getDeployments();
+        return await getInspections()
     } catch (err) {
         console.error('Failed to load deployments:', err);
-
-        // If it's already a SvelteKit error, re-throw it
-        if (err && typeof err === 'object' && 'status' in err) {
-            throw err;
-        }
 
         // Otherwise, return empty data with error message
         return {
