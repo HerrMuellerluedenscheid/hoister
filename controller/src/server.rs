@@ -183,6 +183,23 @@ struct ContainerStateResponse {
     container_inspections: Vec<ContainerInspectResponse>
 }
 
+async fn get_container_state_by_id(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    info!("Received request for container state");
+    let container_state = state.container_state.read().await;
+    match container_state.as_ref() {
+        Some(cs) => {
+            let cs = cs.clone();
+            let container_inspections = cs.iter().filter(|x| {x.id == Some(id.clone())}).cloned().collect::<Vec<ContainerInspectResponse>>();
+            let response = ContainerStateResponse{container_inspections};
+            Json(ApiResponse::success(response)).into_response()
+        },
+        None => StatusCode::NOT_FOUND.into_response()
+    }
+}
+
 async fn get_container_state(
     State(state): State<AppState>,
 ) -> impl IntoResponse {
@@ -190,10 +207,8 @@ async fn get_container_state(
     let container_state = state.container_state.read().await;
     match container_state.as_ref() {
         Some(cs) => {
-            info!("{:?}", cs);
             let response = ContainerStateResponse{container_inspections: cs.clone()};
             Json(ApiResponse::success(response)).into_response()
-            // StatusCode::OK.into_response()
         },
         None => StatusCode::NOT_FOUND.into_response()
     }
@@ -217,6 +232,7 @@ pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> 
         .route("/deployments/{id}", get(get_deployment))
         .route("/container/state", post(post_container_state))
         .route("/container/state", get(get_container_state))
+        .route("/container/state/{id}", get(get_container_state_by_id))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,

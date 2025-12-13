@@ -18,7 +18,8 @@
 	"devDependencies": {
 		"@eslint/compat": "^1.4.0",
 		"@eslint/js": "^9.36.0",
-		"@lucide/svelte": "^0.560.0",
+		"@internationalized/date": "^3.10.0",
+		"@lucide/svelte": "^0.544.0",
 		"@sveltejs/adapter-auto": "^6.1.0",
 		"@sveltejs/adapter-node": "^5.3.3",
 		"@sveltejs/kit": "^2.43.2",
@@ -26,6 +27,7 @@
 		"@tailwindcss/vite": "^4.1.13",
 		"@types/node": "^22",
 		"@vitest/browser": "^3.2.4",
+		"bits-ui": "^2.14.4",
 		"clsx": "^2.1.1",
 		"eslint": "^9.36.0",
 		"eslint-config-prettier": "^10.1.8",

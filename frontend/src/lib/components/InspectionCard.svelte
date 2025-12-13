@@ -56,6 +56,8 @@
 
 </script>
 
+<a href="/containers/{inspection.Id}" class="block">
+
 <Card.Root class="shadow-sm hover:shadow-md transition-shadow">
     <Card.Header>
         <Card.Title class="flex justify-between items-center">{inspection.Config.Image}
@@ -82,3 +84,4 @@
     </Card.Footer>
 </Card.Root>
 
+</a>

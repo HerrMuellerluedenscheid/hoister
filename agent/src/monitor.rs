@@ -35,14 +35,10 @@ impl From<&ContainerInspectResponse> for ContainerState {
 async fn fetch_container_info(
     docker: &Docker,
 ) -> Result<Vec<ContainerInspectResponse>, bollard::errors::Error> {
-    let mut list_container_filters = HashMap::new();
-    list_container_filters.insert(String::from("status"), vec![String::from("running")]);
-
     let containers = docker
         .list_containers(Some(
             bollard::query_parameters::ListContainersOptionsBuilder::default()
                 .all(true)
-                .filters(&list_container_filters)
                 .build(),
         ))
         .await?;
@@ -86,20 +82,13 @@ async fn send_to_backend(controller_url: &str, states: &[ContainerInspectRespons
 pub(crate) async fn start(controller_url: String) -> Result<(), Box<dyn std::error::Error + 'static>> {
     info!("Starting monitor");
     let docker = Docker::connect_with_socket_defaults()?;
-    let mut interval = time::interval(Duration::from_secs(10));
-    let mut previous_state: HashSet<ContainerInspectResponse> = HashSet::new();
+    let mut interval = time::interval(Duration::from_secs(5));
 
     loop {
         interval.tick().await;
 
         match fetch_container_info(&docker).await {
             Ok(current_states) => {
-                // let current_set: HashSet<ContainerInspectResponse> = current_states.iter().cloned().collect();
-
-                // // Check if anything changed
-                // if current_set != previous_state {
-                //     println!("Container state changed, sending to backend...");
-                //
                 if let Err(e) = send_to_backend(&controller_url, &current_states).await {
                     eprintln!("Failed to send to backend: {}", e);
                 } else {
@@ -108,11 +97,6 @@ pub(crate) async fn start(controller_url: String) -> Result<(), Box<dyn std::err
                         current_states.len()
                     );
                 }
-
-                    // previous_state = current_set;
-                // } else {
-                //     println!("No changes detected");
-                // }
             }
             Err(e) => eprintln!("Error fetching container info: {}", e),
         }

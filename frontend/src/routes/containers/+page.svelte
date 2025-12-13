@@ -4,10 +4,8 @@
     let { data }: { data: PageData } = $props();
 
 </script>
-<div class="max-w-4xl mx-auto p-6">
-    <h1 class="text-2xl font-bold mb-6 text-gray-900">Inspections</h1>
-
-    <div class="columns-2 gap-4 space-y-4">
+<div class="max-w-7xl mx-auto p-6">
+    <div class="grid grid-cols-[repeat(auto-fit,minmax(350px,1fr))] gap-4">
         {#each data.inspections as inspection}
             <InspectionCard {inspection} />
         {/each}
