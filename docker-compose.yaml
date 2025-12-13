@@ -17,8 +17,6 @@ services:
     build:
       context: .
       dockerfile: controller/Dockerfile
-    ports:
-      - "3033:3033"
 
   hoister-frontend:
     image: emrius11/hoister-frontend:latest

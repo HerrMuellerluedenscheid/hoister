@@ -15,10 +15,15 @@
         };
         Config: {
             Image: string;
+            Hostname: string,
+            User: string,
+            Labels: Record<string, string>;
         };
     };
 
     let { inspection }: { inspection: InspectionType } = $props();
+
+    let hoisterEnabled = inspection.Config.Labels?.["hoister.enable"] === "true";
 
     let uptime = $state(getUptime(inspection.State.StartedAt));
     let interval: number;
@@ -58,7 +63,7 @@
 
 <a href="/containers/{inspection.Id}" class="block">
 
-<Card.Root class="shadow-sm hover:shadow-md transition-shadow">
+<Card.Root class="shadow-sm hover:shadow-md transition-shadow min-h-50">
     <Card.Header>
         <Card.Title class="flex justify-between items-center">{inspection.Config.Image}
             <span class="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 capitalize
@@ -80,7 +85,9 @@
         </h3>
     </Card.Content>
     <Card.Footer>
-        <p>Card Footer</p>
+        {#if (hoisterEnabled) }
+            <span class="text-xs text-green-700 px-3 py-1 rounded-full border border-green-500">Hoister enabled</span>
+        {/if}
     </Card.Footer>
 </Card.Root>
 

@@ -187,7 +187,7 @@ async fn get_container_state_by_id(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    info!("Received request for container state");
+    info!("Received request for container state by id");
     let container_state = state.container_state.read().await;
     match container_state.as_ref() {
         Some(cs) => {
@@ -210,7 +210,10 @@ async fn get_container_state(
             let response = ContainerStateResponse{container_inspections: cs.clone()};
             Json(ApiResponse::success(response)).into_response()
         },
-        None => StatusCode::NOT_FOUND.into_response()
+        None => {
+            info!("No container state received, yet");
+            Json(ApiResponse::success(ContainerStateResponse{container_inspections: vec![]})).into_response()
+        }
     }
 }
 

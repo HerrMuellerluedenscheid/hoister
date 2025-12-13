@@ -16,10 +16,10 @@ export async function getInspections(id: string | null = null) {
     } else {
         response = await fetch(`${BACKEND_URL}/container/state`);
     }
-
     if (!response.ok) {
         throw error(response.status, 'Failed to load container state from backend');
     }
+
     const result = await response.json();
     const inspections = result.data["container_inspections"];
     return {
