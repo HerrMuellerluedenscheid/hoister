@@ -3,11 +3,7 @@ use crate::HoisterError::UpdateFailed;
 use crate::notifications::DeploymentResultHandler;
 use bollard::Docker;
 use bollard::models::{ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary, HealthStatusEnum, Mount, MountPointTypeEnum, MountTypeEnum};
-use bollard::query_parameters::{
-    CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions,
-    RemoveContainerOptions, RenameContainerOptions, StartContainerOptions,
-    StopContainerOptionsBuilder,
-};
+use bollard::query_parameters::{CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions, RemoveContainerOptions, RemoveVolumeOptions, RenameContainerOptions, StartContainerOptions, StopContainerOptionsBuilder};
 use bollard::volume::CreateVolumeOptions;
 use futures_util::{StreamExt, TryStreamExt};
 use log::{debug, error, info, trace, warn};
@@ -143,6 +139,8 @@ impl DockerHandler {
         debug!("Copying volume data: {} -> {}", source_volume, dest_volume);
 
         // Create a temporary container to copy data
+        // We are using the `alpine:latest` image if hoister is running on the host system.
+        // Otherwise we mount both volumes and copy the data using the `cp` command.
         let config = ContainerCreateBody {
             image: Some("alpine:latest".to_string()),
             cmd: Some(vec![
@@ -188,7 +186,7 @@ impl DockerHandler {
     ) -> Result<(), HoisterError> {
         for backup in backups {
             info!("Removing backup volume: {}", backup.backup_name);
-            if let Err(e) = self.docker.remove_volume(&backup.backup_name, None).await {
+            if let Err(e) = self.docker.remove_volume(&backup.backup_name, Some(RemoveVolumeOptions{force: false})).await {
                 warn!("Failed to remove backup volume {}: {}", backup.backup_name, e);
             }
         }
@@ -207,7 +205,7 @@ impl DockerHandler {
             );
 
             // Remove the failed volume
-            if let Err(e) = self.docker.remove_volume(&backup.original_name, None).await {
+            if let Err(e) = self.docker.remove_volume(&backup.original_name, Some(RemoveVolumeOptions{force: false})).await {
                 warn!("Failed to remove volume {}: {}", backup.original_name, e);
             }
 
@@ -227,7 +225,7 @@ impl DockerHandler {
 
             self.copy_volume_data(&backup.backup_name, &backup.original_name)
                 .await?;
-            self.docker.remove_volume(&backup.backup_name, None).await?;
+            self.docker.remove_volume(&backup.backup_name, Some(RemoveVolumeOptions{force: false})).await?;
 
             info!("Volume restored: {}", backup.original_name);
         }
