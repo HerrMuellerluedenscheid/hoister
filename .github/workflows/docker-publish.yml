@@ -1,9 +1,10 @@
-# .github/workflows/build-all.yml
 name: Build All Services
 
 on:
   push:
     branches: [ "main" ]
+    tags:
+      - 'v*.*.*'
 
 permissions:
   contents: read
