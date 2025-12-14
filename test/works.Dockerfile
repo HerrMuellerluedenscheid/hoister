@@ -1,7 +1,8 @@
 FROM alpine:latest
 LABEL version="2"
 LABEL version="should-work"
+VOLUME "/data"
 
-RUN date +%Y%m%d > /build-timestamp
+RUN date +%Y%m%d%H%M%S > /build-timestamp
 
-ENTRYPOINT ["top", "-b"]
+ENTRYPOINT ["sh", "-c", "date +%Y%m%d%H%M%S >> /data/timestamps.txt; top -b"]
