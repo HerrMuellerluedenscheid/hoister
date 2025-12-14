@@ -34,3 +34,9 @@ services:
       dockerfile: test/works.Dockerfile
     labels:
       - "hoister.enable=true"
+      - "hoister.backup-volumes=true"
+    volumes:
+      - "example-volume:/data"
+
+volumes:
+  example-volume:

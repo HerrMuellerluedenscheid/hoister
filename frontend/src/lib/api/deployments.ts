@@ -22,7 +22,6 @@ export async function getDeployments() {
     if (!response.ok) {
         throw error(response.status, 'Failed to load data from backend');
     }
-    console.log('retrieved deployments:', response);
 
     const result = await response.json() as DeploymentsResponse;
     if (!result.success || result.error) {
