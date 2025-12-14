@@ -1,6 +1,6 @@
 use bollard::Docker;
 use bollard::models::ContainerInspectResponse;
-use log::info;
+use log::{debug, error, info};
 use std::time::Duration;
 use tokio::time;
 
@@ -27,7 +27,7 @@ async fn fetch_container_info(
                 .await
             {
                 Ok(inspect) => states.push(inspect),
-                Err(e) => eprintln!("Error inspecting container {}: {}", id, e),
+                Err(e) => error!("Error inspecting container {}: {}", id, e),
             }
         }
     }
@@ -46,7 +46,6 @@ async fn send_to_backend(controller_url: &str, states: &[ContainerInspectRespons
         .json(&serde_json::json!(states))
         .send()
         .await?;
-    info!("done Sending to backend: {}", url);
 
     Ok(())
 }
@@ -62,15 +61,15 @@ pub(crate) async fn start(controller_url: String) -> Result<(), Box<dyn std::err
         match fetch_container_info(&docker).await {
             Ok(current_states) => {
                 if let Err(e) = send_to_backend(&controller_url, &current_states).await {
-                    eprintln!("Failed to send to backend: {}", e);
+                    error!("Failed to send to backend: {}", e);
                 } else {
-                    println!(
+                    debug!(
                         "Successfully sent {} containers to backend",
                         current_states.len()
                     );
                 }
             }
-            Err(e) => eprintln!("Error fetching container info: {}", e),
+            Err(e) => error!("Error fetching container info: {}", e),
         }
     }
 }

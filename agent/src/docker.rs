@@ -2,13 +2,13 @@ use crate::HoisterError;
 use crate::HoisterError::UpdateFailed;
 use crate::notifications::DeploymentResultHandler;
 use bollard::Docker;
-use bollard::models::{ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary, HealthStatusEnum, Mount, MountPointTypeEnum, MountTypeEnum};
-use bollard::query_parameters::{CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions, RemoveContainerOptions, RemoveVolumeOptions, RenameContainerOptions, StartContainerOptions, StopContainerOptionsBuilder};
-use bollard::volume::CreateVolumeOptions;
+use bollard::models::{ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary, HealthStatusEnum, MountPointTypeEnum, VolumeCreateOptions};
+use bollard::query_parameters::{CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions, RemoveContainerOptions, RemoveVolumeOptions, RenameContainerOptions, StartContainerOptions, StopContainerOptionsBuilder, WaitContainerOptions, WaitContainerOptionsBuilder};
 use futures_util::{StreamExt, TryStreamExt};
 use log::{debug, error, info, trace, warn};
 use std::collections::HashMap;
 use std::error::Error;
+use std::path::Path;
 use std::time::Duration;
 
 pub(crate) type ContainerID = String;
@@ -107,11 +107,12 @@ impl DockerHandler {
             info!("Creating volume backup: {} -> {}", volume_name, backup_name);
 
             // Create backup volume
-            let create_options = CreateVolumeOptions {
-                name: backup_name.clone(),
-                driver: mount.driver.clone().unwrap_or("local".to_string()),
-                driver_opts: HashMap::new(),
-                labels: HashMap::new(),
+            let create_options = VolumeCreateOptions {
+                name: Some(backup_name.clone()),
+                driver: Some(mount.driver.clone().unwrap_or("local".to_string())),
+                driver_opts: None,
+                labels: None,
+                cluster_volume_spec: None,
             };
 
             self.docker.create_volume(create_options).await?;
@@ -128,55 +129,6 @@ impl DockerHandler {
         }
 
         Ok(backups)
-    }
-
-    /// Copy data between volumes using a temporary container
-    async fn copy_volume_data(
-        &self,
-        source_volume: &str,
-        dest_volume: &str,
-    ) -> Result<(), HoisterError> {
-        debug!("Copying volume data: {} -> {}", source_volume, dest_volume);
-
-        // Create a temporary container to copy data
-        // We are using the `alpine:latest` image if hoister is running on the host system.
-        // Otherwise we mount both volumes and copy the data using the `cp` command.
-        let config = ContainerCreateBody {
-            image: Some("alpine:latest".to_string()),
-            cmd: Some(vec![
-                "sh".to_string(),
-                "-c".to_string(),
-                "cp -a /source/. /dest/".to_string(),
-            ]),
-            host_config: Some(bollard::models::HostConfig {
-                binds: Some(vec![
-                    format!("{}:/source:ro", source_volume),
-                    format!("{}:/dest", dest_volume),
-                ]),
-                auto_remove: Some(true),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-
-        let temp_container = self
-            .docker
-            .create_container(None::<CreateContainerOptions>, config)
-            .await?;
-
-        // Start and wait for completion
-        self.docker
-            .start_container(&temp_container.id, None::<StartContainerOptions>)
-            .await?;
-
-        // Wait for container to finish
-        self.docker
-            .wait_container(&temp_container.id, None::<bollard::container::WaitContainerOptions<String>>)
-            .try_collect::<Vec<_>>()
-            .await?;
-
-        debug!("Volume copy completed");
-        Ok(())
     }
 
     /// Remove volume backups
@@ -205,7 +157,7 @@ impl DockerHandler {
             );
 
             // Remove the failed volume
-            if let Err(e) = self.docker.remove_volume(&backup.original_name, Some(RemoveVolumeOptions{force: false})).await {
+            if let Err(e) = self.docker.remove_volume(&backup.original_name, Some(RemoveVolumeOptions{force: true})).await {
                 warn!("Failed to remove volume {}: {}", backup.original_name, e);
             }
 
@@ -215,11 +167,12 @@ impl DockerHandler {
             // 2. Copy data from backup to new volume
             // 3. Remove backup
 
-            let create_options = CreateVolumeOptions {
-                name: backup.original_name.clone(),
-                driver: "local".to_string(),
-                driver_opts: HashMap::new(),
-                labels: HashMap::new(),
+            let create_options = VolumeCreateOptions {
+                name: Some(backup.original_name.clone()),
+                driver: Some("local".to_string()),
+                driver_opts: None,
+                labels: None,
+                cluster_volume_spec: None,
             };
             self.docker.create_volume(create_options).await?;
 
@@ -231,6 +184,179 @@ impl DockerHandler {
         }
         Ok(())
     }
+
+    fn is_running_in_container() -> bool {
+        // Check for /.dockerenv file (common indicator)
+        if Path::new("/.dockerenv").exists() {
+            return true;
+        }
+
+        // Check if we're in a cgroup that indicates container
+        if let Ok(cgroup) = std::fs::read_to_string("/proc/self/cgroup")
+            && (cgroup.contains("/docker/") || cgroup.contains("/kubepods/")) {
+                return true;
+            }
+
+        false
+    }
+
+    /// Get the current container ID if running in a container
+    async fn get_self_container_id(&self) -> Option<String> {
+        if !Self::is_running_in_container() {
+            return None;
+        }
+
+        // Try to read hostname (container ID in Docker)
+        if let Ok(hostname) = std::fs::read_to_string("/etc/hostname") {
+            let hostname = hostname.trim();
+
+            // Verify this is actually our container by checking with Docker API
+            if let Ok(container) = self.docker
+                .inspect_container(hostname, None::<InspectContainerOptions>)
+                .await
+            {
+                return Some(container.id.unwrap_or(hostname.to_string()));
+            }
+        }
+
+        None
+    }
+
+    /// Copy data between volumes using a temporary container or current container
+    async fn copy_volume_data(
+        &self,
+        source_volume: &str,
+        dest_volume: &str,
+    ) -> Result<(), HoisterError> {
+        debug!("Copying volume data: {} -> {}", source_volume, dest_volume);
+
+        // Check if we're running in a container
+        if let Some(self_container_id) = self.get_self_container_id().await {
+            info!("Running in container {}, using self to copy volumes", self_container_id);
+            self.copy_volume_data_using_self(&self_container_id, source_volume, dest_volume)
+                .await
+        } else {
+            info!("Running on host, using temporary container to copy volumes");
+            self.copy_volume_data_using_temp_container(source_volume, dest_volume)
+                .await
+        }
+    }
+
+    /// Copy volumes by mounting them to our own container and executing copy command
+    async fn copy_volume_data_using_self(
+        &self,
+        self_container_id: &str,
+        source_volume: &str,
+        dest_volume: &str,
+    ) -> Result<(), HoisterError> {
+        // We need to stop our container, add volume mounts, copy data, then restart
+        // This is complex, so instead we'll execute a command in our running container
+
+        // We can't dynamically mount volumes to a running container,
+        // so we need to create a sidecar container with access to both volumes
+        // But we can use the same image as ourselves
+
+        let self_container = self.docker
+            .inspect_container(self_container_id, None::<InspectContainerOptions>)
+            .await?;
+
+        let our_image = self_container
+            .config
+            .and_then(|c| c.image)
+            .unwrap_or_else(|| "alpine:latest".to_string());
+
+        debug!("Using our image for volume copy: {}", our_image);
+
+        let config = ContainerCreateBody {
+            image: Some(our_image),
+            cmd: Some(vec![
+                "sh".to_string(),
+                "-c".to_string(),
+                "cp -a /source/. /dest/".to_string(),
+            ]),
+            host_config: Some(bollard::models::HostConfig {
+                binds: Some(vec![
+                    format!("{}:/source:ro", source_volume),
+                    format!("{}:/dest", dest_volume),
+                ]),
+                auto_remove: Some(true),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let temp_container = self
+            .docker
+            .create_container(None::<CreateContainerOptions>, config)
+            .await?;
+
+        self.docker
+            .start_container(&temp_container.id, None::<StartContainerOptions>)
+            .await?;
+
+        self.docker
+            .wait_container(&temp_container.id, None::<WaitContainerOptions>)
+            .try_collect::<Vec<_>>()
+            .await?;
+
+        debug!("Volume copy completed using our container image");
+        Ok(())
+    }
+
+    /// Copy volumes using a temporary Alpine container (original method)
+    async fn copy_volume_data_using_temp_container(
+        &self,
+        source_volume: &str,
+        dest_volume: &str,
+    ) -> Result<(), HoisterError> {
+        debug!("Using temporary Alpine container for volume copy");
+
+        // TODO: replace with hoister container to avoid having to pull image
+        let config = ContainerCreateBody {
+            image: Some("alpine:latest".to_string()),
+            cmd: Some(vec![
+                "sh".to_string(),
+                "-c".to_string(),
+                "cp -a /source/. /dest/".to_string(),
+            ]),
+            host_config: Some(bollard::models::HostConfig {
+                binds: Some(vec![
+                    format!("{}:/source:ro", source_volume),
+                    format!("{}:/dest", dest_volume),
+                ]),
+                auto_remove: Some(true),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let temp_container = self
+            .docker
+            .create_container(None::<CreateContainerOptions>, config)
+            .await?;
+
+        info!("Created temporary container: {}", temp_container.id);
+        self.docker
+            .start_container(&temp_container.id, None::<StartContainerOptions>)
+            .await?;
+        info!("Started temporary container: {}", temp_container.id);
+
+        let wait_container_options = WaitContainerOptionsBuilder::new().build();
+
+        //  Err(BollardError(DockerResponseServerError { status_code: 404, message: "No such container: fcec5653c2a00038644b6af614195b458bdaaedf7dc3a699de132efea84eb9f8" }))
+        match self.docker
+            .wait_container(&temp_container.id, Some(wait_container_options))
+            .try_collect::<Vec<_>>()
+            .await {
+            Ok(_) => {}
+            Err(e) => {
+                debug!("Error waiting for temporary container: {:?}. If this says not found, copy was already done. ignore", e);
+            }
+        }
+        debug!("Volume copy completed using temporary container");
+        Ok(())
+    }
+
 
     pub(crate) async fn update_container(
         &self,

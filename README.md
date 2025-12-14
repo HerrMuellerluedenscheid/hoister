@@ -21,6 +21,9 @@ services:
       - "hoister.enable=true"         # <- Add this label to your service
 ```
 
+If you want hoister to also manage a containers' **named volumes** add `hoister.backup-volumes=true` as a label. On each
+container update, the volumes will be backed up and restored if an update fails.
+
 Then, **either** download the [latest release](https://github.com/HerrMuellerluedenscheid/hoister/releases) that matches your OS or
 add the Hoister container alongside your services:
 
