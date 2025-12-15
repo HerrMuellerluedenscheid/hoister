@@ -2,7 +2,7 @@ use crate::HoisterError;
 use crate::HoisterError::UpdateFailed;
 use crate::notifications::DeploymentResultHandler;
 use bollard::Docker;
-use bollard::models::{ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary, ContainerWaitResponse, HealthStatusEnum, MountPointTypeEnum, VolumeCreateOptions};
+use bollard::models::{ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary, HealthStatusEnum, MountPointTypeEnum, VolumeCreateOptions};
 use bollard::query_parameters::{CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions, RemoveContainerOptions, RemoveVolumeOptions, RenameContainerOptions, StartContainerOptions, StopContainerOptionsBuilder, WaitContainerOptions, WaitContainerOptionsBuilder};
 use futures_util::{StreamExt, TryStreamExt};
 use log::{debug, error, info, trace, warn};
@@ -303,13 +303,12 @@ impl DockerHandler {
 
         match wait_result {
             Ok(result) => {
-                if let Some(result) = result.first() {
-                    if result.status_code != 0 {
+                if let Some(result) = result.first()
+                    && result.status_code != 0 {
                         return Err(HoisterError::Docker(
-                            format!("Volume copy failed with status code: {:?}", result.status_code).into()
+                            format!("Volume copy failed with status code: {:?}", result.status_code)
                         ));
                     }
-                }
             }
             Err(e) => {
                 warn!("Error waiting for temporary container: {}. If this says not found, copy was already done. ignore", e);
