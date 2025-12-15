@@ -65,6 +65,8 @@ enum HoisterError {
     UpdateFailed(String),
     #[error(transparent)]
     BollardError(#[from] BollardError),
+    #[error("Docker failed: {0}")]
+    Docker(String),
 }
 
 struct SSEHandler {

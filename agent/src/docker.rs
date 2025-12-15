@@ -2,7 +2,7 @@ use crate::HoisterError;
 use crate::HoisterError::UpdateFailed;
 use crate::notifications::DeploymentResultHandler;
 use bollard::Docker;
-use bollard::models::{ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary, HealthStatusEnum, MountPointTypeEnum, VolumeCreateOptions};
+use bollard::models::{ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary, ContainerWaitResponse, HealthStatusEnum, MountPointTypeEnum, VolumeCreateOptions};
 use bollard::query_parameters::{CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions, RemoveContainerOptions, RemoveVolumeOptions, RenameContainerOptions, StartContainerOptions, StopContainerOptionsBuilder, WaitContainerOptions, WaitContainerOptionsBuilder};
 use futures_util::{StreamExt, TryStreamExt};
 use log::{debug, error, info, trace, warn};
@@ -16,8 +16,8 @@ pub(crate) type ContainerIdentifier = String;
 pub(crate) type VolumeName = String;
 
 const REMOVE_OPTIONS: RemoveContainerOptions = RemoveContainerOptions {
-    v: false,
-    force: false,
+    v: true,
+    force: true,
     link: false,
 };
 
@@ -138,7 +138,7 @@ impl DockerHandler {
     ) -> Result<(), HoisterError> {
         for backup in backups {
             info!("Removing backup volume: {}", backup.backup_name);
-            if let Err(e) = self.docker.remove_volume(&backup.backup_name, Some(RemoveVolumeOptions{force: false})).await {
+            if let Err(e) = self.docker.remove_volume(&backup.backup_name, Some(RemoveVolumeOptions{force: true})).await {
                 warn!("Failed to remove backup volume {}: {}", backup.backup_name, e);
             }
         }
@@ -178,7 +178,7 @@ impl DockerHandler {
 
             self.copy_volume_data(&backup.backup_name, &backup.original_name)
                 .await?;
-            self.docker.remove_volume(&backup.backup_name, Some(RemoveVolumeOptions{force: false})).await?;
+            self.docker.remove_volume(&backup.backup_name, Some(RemoveVolumeOptions{force: true})).await?;
 
             info!("Volume restored: {}", backup.original_name);
         }
@@ -279,7 +279,7 @@ impl DockerHandler {
                     format!("{}:/source:ro", source_volume),
                     format!("{}:/dest", dest_volume),
                 ]),
-                auto_remove: Some(true),
+                auto_remove: Some(false),
                 ..Default::default()
             }),
             ..Default::default()
@@ -294,10 +294,27 @@ impl DockerHandler {
             .start_container(&temp_container.id, None::<StartContainerOptions>)
             .await?;
 
-        self.docker
+        info!("Started temporary container ...x: {}", temp_container.id);
+        // Wait for the container to finish
+        let wait_result = self.docker
             .wait_container(&temp_container.id, None::<WaitContainerOptions>)
             .try_collect::<Vec<_>>()
-            .await?;
+            .await;
+
+        match wait_result {
+            Ok(result) => {
+                if let Some(result) = result.first() {
+                    if result.status_code != 0 {
+                        return Err(HoisterError::Docker(
+                            format!("Volume copy failed with status code: {:?}", result.status_code).into()
+                        ));
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("Error waiting for temporary container: {}. If this says not found, copy was already done. ignore", e);
+            }
+        }
 
         debug!("Volume copy completed using our container image");
         Ok(())
