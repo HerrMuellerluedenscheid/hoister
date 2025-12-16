@@ -90,7 +90,7 @@
                 <div>
                     <span class="text-sm font-medium text-gray-600">Command</span>
                     <p class="mt-1 font-mono text-sm text-gray-900 bg-gray-50 p-3 rounded">
-                        {container.Config.Cmd.join(' ')}
+                        {container.Config.Cmd ? container.Config.Cmd.join(' ') : 'N/A'}
                     </p>
                 </div>
             </div>
