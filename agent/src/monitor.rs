@@ -35,12 +35,12 @@ async fn fetch_container_info(
     Ok(states)
 }
 
-async fn send_to_backend(controller_url: &str, states: &[ContainerInspectResponse]) -> Result<(), reqwest::Error> {
+async fn send_to_backend(
+    controller_url: &str,
+    states: &[ContainerInspectResponse],
+) -> Result<(), reqwest::Error> {
     let client = reqwest::Client::new();
-    let url = format!(
-        "{}/container/state",
-        controller_url,
-    );
+    let url = format!("{}/container/state", controller_url,);
     client
         .post(&url)
         .json(&serde_json::json!(states))
@@ -50,7 +50,9 @@ async fn send_to_backend(controller_url: &str, states: &[ContainerInspectRespons
     Ok(())
 }
 
-pub(crate) async fn start(controller_url: String) -> Result<(), Box<dyn std::error::Error + 'static>> {
+pub(crate) async fn start(
+    controller_url: String,
+) -> Result<(), Box<dyn std::error::Error + 'static>> {
     info!("Starting monitor");
     let docker = Docker::connect_with_socket_defaults()?;
     let mut interval = time::interval(Duration::from_secs(5));

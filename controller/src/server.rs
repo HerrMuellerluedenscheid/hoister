@@ -1,3 +1,4 @@
+use axum::response::IntoResponse;
 use axum::{
     Router,
     extract::{Path, Request, State},
@@ -6,21 +7,19 @@ use axum::{
     response::{Json, Response},
     routing::{get, post},
 };
+use bollard::models::ContainerInspectResponse;
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
-use axum::response::IntoResponse;
-use bollard::models::ContainerInspectResponse;
 use tokio::net::TcpListener;
 
 // Import your database module
 use crate::database::{Database, Deployment};
 use crate::sse::{ControllerEvent, sse_handler};
 use sqlx::Type;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 use ts_rs::TS;
-
 
 #[derive(Clone)]
 pub struct AppState {
@@ -168,7 +167,6 @@ async fn create_deployment(
     }
 }
 
-
 async fn post_container_state(
     State(state): State<AppState>,
     Json(payload): Json<Vec<ContainerInspectResponse>>,
@@ -180,7 +178,7 @@ async fn post_container_state(
 
 #[derive(Serialize)]
 struct ContainerStateResponse {
-    container_inspections: Vec<ContainerInspectResponse>
+    container_inspections: Vec<ContainerInspectResponse>,
 }
 
 async fn get_container_state_by_id(
@@ -192,27 +190,36 @@ async fn get_container_state_by_id(
     match container_state.as_ref() {
         Some(cs) => {
             let cs = cs.clone();
-            let container_inspections = cs.iter().filter(|x| {x.id == Some(id.clone())}).cloned().collect::<Vec<ContainerInspectResponse>>();
-            let response = ContainerStateResponse{container_inspections};
+            let container_inspections = cs
+                .iter()
+                .filter(|x| x.id == Some(id.clone()))
+                .cloned()
+                .collect::<Vec<ContainerInspectResponse>>();
+            let response = ContainerStateResponse {
+                container_inspections,
+            };
             Json(ApiResponse::success(response)).into_response()
-        },
-        None => StatusCode::NOT_FOUND.into_response()
+        }
+        None => StatusCode::NOT_FOUND.into_response(),
     }
 }
 
-async fn get_container_state(
-    State(state): State<AppState>,
-) -> impl IntoResponse {
+async fn get_container_state(State(state): State<AppState>) -> impl IntoResponse {
     info!("Received request for container state");
     let container_state = state.container_state.read().await;
     match container_state.as_ref() {
         Some(cs) => {
-            let response = ContainerStateResponse{container_inspections: cs.clone()};
+            let response = ContainerStateResponse {
+                container_inspections: cs.clone(),
+            };
             Json(ApiResponse::success(response)).into_response()
-        },
+        }
         None => {
             info!("No container state received, yet");
-            Json(ApiResponse::success(ContainerStateResponse{container_inspections: vec![]})).into_response()
+            Json(ApiResponse::success(ContainerStateResponse {
+                container_inspections: vec![],
+            }))
+            .into_response()
         }
     }
 }

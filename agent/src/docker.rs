@@ -2,8 +2,15 @@ use crate::HoisterError;
 use crate::HoisterError::UpdateFailed;
 use crate::notifications::DeploymentResultHandler;
 use bollard::Docker;
-use bollard::models::{ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary, HealthStatusEnum, MountPointTypeEnum, VolumeCreateOptions};
-use bollard::query_parameters::{CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions, RemoveContainerOptions, RemoveVolumeOptions, RenameContainerOptions, StartContainerOptions, StopContainerOptionsBuilder, WaitContainerOptions, WaitContainerOptionsBuilder};
+use bollard::models::{
+    ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary,
+    HealthStatusEnum, MountPointTypeEnum, VolumeCreateOptions,
+};
+use bollard::query_parameters::{
+    CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions,
+    RemoveContainerOptions, RemoveVolumeOptions, RenameContainerOptions, StartContainerOptions,
+    StopContainerOptionsBuilder, WaitContainerOptions, WaitContainerOptionsBuilder,
+};
 use futures_util::{StreamExt, TryStreamExt};
 use log::{debug, error, info, trace, warn};
 use std::collections::HashMap;
@@ -84,11 +91,7 @@ impl DockerHandler {
         &self,
         container_details: &ContainerInspectResponse,
     ) -> Result<Vec<VolumeBackup>, HoisterError> {
-        let mounts = container_details
-            .mounts
-            .as_ref()
-            .unwrap_or(&vec![])
-            .clone();
+        let mounts = container_details.mounts.as_ref().unwrap_or(&vec![]).clone();
 
         let mut backups = Vec::new();
 
@@ -132,14 +135,21 @@ impl DockerHandler {
     }
 
     /// Remove volume backups
-    async fn remove_volume_backups(
-        &self,
-        backups: &[VolumeBackup],
-    ) -> Result<(), HoisterError> {
+    async fn remove_volume_backups(&self, backups: &[VolumeBackup]) -> Result<(), HoisterError> {
         for backup in backups {
             info!("Removing backup volume: {}", backup.backup_name);
-            if let Err(e) = self.docker.remove_volume(&backup.backup_name, Some(RemoveVolumeOptions{force: true})).await {
-                warn!("Failed to remove backup volume {}: {}", backup.backup_name, e);
+            if let Err(e) = self
+                .docker
+                .remove_volume(
+                    &backup.backup_name,
+                    Some(RemoveVolumeOptions { force: true }),
+                )
+                .await
+            {
+                warn!(
+                    "Failed to remove backup volume {}: {}",
+                    backup.backup_name, e
+                );
             }
         }
         Ok(())
@@ -157,7 +167,14 @@ impl DockerHandler {
             );
 
             // Remove the failed volume
-            if let Err(e) = self.docker.remove_volume(&backup.original_name, Some(RemoveVolumeOptions{force: true})).await {
+            if let Err(e) = self
+                .docker
+                .remove_volume(
+                    &backup.original_name,
+                    Some(RemoveVolumeOptions { force: true }),
+                )
+                .await
+            {
                 warn!("Failed to remove volume {}: {}", backup.original_name, e);
             }
 
@@ -178,7 +195,12 @@ impl DockerHandler {
 
             self.copy_volume_data(&backup.backup_name, &backup.original_name)
                 .await?;
-            self.docker.remove_volume(&backup.backup_name, Some(RemoveVolumeOptions{force: true})).await?;
+            self.docker
+                .remove_volume(
+                    &backup.backup_name,
+                    Some(RemoveVolumeOptions { force: true }),
+                )
+                .await?;
 
             info!("Volume restored: {}", backup.original_name);
         }
@@ -193,9 +215,10 @@ impl DockerHandler {
 
         // Check if we're in a cgroup that indicates container
         if let Ok(cgroup) = std::fs::read_to_string("/proc/self/cgroup")
-            && (cgroup.contains("/docker/") || cgroup.contains("/kubepods/")) {
-                return true;
-            }
+            && (cgroup.contains("/docker/") || cgroup.contains("/kubepods/"))
+        {
+            return true;
+        }
 
         false
     }
@@ -211,7 +234,8 @@ impl DockerHandler {
             let hostname = hostname.trim();
 
             // Verify this is actually our container by checking with Docker API
-            if let Ok(container) = self.docker
+            if let Ok(container) = self
+                .docker
                 .inspect_container(hostname, None::<InspectContainerOptions>)
                 .await
             {
@@ -232,7 +256,10 @@ impl DockerHandler {
 
         // Check if we're running in a container
         if let Some(self_container_id) = self.get_self_container_id().await {
-            info!("Running in container {}, using self to copy volumes", self_container_id);
+            info!(
+                "Running in container {}, using self to copy volumes",
+                self_container_id
+            );
             self.copy_volume_data_using_self(&self_container_id, source_volume, dest_volume)
                 .await
         } else {
@@ -256,7 +283,8 @@ impl DockerHandler {
         // so we need to create a sidecar container with access to both volumes
         // But we can use the same image as ourselves
 
-        let self_container = self.docker
+        let self_container = self
+            .docker
             .inspect_container(self_container_id, None::<InspectContainerOptions>)
             .await?;
 
@@ -296,7 +324,8 @@ impl DockerHandler {
 
         info!("Started temporary container ...x: {}", temp_container.id);
         // Wait for the container to finish
-        let wait_result = self.docker
+        let wait_result = self
+            .docker
             .wait_container(&temp_container.id, None::<WaitContainerOptions>)
             .try_collect::<Vec<_>>()
             .await;
@@ -304,14 +333,19 @@ impl DockerHandler {
         match wait_result {
             Ok(result) => {
                 if let Some(result) = result.first()
-                    && result.status_code != 0 {
-                        return Err(HoisterError::Docker(
-                            format!("Volume copy failed with status code: {:?}", result.status_code)
-                        ));
-                    }
+                    && result.status_code != 0
+                {
+                    return Err(HoisterError::Docker(format!(
+                        "Volume copy failed with status code: {:?}",
+                        result.status_code
+                    )));
+                }
             }
             Err(e) => {
-                warn!("Error waiting for temporary container: {}. If this says not found, copy was already done. ignore", e);
+                warn!(
+                    "Error waiting for temporary container: {}. If this says not found, copy was already done. ignore",
+                    e
+                );
             }
         }
 
@@ -360,19 +394,23 @@ impl DockerHandler {
         let wait_container_options = WaitContainerOptionsBuilder::new().build();
 
         //  Err(BollardError(DockerResponseServerError { status_code: 404, message: "No such container: fcec5653c2a00038644b6af614195b458bdaaedf7dc3a699de132efea84eb9f8" }))
-        match self.docker
+        match self
+            .docker
             .wait_container(&temp_container.id, Some(wait_container_options))
             .try_collect::<Vec<_>>()
-            .await {
+            .await
+        {
             Ok(_) => {}
             Err(e) => {
-                debug!("Error waiting for temporary container: {:?}. If this says not found, copy was already done. ignore", e);
+                debug!(
+                    "Error waiting for temporary container: {:?}. If this says not found, copy was already done. ignore",
+                    e
+                );
             }
         }
         debug!("Volume copy completed using temporary container");
         Ok(())
     }
-
 
     pub(crate) async fn update_container(
         &self,
