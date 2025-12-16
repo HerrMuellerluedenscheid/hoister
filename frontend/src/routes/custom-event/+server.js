@@ -1,16 +1,21 @@
-// src/routes/custom-event/+server.js
 import { produce } from 'sveltekit-sse'
 
 export function POST() {
     return produce(async function start({ emit }) {
+        const controllerUrl = process.env.HOISTER_CONTROLLER_URL || 'http://localhost:8080';
+
+        if (!process.env.HOISTER_CONTROLLER_URL) {
+            console.warn('HOISTER_CONTROLLER_URL not set');
+            return
+        }
+
         while (true) {
             let reader = null;
 
             try {
-                const response = await fetch("http://localhost:3033/sse");
-
+                const response = await fetch(`${controllerUrl}/sse`);
                 if (!response.ok) {
-                    console.error("Failed to fetch SSE:", response.statusText);
+                    console.debug("Failed to fetch SSE:", response.statusText);
                     await delay(5000);
                     continue;
                 }
