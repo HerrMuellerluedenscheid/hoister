@@ -39,7 +39,28 @@ services:
       - example
 ```
 
-Finally, push a new image to your registry using the same tag, and Hoister will automatically update the container.
+Finally, don't forget to push a new image to your registry using the same tag, and Hoister will automatically update the container.
+
+## Frontend (optional)
+
+While the Hoister can be used as a standalone container, you can also deploy the optional frontend to manage and monitor your container updates.
+Add the following service to your docker-compose.yaml:
+
+```yaml
+  hoister-controller:
+    image: emrius11/hoister-controller:latest
+
+  hoister-frontend:
+    image: emrius11/hoister-frontend:latest
+    ports:
+      - "3000:3000"
+    environment:
+      HOISTER_CONTROLLER_URL: "http://hoister-controller:3033"
+      HOISTER_AUTH_USERNAME: admin
+      HOISTER_AUTH_PASSWORD: !a-super-secure-password!
+```
+
+Also make sure to set the `HOISTER_CONTROLLER_URL` environment variable in the Hoister container to point to the controller service.
 
 📬 Notifications and Configuration
 ----------------------------------
