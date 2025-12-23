@@ -27,7 +27,7 @@ services:
     environment:
       HOISTER_CONTROLLER_URL: "http://hoister-controller:3033"
       HOISTER_AUTH_USERNAME: admin
-      HOISTER_AUTH_PASSWORD: !a-super-secure-password!
+      HOISTER_AUTH_PASSWORD: "!a-super-secure-password!"
 
   example:
     image: emrius11/example:latest

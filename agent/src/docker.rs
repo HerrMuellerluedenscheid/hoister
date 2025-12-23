@@ -1,3 +1,4 @@
+use crate::env;
 use crate::HoisterError;
 use crate::HoisterError::UpdateFailed;
 use crate::notifications::DeploymentResultHandler;
@@ -17,6 +18,20 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::path::Path;
 use std::time::Duration;
+use bollard::auth::DockerCredentials;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref CREDENTIALS: DockerCredentials = DockerCredentials {
+        username: env::var("HOISTER_REGISTRY_USERNAME").ok(),
+        password: env::var("HOISTER_REGISTRY_PASSWORD").ok(),
+        auth: env::var("HOISTER_REGISTRY_AUTH").ok(),
+        email: env::var("HOISTER_REGISTRY_EMAIL").ok(),
+        serveraddress: env::var("HOISTER_REGISTRY_SERVERADDRESS").ok(),
+        identitytoken: env::var("HOISTER_REGISTRY_IDENTITYTOKEN").ok(),
+        registrytoken: env::var("HOISTER_REGISTRY_REGISTRYTOKEN").ok(),
+    };
+}
 
 pub(crate) type ContainerID = String;
 pub(crate) type ContainerIdentifier = String;
@@ -611,7 +626,7 @@ async fn download_image(
         tag: Some(image_tag.to_owned()),
         ..Default::default()
     };
-    let mut pull_stream = docker.create_image(Some(options), None, None);
+    let mut pull_stream = docker.create_image(Some(options), None, Some(CREDENTIALS.clone()));
     while let Some(result) = pull_stream.next().await {
         match result {
             Ok(output) => {
