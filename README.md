@@ -41,6 +41,27 @@ services:
 
 Finally, don't forget to push a new image to your registry using the same tag, and Hoister will automatically update the container.
 
+## Private Registries
+
+To access private registry, add the registry credentials to the hoister container using a sub-set of these environment variables:
+
+```
+HOISTER_REGISTRY_USERNAME
+HOISTER_REGISTRY_PASSWORD
+HOISTER_REGISTRY_AUTH
+HOISTER_REGISTRY_EMAIL
+HOISTER_REGISTRY_SERVERADDRESS
+HOISTER_REGISTRY_IDENTITYTOKEN
+HOISTER_REGISTRY_REGISTRYTOKEN
+```
+
+For example, to access a private image on dockerhub using a [PAT](https://docs.docker.com/security/access-tokens/)
+
+```
+HOISTER_REGISTRY_USERNAME=your-username
+HOISTER_REGISTRY_PASSWORD=your-generated-personal-access-token
+```
+
 ## Frontend (optional)
 
 While the Hoister can be used as a standalone container, you can also deploy the optional frontend to manage and monitor your container updates.
