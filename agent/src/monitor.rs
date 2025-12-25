@@ -60,12 +60,54 @@ async fn fetch_container_info(
     Ok(states)
 }
 
+
+fn redact_credentials(inspect: &mut ContainerInspectResponse) {
+    if let Some(config) = inspect.config.as_mut()
+        && let Some(env_vars) = config.env.as_mut() {
+            let sensitive_keywords = [
+                "password", "passwd", "pwd",
+                "secret", "token", "key",
+                "auth", "credential", "cred",
+                "apikey", "api_key",
+                "username", "user",
+                "session", "cookie",
+            ];
+
+            *env_vars = env_vars
+                .iter()
+                .map(|env_var| {
+                    // Split on first '=' to get key=value
+                    if let Some((key, _value)) = env_var.split_once('=') {
+                        let key_lower = key.to_lowercase();
+
+                        // Check if the key contains any sensitive keyword
+                        let is_sensitive = sensitive_keywords
+                            .iter()
+                            .any(|keyword| key_lower.contains(keyword));
+
+                        if is_sensitive {
+                            format!("{}=***REDACTED***", key)
+                        } else {
+                            env_var.clone()
+                        }
+                    } else {
+                        env_var.clone()
+                    }
+                })
+                .collect();
+        }
+}
+
 async fn send_to_backend(
     controller_url: &str,
-    states: &[ContainerInspectResponse],
+    states: &mut [ContainerInspectResponse],
 ) -> Result<(), reqwest::Error> {
     let client = reqwest::Client::new();
     let url = format!("{}/container/state", controller_url,);
+
+    for state in states.iter_mut() {
+        redact_credentials(state);
+    }
     client
         .post(&url)
         .json(&serde_json::json!(states))
@@ -87,8 +129,8 @@ pub(crate) async fn start(
         interval.tick().await;
 
         match fetch_container_info(&project_name, &docker).await {
-            Ok(current_states) => {
-                if let Err(e) = send_to_backend(&controller_url, &current_states).await {
+            Ok(mut current_states) => {
+                if let Err(e) = send_to_backend(&controller_url, &mut current_states).await {
                     error!("Failed to send to backend: {}", e);
                 } else {
                     debug!(
