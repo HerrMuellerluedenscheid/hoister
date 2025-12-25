@@ -12,6 +12,7 @@ FROM scratch AS runner
 ENV WATCH_INTERVAL=120
 LABEL maintainer="marius.kriegerowski@gmail.com"
 LABEL description="Deploy and roll back docker images"
+LABEL io.hoister.container="agent"
 
 WORKDIR /app
 COPY --from=shell-builder /bin/sh /bin/sh

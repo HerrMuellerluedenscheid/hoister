@@ -1,8 +1,9 @@
-use crate::env;
 use crate::HoisterError;
 use crate::HoisterError::UpdateFailed;
+use crate::env;
 use crate::notifications::DeploymentResultHandler;
 use bollard::Docker;
+use bollard::auth::DockerCredentials;
 use bollard::models::{
     ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary,
     HealthStatusEnum, MountPointTypeEnum, VolumeCreateOptions,
@@ -13,13 +14,13 @@ use bollard::query_parameters::{
     StopContainerOptionsBuilder, WaitContainerOptions, WaitContainerOptionsBuilder,
 };
 use futures_util::{StreamExt, TryStreamExt};
+use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
 use std::collections::HashMap;
+use std::env::current_dir;
 use std::error::Error;
 use std::path::Path;
 use std::time::Duration;
-use bollard::auth::DockerCredentials;
-use lazy_static::lazy_static;
 
 lazy_static! {
     static ref CREDENTIALS: DockerCredentials = DockerCredentials {
@@ -44,7 +45,7 @@ const REMOVE_OPTIONS: RemoveContainerOptions = RemoveContainerOptions {
 };
 
 pub(crate) struct DockerHandler {
-    docker: Docker,
+    pub(crate) docker: Docker,
     deployment_handler: DeploymentResultHandler,
 }
 
@@ -555,15 +556,24 @@ impl DockerHandler {
         Ok(())
     }
 
-    pub(crate) async fn get_containers(&self) -> Result<Vec<ContainerSummary>, Box<dyn Error>> {
+    pub(crate) async fn get_containers(
+        &self,
+        project_name: &str,
+    ) -> Result<Vec<ContainerSummary>, Box<dyn Error>> {
         let mut filters = HashMap::new();
-        let label_filters = vec!["hoister.enable=true".to_string()];
+
+        let label_filters = vec![
+            "hoister.enable=true".to_string(),
+            "hoister.hide!=true".to_string(),
+            format!("com.docker.compose.project={}", project_name),
+        ];
         filters.insert("label".to_string(), label_filters);
 
         let options = ListContainersOptions {
             filters: Some(filters),
             ..Default::default()
         };
+
         let containers = self
             .docker
             .clone()
@@ -571,11 +581,49 @@ impl DockerHandler {
             .await?;
 
         debug!(
-            "found {} containers with label `hoister.enable=true`",
-            containers.len()
+            "found {} containers in project '{}' with label `hoister.enable=true` and not `hoister.hide=true`",
+            containers.len(),
+            project_name
         );
+
         Ok(containers)
     }
+}
+
+pub(crate) async fn get_project_name(
+    docker: &Docker,
+) -> Result<String, Box<dyn Error>> {
+    if let Ok(project_name) = env::var("HOISTER_COMPOSE_PROJECT") {
+        info!("Using project name from HOISTER_COMPOSE_PROJECT: {}", project_name);
+        return Ok(project_name);
+    }
+
+    let mut filters = HashMap::new();
+    filters.insert("label".to_string(), vec!["io.hoister.container=agent".to_string()]);
+
+    let options = ListContainersOptions {
+        filters: Some(filters),
+        ..Default::default()
+    };
+
+    let containers = docker
+        .list_containers(Some(options))
+        .await?;
+
+    if let Some(container) = containers.first()
+        && let Some(labels) = &container.labels
+            && let Some(project) = labels.get("com.docker.compose.project") {
+                info!("Detected project name from hoister agent container: {}", project);
+                return Ok(project.clone());
+            }
+
+    let fallback = current_dir()?
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("hoister")
+        .to_string();
+
+    Ok(fallback)
 }
 
 async fn create_container(

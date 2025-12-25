@@ -13,7 +13,7 @@ use log::{debug, error, info};
 use bollard::errors::Error as BollardError;
 
 use crate::cli::configure_cli;
-use crate::docker::{ContainerID, DockerHandler};
+use crate::docker::{get_project_name, ContainerID, DockerHandler};
 use bollard::models::ContainerCreateResponse;
 use env_logger::Env;
 use futures_util::StreamExt;
@@ -108,7 +108,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     if let Ok(controller_url) = env::var("HOISTER_CONTROLLER_URL") {
         let url = controller_url.clone();
         tokio::spawn(async move { sse::consume_sse(format!("{url}/sse").as_str(), tx_sse).await });
-
         tokio::spawn(async move {
             monitor::start(controller_url)
                 .await
@@ -143,11 +142,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     tokio::spawn(async move {
         sse_handler.start().await;
     });
-
+    let project_name = get_project_name(&docker.docker).await?;
     loop {
         info!("checking for updates");
         let now = SystemTime::now();
-        let containers = docker.get_containers().await?;
+        let containers = docker.get_containers(&project_name).await?;
         for container in containers {
             debug!("Checking container {:?}", container.id);
             let container_id: ContainerID = container.id.unwrap_or_default();
