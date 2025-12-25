@@ -1,6 +1,8 @@
 Hoister 🏗
 ==========
 
+[![Discord](https://img.shields.io/discord/1453411867224576105?color=7289da&label=Discord&logo=discord&logoColor=white)](https://discord.gg/D8kHFJXY7X)
+
 Deploy Docker images automatically with rollback support.
 
 Add the label `hoister.enable=true` to your Docker Compose service.
