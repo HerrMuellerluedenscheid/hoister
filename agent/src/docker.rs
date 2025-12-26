@@ -564,7 +564,6 @@ impl DockerHandler {
 
         let label_filters = vec![
             "hoister.enable=true".to_string(),
-            "hoister.hide!=true".to_string(),
             format!("com.docker.compose.project={}", project_name),
         ];
         filters.insert("label".to_string(), label_filters);

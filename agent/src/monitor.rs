@@ -13,7 +13,6 @@ async fn fetch_container_info(
 ) -> Result<Vec<ContainerInspectResponse>, bollard::errors::Error> {
 
     let mut filters = HashMap::new();
-    info!("project_name: {}", project_name);
     let label_filters = vec![
         format!("com.docker.compose.project={}", project_name),
     ];
