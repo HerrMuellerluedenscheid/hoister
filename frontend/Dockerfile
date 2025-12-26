@@ -35,8 +35,8 @@ EXPOSE 3000
 
 # Set environment variables
 ENV NODE_ENV=production
-ENV HOST=0.0.0.0
 ENV PORT=3000
+ENV ORIGIN=http://localhost:3000
 
 # Start the app
 CMD ["node", "build/index.js"]
