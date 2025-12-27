@@ -8,7 +8,7 @@ use axum::{
     routing::{get, post},
 };
 use bollard::models::ContainerInspectResponse;
-use log::info;
+use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;

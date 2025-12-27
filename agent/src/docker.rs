@@ -292,13 +292,6 @@ impl DockerHandler {
         source_volume: &str,
         dest_volume: &str,
     ) -> Result<(), HoisterError> {
-        // We need to stop our container, add volume mounts, copy data, then restart
-        // This is complex, so instead we'll execute a command in our running container
-
-        // We can't dynamically mount volumes to a running container,
-        // so we need to create a sidecar container with access to both volumes
-        // But we can use the same image as ourselves
-
         let self_container = self
             .docker
             .inspect_container(self_container_id, None::<InspectContainerOptions>)
@@ -323,7 +316,7 @@ impl DockerHandler {
                     format!("{}:/source:ro", source_volume),
                     format!("{}:/dest", dest_volume),
                 ]),
-                auto_remove: Some(false),
+                auto_remove: Some(true),
                 ..Default::default()
             }),
             ..Default::default()
@@ -338,7 +331,6 @@ impl DockerHandler {
             .start_container(&temp_container.id, None::<StartContainerOptions>)
             .await?;
 
-        info!("Started temporary container ...x: {}", temp_container.id);
         // Wait for the container to finish
         let wait_result = self
             .docker
@@ -347,25 +339,43 @@ impl DockerHandler {
             .await;
 
         match wait_result {
-            Ok(result) => {
-                if let Some(result) = result.first()
-                    && result.status_code != 0
-                {
-                    return Err(HoisterError::Docker(format!(
-                        "Volume copy failed with status code: {:?}",
-                        result.status_code
-                    )));
+            Ok(results) => {
+                if let Some(result) = results.first() {
+                    if result.status_code != 0 {
+                        let _ = self.docker
+                            .remove_container(&temp_container.id, None::<RemoveContainerOptions>)
+                            .await;
+
+                        return Err(HoisterError::Docker(format!(
+                            "Volume copy failed with status code: {}",
+                            result.status_code
+                        )));
+                    }
                 }
+                debug!("Volume copy completed successfully");
             }
             Err(e) => {
-                warn!(
-                    "Error waiting for temporary container: {}. If this says not found, copy was already done. ignore",
-                    e
-                );
+                warn!("Error waiting for temporary container: {}", e);
+                // Try to remove the container anyway
+                let _ = self.docker
+                    .remove_container(&temp_container.id, None::<RemoveContainerOptions>)
+                    .await;
             }
         }
 
-        debug!("Volume copy completed using our container image");
+        // If auto_remove is true, Docker should clean it up, but let's be explicit
+        // This will fail gracefully if already removed
+        let _ = self.docker
+            .remove_container(
+                &temp_container.id,
+                Some(RemoveContainerOptions {
+                    force: true,
+                    ..Default::default()
+                })
+            )
+            .await;
+
+        debug!("Temporary container cleaned up");
         Ok(())
     }
 
