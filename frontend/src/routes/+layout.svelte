@@ -9,6 +9,7 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
+	<title>Hoister</title>
 </svelte:head>
 
 {#if $page.url.pathname !== '/login'}

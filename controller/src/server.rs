@@ -171,7 +171,7 @@ async fn post_container_state(
     State(state): State<AppState>,
     Json(payload): Json<Vec<ContainerInspectResponse>>,
 ) -> impl IntoResponse {
-    info!("Received container state update");
+    debug!("Received container state update");
     *state.container_state.write().await = Some(payload);
     StatusCode::OK.into_response()
 }
@@ -185,7 +185,7 @@ async fn get_container_state_by_id(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    info!("Received request for container state by id");
+    debug!("Received request for container state by id");
     let container_state = state.container_state.read().await;
     match container_state.as_ref() {
         Some(cs) => {
@@ -205,7 +205,7 @@ async fn get_container_state_by_id(
 }
 
 async fn get_container_state(State(state): State<AppState>) -> impl IntoResponse {
-    info!("Received request for container state");
+    debug!("Received request for container state");
     let container_state = state.container_state.read().await;
     match container_state.as_ref() {
         Some(cs) => {

@@ -144,14 +144,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     });
     let project_name = get_project_name(&docker.docker).await?;
     loop {
-        info!("checking for updates");
+        debug!("checking for updates");
         let now = SystemTime::now();
         let containers = docker.get_containers(&project_name).await?;
         for container in containers {
             debug!("Checking container {:?}", container.id);
             let container_id: ContainerID = container.id.unwrap_or_default();
             let result = docker.update_container(&container_id).await;
-            info!("result: {:?}", result);
+            debug!("result: {:?}", result);
         }
 
         if config.interval.is_some() {

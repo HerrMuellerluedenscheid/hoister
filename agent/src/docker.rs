@@ -451,7 +451,7 @@ impl DockerHandler {
             serde_json::to_string_pretty(&container_details).unwrap()
         );
 
-        info!("Checking for updates: {image_name}:{image_tag}");
+        debug!("Checking for updates: {image_name}:{image_tag}");
 
         // Check if volume backup is enabled via label
         let enable_volume_backup = container_details
