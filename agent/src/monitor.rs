@@ -1,21 +1,18 @@
-use std::collections::HashMap;
+use crate::docker::get_project_name;
 use bollard::Docker;
 use bollard::models::{ContainerInspectResponse, ContainerSummary};
-use log::{debug, error, info};
-use std::time::Duration;
 use bollard::query_parameters::ListContainersOptions;
+use log::{debug, error, info};
+use std::collections::HashMap;
+use std::time::Duration;
 use tokio::time;
-use crate::docker::get_project_name;
 
 async fn fetch_container_info(
     project_name: &str,
     docker: &Docker,
 ) -> Result<Vec<ContainerInspectResponse>, bollard::errors::Error> {
-
     let mut filters = HashMap::new();
-    let label_filters = vec![
-        format!("com.docker.compose.project={}", project_name),
-    ];
+    let label_filters = vec![format!("com.docker.compose.project={}", project_name)];
     filters.insert("label".to_string(), label_filters);
 
     let options = ListContainersOptions {
@@ -23,9 +20,7 @@ async fn fetch_container_info(
         ..Default::default()
     };
 
-    let containers = docker
-        .list_containers(Some(options))
-        .await?;
+    let containers = docker.list_containers(Some(options)).await?;
 
     let containers = containers
         .into_iter()
@@ -59,42 +54,51 @@ async fn fetch_container_info(
     Ok(states)
 }
 
-
 fn redact_credentials(inspect: &mut ContainerInspectResponse) {
     if let Some(config) = inspect.config.as_mut()
-        && let Some(env_vars) = config.env.as_mut() {
-            let sensitive_keywords = [
-                "password", "passwd", "pwd",
-                "secret", "token", "key",
-                "auth", "credential", "cred",
-                "apikey", "api_key",
-                "username", "user",
-                "session", "cookie",
-            ];
+        && let Some(env_vars) = config.env.as_mut()
+    {
+        let sensitive_keywords = [
+            "password",
+            "passwd",
+            "pwd",
+            "secret",
+            "token",
+            "key",
+            "auth",
+            "credential",
+            "cred",
+            "apikey",
+            "api_key",
+            "username",
+            "user",
+            "session",
+            "cookie",
+        ];
 
-            *env_vars = env_vars
-                .iter()
-                .map(|env_var| {
-                    // Split on first '=' to get key=value
-                    if let Some((key, _value)) = env_var.split_once('=') {
-                        let key_lower = key.to_lowercase();
+        *env_vars = env_vars
+            .iter()
+            .map(|env_var| {
+                // Split on first '=' to get key=value
+                if let Some((key, _value)) = env_var.split_once('=') {
+                    let key_lower = key.to_lowercase();
 
-                        // Check if the key contains any sensitive keyword
-                        let is_sensitive = sensitive_keywords
-                            .iter()
-                            .any(|keyword| key_lower.contains(keyword));
+                    // Check if the key contains any sensitive keyword
+                    let is_sensitive = sensitive_keywords
+                        .iter()
+                        .any(|keyword| key_lower.contains(keyword));
 
-                        if is_sensitive {
-                            format!("{}=***REDACTED***", key)
-                        } else {
-                            env_var.clone()
-                        }
+                    if is_sensitive {
+                        format!("{}=***REDACTED***", key)
                     } else {
                         env_var.clone()
                     }
-                })
-                .collect();
-        }
+                } else {
+                    env_var.clone()
+                }
+            })
+            .collect();
+    }
 }
 
 async fn send_to_backend(

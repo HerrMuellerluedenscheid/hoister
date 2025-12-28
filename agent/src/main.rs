@@ -13,7 +13,7 @@ use log::{debug, error, info};
 use bollard::errors::Error as BollardError;
 
 use crate::cli::configure_cli;
-use crate::docker::{get_project_name, ContainerID, DockerHandler};
+use crate::docker::{ContainerID, DockerHandler, get_project_name};
 use bollard::models::ContainerCreateResponse;
 use env_logger::Env;
 use futures_util::StreamExt;

@@ -340,24 +340,26 @@ impl DockerHandler {
 
         match wait_result {
             Ok(results) => {
-                if let Some(result) = results.first() {
-                    if result.status_code != 0 {
-                        let _ = self.docker
-                            .remove_container(&temp_container.id, None::<RemoveContainerOptions>)
-                            .await;
+                if let Some(result) = results.first()
+                    && result.status_code != 0
+                {
+                    let _ = self
+                        .docker
+                        .remove_container(&temp_container.id, None::<RemoveContainerOptions>)
+                        .await;
 
-                        return Err(HoisterError::Docker(format!(
-                            "Volume copy failed with status code: {}",
-                            result.status_code
-                        )));
-                    }
+                    return Err(HoisterError::Docker(format!(
+                        "Volume copy failed with status code: {}",
+                        result.status_code
+                    )));
                 }
                 debug!("Volume copy completed successfully");
             }
             Err(e) => {
                 warn!("Error waiting for temporary container: {}", e);
                 // Try to remove the container anyway
-                let _ = self.docker
+                let _ = self
+                    .docker
                     .remove_container(&temp_container.id, None::<RemoveContainerOptions>)
                     .await;
             }
@@ -365,13 +367,14 @@ impl DockerHandler {
 
         // If auto_remove is true, Docker should clean it up, but let's be explicit
         // This will fail gracefully if already removed
-        let _ = self.docker
+        let _ = self
+            .docker
             .remove_container(
                 &temp_container.id,
                 Some(RemoveContainerOptions {
                     force: true,
                     ..Default::default()
-                })
+                }),
             )
             .await;
 
@@ -599,32 +602,38 @@ impl DockerHandler {
     }
 }
 
-pub(crate) async fn get_project_name(
-    docker: &Docker,
-) -> Result<String, Box<dyn Error>> {
+pub(crate) async fn get_project_name(docker: &Docker) -> Result<String, Box<dyn Error>> {
     if let Ok(project_name) = env::var("HOISTER_COMPOSE_PROJECT") {
-        info!("Using project name from HOISTER_COMPOSE_PROJECT: {}", project_name);
+        info!(
+            "Using project name from HOISTER_COMPOSE_PROJECT: {}",
+            project_name
+        );
         return Ok(project_name);
     }
 
     let mut filters = HashMap::new();
-    filters.insert("label".to_string(), vec!["io.hoister.container=agent".to_string()]);
+    filters.insert(
+        "label".to_string(),
+        vec!["io.hoister.container=agent".to_string()],
+    );
 
     let options = ListContainersOptions {
         filters: Some(filters),
         ..Default::default()
     };
 
-    let containers = docker
-        .list_containers(Some(options))
-        .await?;
+    let containers = docker.list_containers(Some(options)).await?;
 
     if let Some(container) = containers.first()
         && let Some(labels) = &container.labels
-            && let Some(project) = labels.get("com.docker.compose.project") {
-                info!("Detected project name from hoister agent container: {}", project);
-                return Ok(project.clone());
-            }
+        && let Some(project) = labels.get("com.docker.compose.project")
+    {
+        info!(
+            "Detected project name from hoister agent container: {}",
+            project
+        );
+        return Ok(project.clone());
+    }
 
     let fallback = current_dir()?
         .file_name()
