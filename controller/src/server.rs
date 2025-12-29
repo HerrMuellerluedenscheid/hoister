@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use tokio::net::TcpListener;
+use tower_http::services::ServeDir;
+use tower_http::trace::TraceLayer;
 
 // Import your database module
 use crate::database::{Database, Deployment};
@@ -234,6 +236,7 @@ pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> 
         event_tx,
     };
 
+    let front_end_path = std::env::var("HOISTER_FRONTEND_PATH").unwrap_or_else(|_| "./tmp/static".to_string());
     Router::new()
         .route("/health", get(health))
         .route("/sse", get(sse_handler))
@@ -243,11 +246,13 @@ pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> 
         .route("/container/state", post(post_container_state))
         .route("/container/state", get(get_container_state))
         .route("/container/state/{id}", get(get_container_state_by_id))
+        .fallback_service(ServeDir::new(front_end_path))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
         ))
         .with_state(state)
+        .layer(TraceLayer::new_for_http())
 }
 
 pub async fn start_server(

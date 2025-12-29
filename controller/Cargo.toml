@@ -19,3 +19,5 @@ ts-rs = "11.0.1"
 tokio-stream = "0.1.17"
 futures-util = "0.3.31"
 async-stream = "0.3.6"
+tower-http = { version="0.6.8", features=["fs", "trace"] }
+tower = "0.5.2"
