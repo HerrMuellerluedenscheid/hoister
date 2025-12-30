@@ -150,9 +150,25 @@ pub(crate) fn setup_dispatcher() -> Dispatcher {
             None
         }
     };
+    let discord = match std::env::var("HOISTER_DISCORD_BOT_TOKEN") {
+        Ok(bot_token) => {
+            info!("Using Discord dispatcher");
+            let channel_id = std::env::var("HOISTER_DISCORD_CHANNEL_ID")
+                .expect("HOISTER_DISCORD_CHANNEL_ID not defined");
+            Some(chatterbox::dispatcher::discord::Discord {
+                bot_token,
+                channel_id,
+            })
+        }
+        Err(_) => {
+            info!("HOISTER_DISCORD_BOT_TOKEN not defined");
+            None
+        }
+    };
     let sender = chatterbox::dispatcher::Sender {
         slack,
         telegram,
+        discord,
         email: None,
     };
 
