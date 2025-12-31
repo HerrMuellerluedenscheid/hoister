@@ -46,7 +46,7 @@ Finally, push a new image to your registry using the same tag, and Hoister will 
 📬 Notifications and Configuration
 ----------------------------------
 
-Define the following environment variables to receive update and rollback notifications via telegram, slack or email:
+Define the following environment variables to receive update and rollback notifications via **Telegram**, **Slack**, **Discord** or **Email**:
 
 ```shell
 export HOISTER_SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXX"
