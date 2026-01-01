@@ -8,6 +8,7 @@ tokio = {workspace = true}
 log = {workspace = true}
 env_logger = { workspace = true }
 bollard = { workspace = true }
+shared = { path = "../shared" }
 
 thiserror = "2.0.16"
 sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio"] }

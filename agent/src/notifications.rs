@@ -1,18 +1,18 @@
+use crate::HoisterError;
 use crate::docker::{ContainerID, ContainerIdentifier};
-use crate::{DeploymentResult, HoisterError};
 use bollard::models::ContainerCreateResponse;
 use chatterbox::message::{Dispatcher, Message};
-use controller::server::{CreateDeployment, DeploymentStatus};
 use log::{debug, error, info};
+use shared::{CreateDeployment, DeploymentStatus};
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
 
 pub struct DeploymentResultHandler {
-    tx: Sender<DeploymentResult>,
+    tx: Sender<CreateDeployment>,
 }
 
 impl DeploymentResultHandler {
-    pub(crate) fn new(tx: Sender<DeploymentResult>) -> Self {
+    pub(crate) fn new(tx: Sender<CreateDeployment>) -> Self {
         Self { tx }
     }
 
@@ -22,7 +22,7 @@ impl DeploymentResultHandler {
         container_id: ContainerID,
     ) {
         self.tx
-            .send(DeploymentResult {
+            .send(CreateDeployment {
                 image,
                 container_id,
                 status: DeploymentStatus::Failed,
@@ -37,7 +37,7 @@ impl DeploymentResultHandler {
         container_id: ContainerID,
     ) {
         self.tx
-            .send(DeploymentResult {
+            .send(CreateDeployment {
                 image,
                 container_id,
                 status: DeploymentStatus::RollbackFinished,
@@ -52,7 +52,7 @@ impl DeploymentResultHandler {
         container_create: ContainerCreateResponse,
     ) {
         self.tx
-            .send(DeploymentResult {
+            .send(CreateDeployment {
                 image,
                 container_id: container_create.id,
                 status: DeploymentStatus::Success,
@@ -63,7 +63,7 @@ impl DeploymentResultHandler {
 
     pub(crate) async fn test_message(&self) {
         self.tx
-            .send(DeploymentResult {
+            .send(CreateDeployment {
                 image: "test-image".to_string(),
                 container_id: "test-container-id".to_string(),
                 status: DeploymentStatus::TestMessage,
@@ -74,7 +74,7 @@ impl DeploymentResultHandler {
 }
 
 pub(super) async fn start_notification_handler(
-    mut rx: Receiver<DeploymentResult>,
+    mut rx: Receiver<CreateDeployment>,
     dispatcher: Dispatcher,
 ) {
     while let Some(message) = rx.recv().await {
@@ -82,8 +82,7 @@ pub(super) async fn start_notification_handler(
     }
 }
 
-async fn send_to_controller(result: &DeploymentResult) {
-    let create = CreateDeployment::from(result);
+async fn send_to_controller(result: &CreateDeployment) {
     let client = reqwest::Client::new();
     let url = std::env::var("HOISTER_CONTROLLER_URL");
     if url.is_err() {
@@ -98,13 +97,13 @@ async fn send_to_controller(result: &DeploymentResult) {
         .post(url)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {token})"))
-        .json(&create)
+        .json(&result)
         .send()
         .await;
     debug!("response: {:?}", res);
 }
 
-async fn send_to_chatterbox(result: &DeploymentResult, dispatcher: &Dispatcher) {
+async fn send_to_chatterbox(result: &CreateDeployment, dispatcher: &Dispatcher) {
     match result.status {
         DeploymentStatus::NoUpdate => {}
         _ => {
@@ -116,7 +115,7 @@ async fn send_to_chatterbox(result: &DeploymentResult, dispatcher: &Dispatcher) 
     }
 }
 
-pub(crate) async fn send(result: &DeploymentResult, dispatcher: &Dispatcher) {
+pub(crate) async fn send(result: &CreateDeployment, dispatcher: &Dispatcher) {
     debug!("sending deployment request");
     send_to_controller(result).await;
     send_to_chatterbox(result, dispatcher).await;
