@@ -9,17 +9,15 @@ use axum::{
 };
 use bollard::models::ContainerInspectResponse;
 use log::{debug, info};
-use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
+use serde::Serialize;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
 // Import your database module
 use crate::database::{Database, Deployment};
 use crate::sse::{ControllerEvent, sse_handler};
-use sqlx::Type;
+use shared::CreateDeployment;
 use tokio::sync::{RwLock, broadcast};
-use ts_rs::TS;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -27,40 +25,6 @@ pub struct AppState {
     pub(crate) database: Arc<Database>,
     pub(crate) api_secret: Option<String>,
     pub(crate) event_tx: broadcast::Sender<ControllerEvent>,
-}
-
-#[derive(TS, Deserialize, Debug, Clone, Serialize, Type)]
-#[ts(export)]
-#[repr(u8)]
-pub enum DeploymentStatus {
-    Pending = 0,
-    Started = 1,
-    Success = 2,
-    RollbackFinished = 3,
-    NoUpdate = 4,
-    Failed = 5,
-    TestMessage = 6,
-}
-
-impl Display for DeploymentStatus {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DeploymentStatus::Pending => write!(f, "Pending"),
-            DeploymentStatus::Started => write!(f, "Started"),
-            DeploymentStatus::Success => write!(f, "Success"),
-            DeploymentStatus::RollbackFinished => write!(f, "Rolled back"),
-            &DeploymentStatus::NoUpdate => write!(f, "NoUpdate"),
-            &DeploymentStatus::Failed => write!(f, "Failed"),
-            &DeploymentStatus::TestMessage => write!(f, "Test Message"),
-        }
-    }
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-pub struct CreateDeployment {
-    pub image: String,
-    pub container_id: String,
-    pub status: DeploymentStatus,
 }
 
 #[derive(Serialize)]
@@ -129,15 +93,17 @@ async fn get_deployments(
     }
 }
 
-async fn get_deployment(
+async fn get_deployment_by_image(
     State(state): State<AppState>,
-    Path(id): Path<i64>,
+    Path(image): Path<String>,
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
-    match state.database.get_deployment(id).await {
+    info!("get image by image: {}", image);
+
+    match state.database.get_deployment_by_image(&image).await {
         Ok(Some(deployment)) => Ok(Json(ApiResponse::success(deployment))),
         Ok(None) => Err(StatusCode::NOT_FOUND),
         Err(e) => {
-            eprintln!("Error getting deployment {id}: {e:?}");
+            eprintln!("Error getting deployment {image}: {e:?}");
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
@@ -239,7 +205,7 @@ pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> 
         .route("/sse", get(sse_handler))
         .route("/deployments", get(get_deployments))
         .route("/deployments", post(create_deployment))
-        .route("/deployments/{id}", get(get_deployment))
+        .route("/deployments/{image}", get(get_deployment_by_image))
         .route("/container/state", post(post_container_state))
         .route("/container/state", get(get_container_state))
         .route("/container/state/{id}", get(get_container_state_by_id))

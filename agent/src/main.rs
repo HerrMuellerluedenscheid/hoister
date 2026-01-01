@@ -27,35 +27,10 @@ use thiserror::Error;
 use tokio::time::sleep;
 
 use crate::notifications::{DeploymentResultHandler, setup_dispatcher, start_notification_handler};
-use chatterbox::message::Message;
-use controller::server::{CreateDeployment, DeploymentStatus};
 use controller::sse::ControllerEvent;
 #[allow(unused_imports)]
 use std::{env, process};
 use tokio::sync::mpsc;
-
-#[derive(Debug)]
-struct DeploymentResult {
-    image: String,
-    container_id: ContainerID,
-    status: DeploymentStatus,
-}
-
-impl From<&DeploymentResult> for Message {
-    fn from(val: &DeploymentResult) -> Self {
-        Message::new(val.status.to_string(), val.image.clone())
-    }
-}
-
-impl From<&DeploymentResult> for CreateDeployment {
-    fn from(result: &DeploymentResult) -> Self {
-        CreateDeployment {
-            image: result.image.clone(),
-            container_id: result.container_id.clone(),
-            status: result.status.clone(),
-        }
-    }
-}
 
 #[derive(Debug, Error)]
 enum HoisterError {

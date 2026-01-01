@@ -419,6 +419,7 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
+ "shared",
  "sqlx",
  "thiserror",
  "tokio",
@@ -972,7 +973,9 @@ dependencies = [
  "libc",
  "log",
  "reqwest",
+ "serde",
  "serde_json",
+ "shared",
  "thiserror",
  "tokio",
  "tokio-stream",
@@ -2230,6 +2233,16 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
+]
+
+[[package]]
+name = "shared"
+version = "0.1.0"
+dependencies = [
+ "chatterbox",
+ "serde",
+ "sqlx",
+ "ts-rs",
 ]
 
 [[package]]

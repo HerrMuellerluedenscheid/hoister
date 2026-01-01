@@ -1,6 +1,6 @@
-use crate::server::DeploymentStatus;
 use log::{debug, info};
 use serde::Serialize;
+use shared::DeploymentStatus;
 use sqlx::migrate::MigrateDatabase;
 use sqlx::{FromRow, SqlitePool};
 use thiserror::Error;
@@ -42,14 +42,28 @@ impl Database {
 
     /// Initialize the database with required tables
     pub async fn init(&self) -> Result<(), DbError> {
+        info!("Initializing database");
         sqlx::query(
             r#"
+            CREATE TABLE IF NOT EXISTS project (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS service (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL REFERENCES project(id),
+                name TEXT NOT NULL,
+                image TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
             CREATE TABLE IF NOT EXISTS deployment (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 digest TEXT NOT NULL,
                 status INTEGER NOT NULL CHECK (status IN (0, 1, 2, 3, 4, 5)),
+                service_id INTEGER NOT NULL REFERENCES service(id),
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
+            );
             "#,
         )
         .execute(&self.pool)
@@ -81,6 +95,21 @@ impl Database {
             .await?;
 
         Ok(result.last_insert_rowid())
+    }
+
+    /// Get deployment by image
+    pub async fn get_deployment_by_image(
+        &self,
+        image: &str,
+    ) -> Result<Option<Deployment>, DbError> {
+        let deployment = sqlx::query_as::<_, Deployment>(
+            "SELECT id, digest, status, created_at FROM deployment WHERE digest LIKE \"(?%)\" ",
+        )
+        .bind(image)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(deployment)
     }
 
     /// Get deployment by ID
