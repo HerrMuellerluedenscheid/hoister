@@ -8,13 +8,16 @@ use std::time::Duration;
 use tokio::time;
 
 async fn fetch_container_info(
-    project_name: &str,
+    #[allow(unused_variables)] project_name: &str,
     docker: &Docker,
 ) -> Result<Vec<ContainerInspectResponse>, bollard::errors::Error> {
+    #[allow(unused_mut, unused_variables)]
     let mut filters = HashMap::new();
-    let label_filters = vec![format!("com.docker.compose.project={}", project_name)];
-    filters.insert("label".to_string(), label_filters);
-
+    #[cfg(not(debug_assertions))]
+    {
+        let label_filters = vec![format!("com.docker.compose.project={}", project_name)];
+        filters.insert("label".to_string(), label_filters);
+    }
     let options = ListContainersOptions {
         filters: Some(filters),
         ..Default::default()

@@ -18,7 +18,7 @@ dev-controller:
 	export $$(cat .env.template | xargs) &&	cargo run --bin controller
 
 dev-hoister:
-	export $$(cat .env.template | xargs) && export $$(cat .env | xargs) &&	RUST_LOG=debug,bollard=info,hyper_util=info cargo run --bin hoister -- --watch 20
+	export $$(cat .env.template | xargs) && export $$(cat .env | xargs) && HOISTER_CONTROLLER_URL="http://localhost:3033" RUST_LOG=debug,bollard=info,hyper_util=info cargo run --bin hoister -- --watch 20
 
 test-message:
 	export $$(cat .env.template | xargs) && export $$(cat .env | xargs) &&	RUST_LOG=debug,bollard=info,hyper_util=info cargo run --bin hoister -- --test-message
