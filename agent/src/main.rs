@@ -144,7 +144,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     });
     let project_name = get_project_name(&docker.docker).await?;
     loop {
-        debug!("checking for updates");
+        debug!("---------- start checking containers ----------");
         let now = SystemTime::now();
         let containers = docker.get_containers(&project_name).await?;
         for container in containers {

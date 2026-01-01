@@ -272,14 +272,14 @@ impl DockerHandler {
 
         // Check if we're running in a container
         if let Some(self_container_id) = self.get_self_container_id().await {
-            info!(
+            debug!(
                 "Running in container {}, using self to copy volumes",
                 self_container_id
             );
             self.copy_volume_data_using_self(&self_container_id, source_volume, dest_volume)
                 .await
         } else {
-            info!("Running on host, using temporary container to copy volumes");
+            debug!("Running on host, using temporary container to copy volumes");
             self.copy_volume_data_using_temp_container(source_volume, dest_volume)
                 .await
         }
@@ -456,8 +456,6 @@ impl DockerHandler {
         let image_name = old_config.image.unwrap();
 
         let (image_name, image_tag) = image_name.rsplit_once(":").unwrap_or_default();
-        let image_name = image_name.to_string();
-        let image_tag = image_tag.to_string();
 
         trace!(
             "container details: {}",
@@ -475,8 +473,8 @@ impl DockerHandler {
             .map(|v| v == "true")
             .unwrap_or(false);
 
-        let digest = download_image(&self.docker, &image_name, &image_tag).await?;
-        debug!("Image pulled successfully (digest: {digest})");
+        let new_image_id = download_image(&self.docker, image_name, image_tag).await?;
+        debug!("Image pulled successfully (new_image_id: {new_image_id})");
 
         // Backup volumes if enabled
         let volume_backups = if enable_volume_backup {
@@ -577,6 +575,7 @@ impl DockerHandler {
 
         let label_filters = vec![
             "hoister.enable=true".to_string(),
+            #[cfg(not(debug_assertions))]
             format!("com.docker.compose.project={}", project_name),
         ];
         filters.insert("label".to_string(), label_filters);
@@ -679,14 +678,12 @@ async fn create_container(
     let container = docker.create_container(Some(options), config).await?;
     Ok(container)
 }
-
 async fn download_image(
     docker: &Docker,
     image_name: &str,
     image_tag: &str,
 ) -> Result<String, HoisterError> {
     let mut update_available = false;
-    let mut digest = String::new();
     let options = CreateImageOptions {
         from_image: Some(image_name.to_owned()),
         tag: Some(image_tag.to_owned()),
@@ -697,18 +694,12 @@ async fn download_image(
         match result {
             Ok(output) => {
                 debug!("{output:?}");
-                if let Some(status) = &output.status {
-                    if status.contains("Download complete")
+                if let Some(status) = &output.status
+                    && (status.contains("Download complete")
                         || status.contains("Pull complete")
-                        || status.contains("Downloaded newer image for")
-                    {
-                        update_available = true;
-                    }
-                    if status.contains("Digest:")
-                        && let Some(pos) = status.find("sha256:")
-                    {
-                        status[pos..].clone_into(&mut digest);
-                    }
+                        || status.contains("Downloaded newer image for"))
+                {
+                    update_available = true;
                 }
             }
             Err(e) => error!("Error pulling image: {e:?}"),
@@ -717,8 +708,17 @@ async fn download_image(
     if !update_available {
         return Err(HoisterError::NoUpdateAvailable);
     }
-    info!("New image pulled");
-    Ok(digest)
+
+    let full_image_name = format!("{}:{}", image_name, image_tag);
+    info!("New image pulled image name image tag: {full_image_name}");
+    let image_info = docker
+        .inspect_image(&full_image_name)
+        .await
+        .map_err(|e| HoisterError::Docker(format!("Failed to inspect image: {}", e)))?;
+    info!("Image info: {:?}", image_info);
+    image_info.id.ok_or(HoisterError::Docker(
+        "The pulled image id is empty".to_string(),
+    ))
 }
 
 async fn check_container_health(docker: &Docker, container_name: &str) -> Result<(), HoisterError> {
