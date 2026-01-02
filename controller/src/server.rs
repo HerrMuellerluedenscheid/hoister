@@ -84,7 +84,7 @@ async fn health() -> &'static str {
 async fn get_deployments(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<Deployment>>>, StatusCode> {
-    match state.database.get_all_deployment().await {
+    match state.database.get_all_deployments().await {
         Ok(deployments) => Ok(Json(ApiResponse::success(deployments))),
         Err(e) => {
             eprintln!("Error getting deployments: {e:?}");
@@ -95,6 +95,7 @@ async fn get_deployments(
 
 async fn get_deployment_by_image(
     State(state): State<AppState>,
+    Path(_project): Path<String>,
     Path(image): Path<String>,
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
     info!("get image by image: {}", image);
@@ -115,7 +116,13 @@ async fn create_deployment(
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
     match state
         .database
-        .create_deployment(&payload.image, &payload.status)
+        .create_deployment(
+            &payload.project,
+            &payload.service,
+            &payload.image,
+            &payload.digest,
+            &payload.status,
+        )
         .await
     {
         Ok(id) => match state.database.get_deployment(id).await {
@@ -205,7 +212,10 @@ pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> 
         .route("/sse", get(sse_handler))
         .route("/deployments", get(get_deployments))
         .route("/deployments", post(create_deployment))
-        .route("/deployments/{image}", get(get_deployment_by_image))
+        .route(
+            "/deployments/{project}/{image}",
+            get(get_deployment_by_image),
+        )
         .route("/container/state", post(post_container_state))
         .route("/container/state", get(get_container_state))
         .route("/container/state/{id}", get(get_container_state_by_id))

@@ -16,6 +16,7 @@ use bollard::query_parameters::{
 use futures_util::{StreamExt, TryStreamExt};
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
+use shared::{ImageDigest, ImageName, ProjectName, ServiceName};
 use std::collections::HashMap;
 use std::env::current_dir;
 use std::error::Error;
@@ -35,7 +36,6 @@ lazy_static! {
 }
 
 pub(crate) type ContainerID = String;
-pub(crate) type ContainerIdentifier = String;
 pub(crate) type VolumeName = String;
 
 const REMOVE_OPTIONS: RemoveContainerOptions = RemoveContainerOptions {
@@ -63,10 +63,15 @@ impl DockerHandler {
         }
     }
 
-    pub(crate) async fn get_image_identifier(
+    /// Get the service identifier for a container.
+    /// The order in which an identifier is chosen:
+    ///     1) (if) explicitly set by label `hoister.identifier`
+    ///     2) (if) in docker compose -> service name
+    ///     3) else container name
+    pub(crate) async fn get_service_identifier(
         &self,
         container_id: &ContainerID,
-    ) -> Result<ContainerIdentifier, HoisterError> {
+    ) -> Result<ServiceName, HoisterError> {
         let container_details = self
             .docker
             .inspect_container(container_id, None::<InspectContainerOptions>)
@@ -75,31 +80,21 @@ impl DockerHandler {
 
         let container_config = container_details.clone().config.unwrap();
 
-        let identifier = container_config
-            .labels
-            .unwrap_or_default()
-            .get("hoister.identifier")
-            .cloned();
+        let labels = container_config.labels.unwrap_or_default();
+        let identifier = labels.get("hoister.identifier");
         if let Some(id) = identifier {
-            return Ok(id.to_string());
+            return Ok(ServiceName::new(id));
         }
 
-        let image_inspect = self
-            .docker
-            .inspect_image(&container_details.clone().config.unwrap().image.unwrap())
-            .await
-            .inspect_err(|x| error!("Error inspecting image: {x:?}"))?;
+        let identifier = labels.get("com.docker.compose.service");
+        if let Some(id) = identifier {
+            return Ok(ServiceName::new(id));
+        }
 
-        let repo_digests = image_inspect.repo_digests.unwrap_or(vec![
-            container_details.name.unwrap_or("unknown".to_string()),
-        ]);
-
-        let image_identifier = match repo_digests.first() {
-            Some(repo_digest) => repo_digest.clone(),
-            None => container_config.image.unwrap().clone(),
-        };
-        debug!("image identifier: {image_identifier}");
-        Ok(image_identifier)
+        let name = container_details.name.unwrap_or_default();
+        // remove legacy prefix
+        let name = name.trim_start_matches('/');
+        Ok(ServiceName::new(name))
     }
 
     /// Backup volumes by creating copies
@@ -412,7 +407,9 @@ impl DockerHandler {
         let temp_container = self
             .docker
             .create_container(None::<CreateContainerOptions>, config)
-            .await?;
+            .await.inspect_err(|_| {
+            warn!("Failed to create temporary container for volume copy. This requires the alpine:latest image to be pulled manually.");
+        })?;
 
         info!("Created temporary container: {}", temp_container.id);
         self.docker
@@ -443,9 +440,10 @@ impl DockerHandler {
 
     pub(crate) async fn update_container(
         &self,
+        project: &ProjectName,
         container_id: &ContainerID,
     ) -> Result<(), HoisterError> {
-        let image_identifier = self.get_image_identifier(container_id).await?;
+        let service_identifier = self.get_service_identifier(container_id).await?;
 
         let container_details = self
             .docker
@@ -453,16 +451,18 @@ impl DockerHandler {
             .await?;
 
         let old_config = container_details.clone().config.unwrap();
-        let image_name = old_config.image.unwrap();
+        let image_name = ImageName::new(old_config.image.expect("image name empty"));
 
-        let (image_name, image_tag) = image_name.rsplit_once(":").unwrap_or_default();
+        debug!("Checking for updates: {image_name:?}");
 
+        let (repo_name, image_tag) = image_name.split();
         trace!(
             "container details: {}",
             serde_json::to_string_pretty(&container_details).unwrap()
         );
 
-        debug!("Checking for updates: {image_name}:{image_tag}");
+        let new_image_digest = download_image(&self.docker, repo_name, image_tag).await?;
+        debug!("Image pulled successfully ({new_image_digest:?})");
 
         // Check if volume backup is enabled via label
         let enable_volume_backup = container_details
@@ -472,9 +472,6 @@ impl DockerHandler {
             .and_then(|l| l.get("hoister.backup-volumes"))
             .map(|v| v == "true")
             .unwrap_or(false);
-
-        let new_image_id = download_image(&self.docker, image_name, image_tag).await?;
-        debug!("Image pulled successfully (new_image_id: {new_image_id})");
 
         // Backup volumes if enabled
         let volume_backups = if enable_volume_backup {
@@ -510,7 +507,12 @@ impl DockerHandler {
 
         if let Err(_e) = check_container_health(&self.docker, &container.id).await {
             self.deployment_handler
-                .inform_container_failed(image_identifier.clone(), container.id.clone())
+                .inform_container_failed(
+                    project.clone(),
+                    service_identifier.clone(),
+                    image_name.clone(),
+                    new_image_digest.clone(),
+                )
                 .await;
             warn!("New container failed, rolling back to previous version");
 
@@ -545,7 +547,12 @@ impl DockerHandler {
                 .await?;
             info!("Rollback complete, old container restarted");
             self.deployment_handler
-                .inform_rollback_complete(image_identifier, container_id.clone())
+                .inform_rollback_complete(
+                    project.clone(),
+                    service_identifier.clone(),
+                    image_name.clone(),
+                    new_image_digest.clone(),
+                )
                 .await;
         } else {
             debug!("Container updated successfully. deleting old container");
@@ -561,7 +568,12 @@ impl DockerHandler {
 
             info!("Container updated successfully. backup container removed");
             self.deployment_handler
-                .inform_update_success(image_identifier, container)
+                .inform_update_success(
+                    project.clone(),
+                    service_identifier.clone(),
+                    image_name.clone(),
+                    new_image_digest.clone(),
+                )
                 .await;
         }
         Ok(())
@@ -569,14 +581,14 @@ impl DockerHandler {
 
     pub(crate) async fn get_containers(
         &self,
-        project_name: &str,
+        project_name: &ProjectName,
     ) -> Result<Vec<ContainerSummary>, Box<dyn Error>> {
         let mut filters = HashMap::new();
 
         let label_filters = vec![
             "hoister.enable=true".to_string(),
             #[cfg(not(debug_assertions))]
-            format!("com.docker.compose.project={}", project_name),
+            format!("com.docker.compose.project={}", project_name.as_str()),
         ];
         filters.insert("label".to_string(), label_filters);
 
@@ -594,20 +606,20 @@ impl DockerHandler {
         debug!(
             "found {} containers in project '{}' with label `hoister.enable=true` and not `hoister.hide=true`",
             containers.len(),
-            project_name
+            project_name.as_str()
         );
 
         Ok(containers)
     }
 }
 
-pub(crate) async fn get_project_name(docker: &Docker) -> Result<String, Box<dyn Error>> {
-    if let Ok(project_name) = env::var("HOISTER_COMPOSE_PROJECT") {
+pub(crate) async fn get_project_name(docker: &Docker) -> Result<ProjectName, Box<dyn Error>> {
+    if let Ok(project_name) = env::var("HOISTER_PROJECT_NAME") {
         info!(
-            "Using project name from HOISTER_COMPOSE_PROJECT: {}",
+            "Using project name from HOISTER_PROJECT_NAME: {}",
             project_name
         );
-        return Ok(project_name);
+        return Ok(ProjectName::new(project_name));
     }
 
     let mut filters = HashMap::new();
@@ -631,7 +643,7 @@ pub(crate) async fn get_project_name(docker: &Docker) -> Result<String, Box<dyn 
             "Detected project name from hoister agent container: {}",
             project
         );
-        return Ok(project.clone());
+        return Ok(ProjectName::new(project));
     }
 
     let fallback = current_dir()?
@@ -640,7 +652,7 @@ pub(crate) async fn get_project_name(docker: &Docker) -> Result<String, Box<dyn 
         .unwrap_or("hoister")
         .to_string();
 
-    Ok(fallback)
+    Ok(ProjectName::new(fallback))
 }
 
 async fn create_container(
@@ -682,7 +694,7 @@ async fn download_image(
     docker: &Docker,
     image_name: &str,
     image_tag: &str,
-) -> Result<String, HoisterError> {
+) -> Result<ImageDigest, HoisterError> {
     let mut update_available = false;
     let options = CreateImageOptions {
         from_image: Some(image_name.to_owned()),
@@ -716,9 +728,10 @@ async fn download_image(
         .await
         .map_err(|e| HoisterError::Docker(format!("Failed to inspect image: {}", e)))?;
     info!("Image info: {:?}", image_info);
-    image_info.id.ok_or(HoisterError::Docker(
+    let new_image_digest = image_info.id.ok_or(HoisterError::Docker(
         "The pulled image id is empty".to_string(),
-    ))
+    ))?;
+    Ok(ImageDigest::new(new_image_digest))
 }
 
 async fn check_container_health(docker: &Docker, container_name: &str) -> Result<(), HoisterError> {

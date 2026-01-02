@@ -3,19 +3,23 @@ use bollard::Docker;
 use bollard::models::{ContainerInspectResponse, ContainerSummary};
 use bollard::query_parameters::ListContainersOptions;
 use log::{debug, error, info};
+use shared::ProjectName;
 use std::collections::HashMap;
 use std::time::Duration;
 use tokio::time;
 
 async fn fetch_container_info(
-    #[allow(unused_variables)] project_name: &str,
+    #[allow(unused_variables)] project_name: &ProjectName,
     docker: &Docker,
 ) -> Result<Vec<ContainerInspectResponse>, bollard::errors::Error> {
     #[allow(unused_mut, unused_variables)]
     let mut filters = HashMap::new();
     #[cfg(not(debug_assertions))]
     {
-        let label_filters = vec![format!("com.docker.compose.project={}", project_name)];
+        let label_filters = vec![format!(
+            "com.docker.compose.project={}",
+            project_name.as_str()
+        )];
         filters.insert("label".to_string(), label_filters);
     }
     let options = ListContainersOptions {

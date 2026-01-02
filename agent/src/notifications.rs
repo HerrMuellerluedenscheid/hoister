@@ -1,9 +1,9 @@
 use crate::HoisterError;
-use crate::docker::{ContainerID, ContainerIdentifier};
-use bollard::models::ContainerCreateResponse;
 use chatterbox::message::{Dispatcher, Message};
 use log::{debug, error, info};
-use shared::{CreateDeployment, DeploymentStatus};
+use shared::{
+    CreateDeployment, DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName,
+};
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
 
@@ -18,13 +18,17 @@ impl DeploymentResultHandler {
 
     pub(crate) async fn inform_container_failed(
         &self,
-        image: ContainerIdentifier,
-        container_id: ContainerID,
+        project: ProjectName,
+        service: ServiceName,
+        image: ImageName,
+        digest: ImageDigest,
     ) {
         self.tx
             .send(CreateDeployment {
+                project,
+                service,
                 image,
-                container_id,
+                digest,
                 status: DeploymentStatus::Failed,
             })
             .await
@@ -33,13 +37,17 @@ impl DeploymentResultHandler {
 
     pub(crate) async fn inform_rollback_complete(
         &self,
-        image: ContainerIdentifier,
-        container_id: ContainerID,
+        project: ProjectName,
+        service: ServiceName,
+        image: ImageName,
+        digest: ImageDigest,
     ) {
         self.tx
             .send(CreateDeployment {
+                project,
+                service,
                 image,
-                container_id,
+                digest,
                 status: DeploymentStatus::RollbackFinished,
             })
             .await
@@ -48,13 +56,17 @@ impl DeploymentResultHandler {
 
     pub(crate) async fn inform_update_success(
         &self,
-        image: ContainerIdentifier,
-        container_create: ContainerCreateResponse,
+        project: ProjectName,
+        service: ServiceName,
+        image: ImageName,
+        digest: ImageDigest,
     ) {
         self.tx
             .send(CreateDeployment {
+                project,
+                service,
                 image,
-                container_id: container_create.id,
+                digest,
                 status: DeploymentStatus::Success,
             })
             .await
@@ -62,14 +74,7 @@ impl DeploymentResultHandler {
     }
 
     pub(crate) async fn test_message(&self) {
-        self.tx
-            .send(CreateDeployment {
-                image: "test-image".to_string(),
-                container_id: "test-container-id".to_string(),
-                status: DeploymentStatus::TestMessage,
-            })
-            .await
-            .unwrap();
+        self.tx.send(CreateDeployment::test()).await.unwrap();
     }
 }
 
