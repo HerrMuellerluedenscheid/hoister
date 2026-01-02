@@ -2,24 +2,8 @@
 
     import * as Card from "$lib/components/ui/card/index.js";
     import {onDestroy, onMount} from "svelte";
+    import type {InspectionType} from "$lib/types/docker";
 
-    type InspectionType = {
-        Id: string;
-        State: {
-            Status: string;
-            Running: boolean;
-            Paused: boolean;
-            Error: string;
-            FinishedAt: string;  // ISO 8601 date string
-            StartedAt: string;   // ISO 8601 date string
-        };
-        Config: {
-            Image: string;
-            Hostname: string,
-            User: string,
-            Labels: Record<string, string>;
-        };
-    };
 
     let { inspection }: { inspection: InspectionType } = $props();
 
@@ -28,6 +12,12 @@
 
     let uptime = $state(getUptime(inspection.State.StartedAt));
     let interval: number;
+    //
+    // getDeploymentsByImage(inspection.Config.Image).then((deployments) => {
+    //     console.log(deployments);
+    // }).catch((error) => {
+    //     console.error("Error fetching deployments:", error);
+    // });
 
     onMount(() => {
         interval = setInterval(() => {
