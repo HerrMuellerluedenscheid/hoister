@@ -12,12 +12,12 @@ interface DeploymentsResponse {
 }
 
 
-export async function getDeploymentsByImage(image: string) {
+export async function getDeploymentsByImage(project: string, imageName: string) {
     if (!BACKEND_URL) {
         throw error(500, 'Backend URL not configured');
     }
-
-    const response = await fetch(`${BACKEND_URL}/deployments/${image}`);
+    const imageNameBase64 = Buffer.from(imageName).toString('base64');
+    const response = await fetch(`${BACKEND_URL}/deployments/${project}/${imageNameBase64}`);
 
     if (!response.ok) {
         throw error(response.status, 'Failed to load data from backend');

@@ -4,6 +4,64 @@ use sqlx::Type;
 use std::fmt::{Display, Formatter};
 use ts_rs::TS;
 
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct ImageDigest(pub String);
+
+impl ImageDigest {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self(name.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// The name of an image as used in docker in the form `repo:tag`. E.g. "emrius11/example:latest"
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct ImageName(pub String);
+
+impl ImageName {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self(name.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn split(&self) -> (&str, &str) {
+        let split: Vec<&str> = self.0.split(':').collect();
+        (split[0], split[1])
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct ServiceName(pub String);
+
+impl ServiceName {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self(name.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct ProjectName(pub String);
+
+impl ProjectName {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self(name.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 #[derive(TS, Deserialize, Debug, Clone, Serialize, Type)]
 #[ts(export)]
 #[repr(u8)]
@@ -20,12 +78,12 @@ pub enum DeploymentStatus {
 impl Display for DeploymentStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            DeploymentStatus::Pending => write!(f, "Pending"),
-            DeploymentStatus::Started => write!(f, "Started"),
-            DeploymentStatus::Success => write!(f, "Success"),
-            DeploymentStatus::RollbackFinished => write!(f, "Rolled back"),
+            DeploymentStatus::Pending => write!(f, "Deployment Pending"),
+            DeploymentStatus::Started => write!(f, "Deployment Started"),
+            DeploymentStatus::Success => write!(f, "Deployment Successful ✅"),
+            DeploymentStatus::RollbackFinished => write!(f, "Deployment rolled back 🔁"),
             &DeploymentStatus::NoUpdate => write!(f, "NoUpdate"),
-            &DeploymentStatus::Failed => write!(f, "Failed"),
+            &DeploymentStatus::Failed => write!(f, "Deployment Failed ❌"),
             &DeploymentStatus::TestMessage => write!(f, "Test Message"),
         }
     }
@@ -33,13 +91,42 @@ impl Display for DeploymentStatus {
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct CreateDeployment {
-    pub image: String,
-    pub container_id: String,
+    pub project: ProjectName,
+    pub service: ServiceName,
+    pub image: ImageName,
+    pub digest: ImageDigest,
     pub status: DeploymentStatus,
+}
+
+impl Display for CreateDeployment {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let body = format!(
+            "image {} update to {}\nfinished with status {:?}\n(project {} | service {})",
+            self.image.as_str(),
+            self.digest.as_str(),
+            self.status,
+            self.project.as_str(),
+            self.service.as_str()
+        );
+
+        write!(f, "{}", body)
+    }
+}
+
+impl CreateDeployment {
+    pub fn test() -> Self {
+        Self {
+            project: ProjectName::new("test-project"),
+            service: ServiceName::new("test-service"),
+            image: ImageName::new("test:latest"),
+            digest: ImageDigest::new("sha256:test"),
+            status: DeploymentStatus::TestMessage,
+        }
+    }
 }
 
 impl From<&CreateDeployment> for Message {
     fn from(val: &CreateDeployment) -> Self {
-        Message::new(val.status.to_string(), val.image.clone())
+        Message::new(val.status.to_string(), val.to_string())
     }
 }

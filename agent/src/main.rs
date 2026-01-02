@@ -57,9 +57,9 @@ impl SSEHandler {
     async fn start(&mut self) {
         while let Some(message) = self.rx.recv().await {
             match message {
-                ControllerEvent::Retry(container_id) => {
+                ControllerEvent::Retry((project_name, container_id)) => {
                     self.docker
-                        .update_container(&container_id)
+                        .update_container(&project_name, &container_id)
                         .await
                         .expect("TODO: panic message");
                 }
@@ -125,7 +125,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         for container in containers {
             debug!("Checking container {:?}", container.id);
             let container_id: ContainerID = container.id.unwrap_or_default();
-            let result = docker.update_container(&container_id).await;
+            let result = docker.update_container(&project_name, &container_id).await;
             debug!("result: {:?}", result);
         }
 

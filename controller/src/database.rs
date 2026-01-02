@@ -1,8 +1,8 @@
 use log::{debug, info};
 use serde::Serialize;
-use shared::DeploymentStatus;
+use shared::{DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName};
 use sqlx::migrate::MigrateDatabase;
-use sqlx::{FromRow, SqlitePool};
+use sqlx::{FromRow, Row, SqlitePool};
 use thiserror::Error;
 use ts_rs::TS;
 
@@ -16,10 +16,29 @@ pub enum DbError {
 
 #[derive(FromRow, Debug, Clone, Serialize, TS)]
 #[ts(export)]
+pub struct Project {
+    pub id: i64,
+    pub name: String,
+    pub created_at: String,
+}
+
+#[derive(FromRow, Debug, Clone, Serialize, TS)]
+#[ts(export)]
+pub struct Service {
+    pub id: i64,
+    pub project_id: i64,
+    pub name: String,
+    pub image: String,
+    pub created_at: String,
+}
+
+#[derive(FromRow, Debug, Clone, Serialize, TS)]
+#[ts(export)]
 pub struct Deployment {
     pub id: i64,
     pub digest: Digest,
     pub status: DeploymentStatus,
+    pub service_id: i64,
     pub created_at: String,
 }
 
@@ -45,26 +64,27 @@ impl Database {
         info!("Initializing database");
         sqlx::query(
             r#"
-            CREATE TABLE IF NOT EXISTS project (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE TABLE IF NOT EXISTS service (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id INTEGER NOT NULL REFERENCES project(id),
-                name TEXT NOT NULL,
-                image TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE TABLE IF NOT EXISTS deployment (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                digest TEXT NOT NULL,
-                status INTEGER NOT NULL CHECK (status IN (0, 1, 2, 3, 4, 5)),
-                service_id INTEGER NOT NULL REFERENCES service(id),
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            "#,
+        CREATE TABLE IF NOT EXISTS project (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS service (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL REFERENCES project(id),
+            name TEXT NOT NULL,
+            image TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(project_id, name)
+        );
+        CREATE TABLE IF NOT EXISTS deployment (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            digest TEXT NOT NULL,
+            status INTEGER NOT NULL CHECK (status IN (0, 1, 2, 3, 4, 5)),
+            service_id INTEGER NOT NULL REFERENCES service(id),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        "#,
         )
         .execute(&self.pool)
         .await?;
@@ -72,50 +92,84 @@ impl Database {
         Ok(())
     }
 
+    /// Upsert a project by name, returning its ID
+    pub async fn upsert_project(&self, name: &ProjectName) -> Result<i64, DbError> {
+        let result = sqlx::query(
+            r#"
+            INSERT INTO project (name) VALUES (?)
+            ON CONFLICT(name) DO UPDATE SET name = name
+            RETURNING id
+            "#,
+        )
+        .bind(name.as_str())
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(result.get("id"))
+    }
+
+    /// Upsert a service, returning its ID
+    pub async fn upsert_service(
+        &self,
+        project_id: i64,
+        name: &ServiceName,
+        image: &ImageName,
+    ) -> Result<i64, DbError> {
+        let result = sqlx::query(
+            r#"
+            INSERT INTO service (project_id, name, image) VALUES (?, ?, ?)
+            ON CONFLICT(project_id, name) DO UPDATE SET image = excluded.image
+            RETURNING id
+            "#,
+        )
+        .bind(project_id)
+        .bind(name.as_str())
+        .bind(image.as_str())
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(result.get("id"))
+    }
+
     /// Create a new deployment
     pub async fn create_deployment(
         &self,
-        digest: &str,
+        project_name: &ProjectName,
+        service_name: &ServiceName,
+        image: &ImageName,
+        digest: &ImageDigest,
         status: &DeploymentStatus,
     ) -> Result<i64, DbError> {
+        // Upsert project and service
+        let project_id = self.upsert_project(project_name).await?;
+        let service_id = self.upsert_service(project_id, service_name, image).await?;
+
         if matches!(status, DeploymentStatus::NoUpdate) {
-            sqlx::query("DELETE FROM deployment WHERE status = ?")
+            sqlx::query("DELETE FROM deployment WHERE status = ? AND service_id = ?")
                 .bind(DeploymentStatus::NoUpdate as u8)
+                .bind(service_id)
                 .execute(&self.pool)
                 .await?;
-            debug!("{} - {}", digest, status)
+            debug!("{} - {}", digest.as_str(), status)
         } else {
-            info!("{} - {}", digest, status)
+            info!("{} - {}", digest.as_str(), status)
         }
 
-        let result = sqlx::query("INSERT INTO deployment (digest, status) VALUES (?, ?)")
-            .bind(digest)
-            .bind(status)
-            .execute(&self.pool)
-            .await?;
+        let result =
+            sqlx::query("INSERT INTO deployment (digest, status, service_id) VALUES (?, ?, ?)")
+                .bind(digest.as_str())
+                .bind(status)
+                .bind(service_id)
+                .execute(&self.pool)
+                .await?;
 
         Ok(result.last_insert_rowid())
-    }
-
-    /// Get deployment by image
-    pub async fn get_deployment_by_image(
-        &self,
-        image: &str,
-    ) -> Result<Option<Deployment>, DbError> {
-        let deployment = sqlx::query_as::<_, Deployment>(
-            "SELECT id, digest, status, created_at FROM deployment WHERE digest LIKE \"(?%)\" ",
-        )
-        .bind(image)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(deployment)
     }
 
     /// Get deployment by ID
     pub async fn get_deployment(&self, id: i64) -> Result<Option<Deployment>, DbError> {
         let deployment = sqlx::query_as::<_, Deployment>(
-            "SELECT id, digest, status, created_at FROM deployment WHERE id = ?",
+            "SELECT id, digest, status, service_id, created_at FROM deployment WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -124,12 +178,28 @@ impl Database {
         Ok(deployment)
     }
 
-    /// Get all deployment
-    pub async fn get_all_deployment(&self) -> Result<Vec<Deployment>, DbError> {
-        let deployment = sqlx::query_as::<_, Deployment>(
-            "SELECT id, digest, status, created_at FROM deployment ORDER BY created_at DESC",
+    /// Get all deployments
+    pub async fn get_all_deployments(&self) -> Result<Vec<Deployment>, DbError> {
+        let deployments = sqlx::query_as::<_, Deployment>(
+            "SELECT id, digest, status, service_id, created_at FROM deployment ORDER BY created_at DESC",
         )
-        .fetch_all(&self.pool)
+            .fetch_all(&self.pool)
+            .await?;
+
+        Ok(deployments)
+    }
+
+    /// Get deployment by image
+    pub async fn get_deployment_by_image(
+        &self,
+        image: &str,
+    ) -> Result<Option<Deployment>, DbError> {
+        info!("get deployments by image: {image}");
+        let deployment = sqlx::query_as::<_, Deployment>(
+            "SELECT id, digest, status, created_at FROM deployment WHERE digest LIKE \"(?%)\" ",
+        )
+        .bind(image)
+        .fetch_optional(&self.pool)
         .await?;
 
         Ok(deployment)
@@ -142,23 +212,34 @@ mod tests {
 
     // Example usage
     #[tokio::test]
-    async fn test_this() -> Result<(), DbError> {
+    async fn test_create_deployment() -> Result<(), DbError> {
         let db = Database::new("sqlite:///tmp/sqlite.db").await?;
         db.init().await?;
 
         let deployment_id = db
             .create_deployment(
-                "sdfsdfsasdfasdfaosdifjoaijsdofijaosidjfoajosdfjoiajsdfoijaosdifjoasdjfoij",
+                &ProjectName::new(
+                    "sdfsdfsasdfasdfaosdifjoaijsdofijaosidjfoajosdfjoiajsdfoijaosdifjoasdjfoij",
+                ),
+                &ServiceName::new("asdfasdf"),
+                &ImageName::new("demoimage"),
+                &ImageDigest::new("asdfasfoip234w"),
                 &DeploymentStatus::Pending,
             )
             .await?;
         println!("Created deployment with ID: {deployment_id}");
 
-        db.create_deployment("Bob Wilson", &DeploymentStatus::Pending)
-            .await?;
+        db.create_deployment(
+            &ProjectName::new("Bob Wilson"),
+            &ServiceName::new("demoservice"),
+            &ImageName::new("demoimage"),
+            &ImageDigest::new("asdfasfoip234w"),
+            &DeploymentStatus::Pending,
+        )
+        .await?;
 
         // Get all deployment
-        let deployment = db.get_all_deployment().await?;
+        let deployment = db.get_all_deployments().await?;
         println!("All deployment:");
         for deployment in deployment {
             println!("  {deployment:?}");
