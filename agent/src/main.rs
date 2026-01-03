@@ -82,9 +82,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let result_handler = DeploymentResultHandler::new(tx_notification);
     if let Ok(controller_url) = env::var("HOISTER_CONTROLLER_URL") {
         let url = controller_url.clone();
+        let url_state = format!("{}/container/state", controller_url);
+
         tokio::spawn(async move { sse::consume_sse(format!("{url}/sse").as_str(), tx_sse).await });
         tokio::spawn(async move {
-            monitor::start(controller_url)
+            monitor::start(url_state)
                 .await
                 .expect("Failed to start monitor");
         });

@@ -36,7 +36,7 @@ impl ImageName {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub struct ServiceName(pub String);
 
 impl ServiceName {
@@ -49,7 +49,7 @@ impl ServiceName {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub struct ProjectName(pub String);
 
 impl ProjectName {

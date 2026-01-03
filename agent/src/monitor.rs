@@ -1,9 +1,11 @@
-use crate::docker::get_project_name;
+use crate::HoisterError;
+use crate::docker::{get_project_name, get_service_identifier};
 use bollard::Docker;
 use bollard::models::{ContainerInspectResponse, ContainerSummary};
 use bollard::query_parameters::ListContainersOptions;
+use controller::server::PostContainerStateRequest;
 use log::{debug, error, info};
-use shared::ProjectName;
+use shared::{ProjectName, ServiceName};
 use std::collections::HashMap;
 use std::time::Duration;
 use tokio::time;
@@ -11,7 +13,7 @@ use tokio::time;
 async fn fetch_container_info(
     #[allow(unused_variables)] project_name: &ProjectName,
     docker: &Docker,
-) -> Result<Vec<ContainerInspectResponse>, bollard::errors::Error> {
+) -> Result<HashMap<ServiceName, ContainerInspectResponse>, HoisterError> {
     #[allow(unused_mut, unused_variables)]
     let mut filters = HashMap::new();
     #[cfg(not(debug_assertions))]
@@ -41,19 +43,25 @@ async fn fetch_container_info(
         })
         .collect::<Vec<ContainerSummary>>();
 
-    let mut states = Vec::new();
+    let mut states = HashMap::new();
 
     for container in containers {
-        if let Some(id) = &container.id {
-            match docker
+        if let Some(container_id) = &container.id {
+            let service_identifier = get_service_identifier(docker, container_id).await?;
+
+            let inspect = docker
                 .inspect_container(
-                    id,
+                    container_id,
                     None::<bollard::query_parameters::InspectContainerOptions>,
                 )
-                .await
-            {
-                Ok(inspect) => states.push(inspect),
-                Err(e) => error!("Error inspecting container {}: {}", id, e),
+                .await;
+
+            match inspect {
+                Ok(mut inspect) => {
+                    redact_credentials(&mut inspect);
+                    states.insert(service_identifier.clone(), inspect);
+                }
+                Err(e) => error!("Error inspecting container {}: {}", container_id, e),
             }
         }
     }
@@ -110,19 +118,16 @@ fn redact_credentials(inspect: &mut ContainerInspectResponse) {
 
 async fn send_to_backend(
     controller_url: &str,
-    states: &mut [ContainerInspectResponse],
+    project_name: ProjectName,
+    states: &HashMap<ServiceName, ContainerInspectResponse>,
 ) -> Result<(), reqwest::Error> {
-    let client = reqwest::Client::new();
-    let url = format!("{}/container/state", controller_url,);
+    let request = PostContainerStateRequest {
+        project_name,
+        payload: states.clone(),
+    };
 
-    for state in states.iter_mut() {
-        redact_credentials(state);
-    }
-    client
-        .post(&url)
-        .json(&serde_json::json!(states))
-        .send()
-        .await?;
+    let client = reqwest::Client::new();
+    client.post(controller_url).json(&request).send().await?;
 
     Ok(())
 }
@@ -139,8 +144,10 @@ pub(crate) async fn start(
         interval.tick().await;
 
         match fetch_container_info(&project_name, &docker).await {
-            Ok(mut current_states) => {
-                if let Err(e) = send_to_backend(&controller_url, &mut current_states).await {
+            Ok(current_states) => {
+                if let Err(e) =
+                    send_to_backend(&controller_url, project_name.clone(), &current_states).await
+                {
                     error!("Failed to send to backend: {}", e);
                 } else {
                     debug!(

@@ -63,40 +63,6 @@ impl DockerHandler {
         }
     }
 
-    /// Get the service identifier for a container.
-    /// The order in which an identifier is chosen:
-    ///     1) (if) explicitly set by label `hoister.identifier`
-    ///     2) (if) in docker compose -> service name
-    ///     3) else container name
-    pub(crate) async fn get_service_identifier(
-        &self,
-        container_id: &ContainerID,
-    ) -> Result<ServiceName, HoisterError> {
-        let container_details = self
-            .docker
-            .inspect_container(container_id, None::<InspectContainerOptions>)
-            .await
-            .inspect_err(|x| error!("Error inspecting container: {x:?}"))?;
-
-        let container_config = container_details.clone().config.unwrap();
-
-        let labels = container_config.labels.unwrap_or_default();
-        let identifier = labels.get("hoister.identifier");
-        if let Some(id) = identifier {
-            return Ok(ServiceName::new(id));
-        }
-
-        let identifier = labels.get("com.docker.compose.service");
-        if let Some(id) = identifier {
-            return Ok(ServiceName::new(id));
-        }
-
-        let name = container_details.name.unwrap_or_default();
-        // remove legacy prefix
-        let name = name.trim_start_matches('/');
-        Ok(ServiceName::new(name))
-    }
-
     /// Backup volumes by creating copies
     async fn backup_volumes(
         &self,
@@ -443,7 +409,7 @@ impl DockerHandler {
         project: &ProjectName,
         container_id: &ContainerID,
     ) -> Result<(), HoisterError> {
-        let service_identifier = self.get_service_identifier(container_id).await?;
+        let service_identifier = get_service_identifier(&self.docker, container_id).await?;
 
         let container_details = self
             .docker
@@ -611,6 +577,39 @@ impl DockerHandler {
 
         Ok(containers)
     }
+}
+
+/// Get the service identifier for a container.
+/// The order in which an identifier is chosen:
+///     1) (if) explicitly set by label `hoister.identifier`
+///     2) (if) in docker compose -> service name
+///     3) else container name
+pub(crate) async fn get_service_identifier(
+    docker: &Docker,
+    container_id: &ContainerID,
+) -> Result<ServiceName, HoisterError> {
+    let container_details = docker
+        .inspect_container(container_id, None::<InspectContainerOptions>)
+        .await
+        .inspect_err(|x| error!("Error inspecting container: {x:?}"))?;
+
+    let container_config = container_details.clone().config.unwrap();
+
+    let labels = container_config.labels.unwrap_or_default();
+    let identifier = labels.get("hoister.identifier");
+    if let Some(id) = identifier {
+        return Ok(ServiceName::new(id));
+    }
+
+    let identifier = labels.get("com.docker.compose.service");
+    if let Some(id) = identifier {
+        return Ok(ServiceName::new(id));
+    }
+
+    let name = container_details.name.unwrap_or_default();
+    // remove legacy prefix
+    let name = name.trim_start_matches('/');
+    Ok(ServiceName::new(name))
 }
 
 pub(crate) async fn get_project_name(docker: &Docker) -> Result<ProjectName, Box<dyn Error>> {
