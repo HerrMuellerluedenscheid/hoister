@@ -27,35 +27,10 @@ use thiserror::Error;
 use tokio::time::sleep;
 
 use crate::notifications::{DeploymentResultHandler, setup_dispatcher, start_notification_handler};
-use chatterbox::message::Message;
-use controller::server::{CreateDeployment, DeploymentStatus};
 use controller::sse::ControllerEvent;
 #[allow(unused_imports)]
 use std::{env, process};
 use tokio::sync::mpsc;
-
-#[derive(Debug)]
-struct DeploymentResult {
-    image: String,
-    container_id: ContainerID,
-    status: DeploymentStatus,
-}
-
-impl From<&DeploymentResult> for Message {
-    fn from(val: &DeploymentResult) -> Self {
-        Message::new(val.status.to_string(), val.image.clone())
-    }
-}
-
-impl From<&DeploymentResult> for CreateDeployment {
-    fn from(result: &DeploymentResult) -> Self {
-        CreateDeployment {
-            image: result.image.clone(),
-            container_id: result.container_id.clone(),
-            status: result.status.clone(),
-        }
-    }
-}
 
 #[derive(Debug, Error)]
 enum HoisterError {
@@ -82,9 +57,9 @@ impl SSEHandler {
     async fn start(&mut self) {
         while let Some(message) = self.rx.recv().await {
             match message {
-                ControllerEvent::Retry(container_id) => {
+                ControllerEvent::Retry((project_name, container_id)) => {
                     self.docker
-                        .update_container(&container_id)
+                        .update_container(&project_name, &container_id)
                         .await
                         .expect("TODO: panic message");
                 }
@@ -107,9 +82,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let result_handler = DeploymentResultHandler::new(tx_notification);
     if let Ok(controller_url) = env::var("HOISTER_CONTROLLER_URL") {
         let url = controller_url.clone();
+        let url_state = format!("{}/container/state", controller_url);
+
         tokio::spawn(async move { sse::consume_sse(format!("{url}/sse").as_str(), tx_sse).await });
         tokio::spawn(async move {
-            monitor::start(controller_url)
+            monitor::start(url_state)
                 .await
                 .expect("Failed to start monitor");
         });
@@ -120,7 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     });
     info!("Starting hoister");
     if let Some(true) = config.send_test_message {
-        info!("Sending test message");
+        info!("Sending tests message");
         result_handler.test_message().await;
         // await 1 second to allow the message to be sent
         sleep(Duration::from_secs(1)).await;
@@ -150,7 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         for container in containers {
             debug!("Checking container {:?}", container.id);
             let container_id: ContainerID = container.id.unwrap_or_default();
-            let result = docker.update_container(&container_id).await;
+            let result = docker.update_container(&project_name, &container_id).await;
             debug!("result: {:?}", result);
         }
 

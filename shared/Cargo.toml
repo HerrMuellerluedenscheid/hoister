@@ -1,0 +1,10 @@
+[package]
+name = "shared"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+ts-rs = "11.0.1"
+sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio"] }
+chatterbox = {workspace = true}

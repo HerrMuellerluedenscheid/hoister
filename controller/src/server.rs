@@ -8,62 +8,29 @@ use axum::{
     routing::{get, post},
 };
 use bollard::models::ContainerInspectResponse;
-use log::{debug, info};
+use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
 // Import your database module
 use crate::database::{Database, Deployment};
 use crate::sse::{ControllerEvent, sse_handler};
-use sqlx::Type;
+use shared::{CreateDeployment, ProjectName, ServiceName};
 use tokio::sync::{RwLock, broadcast};
-use ts_rs::TS;
+
+type ContainerState = HashMap<ProjectName, HashMap<ServiceName, ContainerInspectResponse>>;
 
 #[derive(Clone)]
 pub struct AppState {
-    container_state: Arc<RwLock<Option<Vec<ContainerInspectResponse>>>>,
+    container_state: Arc<RwLock<ContainerState>>,
     pub(crate) database: Arc<Database>,
     pub(crate) api_secret: Option<String>,
     pub(crate) event_tx: broadcast::Sender<ControllerEvent>,
 }
 
-#[derive(TS, Deserialize, Debug, Clone, Serialize, Type)]
-#[ts(export)]
-#[repr(u8)]
-pub enum DeploymentStatus {
-    Pending = 0,
-    Started = 1,
-    Success = 2,
-    RollbackFinished = 3,
-    NoUpdate = 4,
-    Failed = 5,
-    TestMessage = 6,
-}
-
-impl Display for DeploymentStatus {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DeploymentStatus::Pending => write!(f, "Pending"),
-            DeploymentStatus::Started => write!(f, "Started"),
-            DeploymentStatus::Success => write!(f, "Success"),
-            DeploymentStatus::RollbackFinished => write!(f, "Rolled back"),
-            &DeploymentStatus::NoUpdate => write!(f, "NoUpdate"),
-            &DeploymentStatus::Failed => write!(f, "Failed"),
-            &DeploymentStatus::TestMessage => write!(f, "Test Message"),
-        }
-    }
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-pub struct CreateDeployment {
-    pub image: String,
-    pub container_id: String,
-    pub status: DeploymentStatus,
-}
-
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ApiResponse<T> {
     pub success: bool,
     pub data: Option<T>,
@@ -120,24 +87,29 @@ async fn health() -> &'static str {
 async fn get_deployments(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<Deployment>>>, StatusCode> {
-    match state.database.get_all_deployment().await {
+    match state.database.get_all_deployments().await {
         Ok(deployments) => Ok(Json(ApiResponse::success(deployments))),
         Err(e) => {
-            eprintln!("Error getting deployments: {e:?}");
+            error!("Error getting deployments: {e:?}");
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
 }
 
-async fn get_deployment(
+async fn get_deployments_by_service(
     State(state): State<AppState>,
-    Path(id): Path<i64>,
-) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
-    match state.database.get_deployment(id).await {
-        Ok(Some(deployment)) => Ok(Json(ApiResponse::success(deployment))),
-        Ok(None) => Err(StatusCode::NOT_FOUND),
+    Path((project_name, service_name)): Path<(ProjectName, ServiceName)>,
+) -> Result<Json<ApiResponse<Vec<Deployment>>>, StatusCode> {
+    debug!("get service by name: {:?}", service_name);
+
+    match state
+        .database
+        .get_deployments_of_service(&project_name, &service_name)
+        .await
+    {
+        Ok(deployments) => Ok(Json(ApiResponse::success(deployments))),
         Err(e) => {
-            eprintln!("Error getting deployment {id}: {e:?}");
+            error!("Error getting deployment {service_name:?} | {project_name:?} : {e:?}");
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
@@ -149,7 +121,13 @@ async fn create_deployment(
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
     match state
         .database
-        .create_deployment(&payload.image, &payload.status)
+        .create_deployment(
+            &payload.project,
+            &payload.service,
+            &payload.image,
+            &payload.digest,
+            &payload.status,
+        )
         .await
     {
         Ok(id) => match state.database.get_deployment(id).await {
@@ -167,68 +145,57 @@ async fn create_deployment(
     }
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct PostContainerStateRequest {
+    pub project_name: ProjectName,
+    pub payload: HashMap<ServiceName, ContainerInspectResponse>,
+}
+
 async fn post_container_state(
     State(state): State<AppState>,
-    Json(payload): Json<Vec<ContainerInspectResponse>>,
+    Json(payload): Json<PostContainerStateRequest>,
 ) -> impl IntoResponse {
-    debug!("Received container state update");
-    *state.container_state.write().await = Some(payload);
+    debug!(
+        "Received container state update for project: {}",
+        payload.project_name.as_str()
+    );
+    let mut lock = state.container_state.write().await;
+    lock.insert(payload.project_name, payload.payload);
     StatusCode::OK.into_response()
 }
 
 #[derive(Serialize)]
 struct ContainerStateResponse {
-    container_inspections: Vec<ContainerInspectResponse>,
+    container_inspections: ContainerState,
 }
 
-async fn get_container_state_by_id(
+async fn get_container_state_by_service_name(
     State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+    Path((project_name, service_name)): Path<(ProjectName, ServiceName)>,
+) -> Result<Response, StatusCode> {
     debug!("Received request for container state by id");
     let container_state = state.container_state.read().await;
-    match container_state.as_ref() {
-        Some(cs) => {
-            let cs = cs.clone();
-            let container_inspections = cs
-                .iter()
-                .filter(|x| x.id == Some(id.clone()))
-                .cloned()
-                .collect::<Vec<ContainerInspectResponse>>();
-            let response = ContainerStateResponse {
-                container_inspections,
-            };
-            Json(ApiResponse::success(response)).into_response()
-        }
-        None => StatusCode::NOT_FOUND.into_response(),
-    }
+    let response = container_state
+        .get(&project_name)
+        .and_then(|x| x.get(&service_name))
+        .ok_or(StatusCode::NOT_FOUND)?;
+    Ok(Json(ApiResponse::success(response)).into_response())
 }
 
 async fn get_container_state(State(state): State<AppState>) -> impl IntoResponse {
     debug!("Received request for container state");
     let container_state = state.container_state.read().await;
-    match container_state.as_ref() {
-        Some(cs) => {
-            let response = ContainerStateResponse {
-                container_inspections: cs.clone(),
-            };
-            Json(ApiResponse::success(response)).into_response()
-        }
-        None => {
-            info!("No container state received, yet");
-            Json(ApiResponse::success(ContainerStateResponse {
-                container_inspections: vec![],
-            }))
-            .into_response()
-        }
-    }
+    let response = ContainerStateResponse {
+        container_inspections: container_state.clone(),
+    };
+    Json(ApiResponse::success(response)).into_response()
 }
 
 pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> Router {
     let (event_tx, _) = broadcast::channel::<ControllerEvent>(100);
 
     let state = AppState {
-        container_state: Arc::new(RwLock::new(None)),
+        container_state: Arc::new(RwLock::new(HashMap::new())),
         database,
         api_secret,
         event_tx,
@@ -239,10 +206,19 @@ pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> 
         .route("/sse", get(sse_handler))
         .route("/deployments", get(get_deployments))
         .route("/deployments", post(create_deployment))
-        .route("/deployments/{id}", get(get_deployment))
-        .route("/container/state", post(post_container_state))
+        .route(
+            "/deployments/{project_name}/{service_name}",
+            get(get_deployments_by_service),
+        )
+        .route(
+            "/container/state/{project_name}",
+            post(post_container_state),
+        )
         .route("/container/state", get(get_container_state))
-        .route("/container/state/{id}", get(get_container_state_by_id))
+        .route(
+            "/container/state/{project_name}/{service_name}",
+            get(get_container_state_by_service_name),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,

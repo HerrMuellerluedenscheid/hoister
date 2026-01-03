@@ -3,13 +3,14 @@ use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures_util::stream::Stream;
 use serde::{Deserialize, Serialize};
+use shared::ProjectName;
 use std::convert::Infallible;
 
 pub type ContainerID = String;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum ControllerEvent {
-    Retry(ContainerID),
+    Retry((ProjectName, ContainerID)),
 }
 
 pub(crate) async fn sse_handler(
