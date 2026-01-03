@@ -1,5 +1,5 @@
 use log::{debug, info};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use shared::{DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName};
 use sqlx::migrate::MigrateDatabase;
 use sqlx::{FromRow, Row, SqlitePool};
@@ -32,7 +32,7 @@ pub struct Service {
     pub created_at: String,
 }
 
-#[derive(FromRow, Debug, Clone, Serialize, TS)]
+#[derive(FromRow, Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Deployment {
     pub id: i64,
@@ -131,6 +131,39 @@ impl Database {
         Ok(result.get("id"))
     }
 
+    /// Get a project by name
+    pub async fn get_project(&self, project_name: &ProjectName) -> Result<Project, DbError> {
+        let result = sqlx::query_as::<_, Project>(
+            r#"
+            SELECT * FROM project WHERE project.name = ?
+            "#,
+        )
+        .bind(project_name.as_str())
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(result)
+    }
+
+    /// Get a service by name
+    pub async fn get_service(
+        &self,
+        project: &Project,
+        service_name: &ServiceName,
+    ) -> Result<Service, DbError> {
+        let result = sqlx::query_as::<_, Service>(
+            r#"
+            SELECT * FROM service WHERE service.name = ? AND service.project_id = ?
+            "#,
+        )
+        .bind(service_name.as_str())
+        .bind(project.id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(result)
+    }
+
     /// Create a new deployment
     pub async fn create_deployment(
         &self,
@@ -190,19 +223,20 @@ impl Database {
     }
 
     /// Get deployment by image
-    pub async fn get_deployment_by_image(
+    pub async fn get_deployments_of_service(
         &self,
-        image: &str,
-    ) -> Result<Option<Deployment>, DbError> {
-        info!("get deployments by image: {image}");
-        let deployment = sqlx::query_as::<_, Deployment>(
-            "SELECT id, digest, status, created_at FROM deployment WHERE digest LIKE \"(?%)\" ",
-        )
-        .bind(image)
-        .fetch_optional(&self.pool)
-        .await?;
+        project_name: &ProjectName,
+        service_name: &ServiceName,
+    ) -> Result<Vec<Deployment>, DbError> {
+        let project = self.get_project(project_name).await?;
+        let service = self.get_service(&project, service_name).await?;
+        let deployments =
+            sqlx::query_as::<_, Deployment>("SELECT * FROM deployment WHERE service_id = ? ")
+                .bind(service.id)
+                .fetch_all(&self.pool)
+                .await?;
 
-        Ok(deployment)
+        Ok(deployments)
     }
 }
 

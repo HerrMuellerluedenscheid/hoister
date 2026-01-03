@@ -95,7 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     });
     info!("Starting hoister");
     if let Some(true) = config.send_test_message {
-        info!("Sending test message");
+        info!("Sending tests message");
         result_handler.test_message().await;
         // await 1 second to allow the message to be sent
         sleep(Duration::from_secs(1)).await;
