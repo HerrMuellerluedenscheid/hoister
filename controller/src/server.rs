@@ -8,15 +8,15 @@ use axum::{
     routing::{get, post},
 };
 use bollard::models::ContainerInspectResponse;
-use log::{debug, info};
-use serde::Serialize;
+use log::{debug, error, info};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
 // Import your database module
 use crate::database::{Database, Deployment};
 use crate::sse::{ControllerEvent, sse_handler};
-use shared::CreateDeployment;
+use shared::{CreateDeployment, ProjectName, ServiceName};
 use tokio::sync::{RwLock, broadcast};
 
 #[derive(Clone)]
@@ -27,7 +27,7 @@ pub struct AppState {
     pub(crate) event_tx: broadcast::Sender<ControllerEvent>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ApiResponse<T> {
     pub success: bool,
     pub data: Option<T>,
@@ -87,7 +87,7 @@ async fn get_deployments(
     match state.database.get_all_deployments().await {
         Ok(deployments) => Ok(Json(ApiResponse::success(deployments))),
         Err(e) => {
-            eprintln!("Error getting deployments: {e:?}");
+            error!("Error getting deployments: {e:?}");
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
@@ -95,16 +95,18 @@ async fn get_deployments(
 
 async fn get_deployment_by_image(
     State(state): State<AppState>,
-    Path(_project): Path<String>,
-    Path(image): Path<String>,
-) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
-    info!("get image by image: {}", image);
+    Path((project_name, service_name)): Path<(ProjectName, ServiceName)>,
+) -> Result<Json<ApiResponse<Vec<Deployment>>>, StatusCode> {
+    debug!("get service by name: {:?}", service_name);
 
-    match state.database.get_deployment_by_image(&image).await {
-        Ok(Some(deployment)) => Ok(Json(ApiResponse::success(deployment))),
-        Ok(None) => Err(StatusCode::NOT_FOUND),
+    match state
+        .database
+        .get_deployments_of_service(&project_name, &service_name)
+        .await
+    {
+        Ok(deployments) => Ok(Json(ApiResponse::success(deployments))),
         Err(e) => {
-            eprintln!("Error getting deployment {image}: {e:?}");
+            error!("Error getting deployment {service_name:?} | {project_name:?} : {e:?}");
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
@@ -213,7 +215,7 @@ pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> 
         .route("/deployments", get(get_deployments))
         .route("/deployments", post(create_deployment))
         .route(
-            "/deployments/{project}/{image}",
+            "/deployments/{project_name}/{service_name}",
             get(get_deployment_by_image),
         )
         .route("/container/state", post(post_container_state))

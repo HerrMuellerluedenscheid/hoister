@@ -116,10 +116,10 @@ impl Display for CreateDeployment {
 impl CreateDeployment {
     pub fn test() -> Self {
         Self {
-            project: ProjectName::new("test-project"),
-            service: ServiceName::new("test-service"),
-            image: ImageName::new("test:latest"),
-            digest: ImageDigest::new("sha256:test"),
+            project: ProjectName::new("tests-project"),
+            service: ServiceName::new("tests-service"),
+            image: ImageName::new("tests:latest"),
+            digest: ImageDigest::new("sha256:tests"),
             status: DeploymentStatus::TestMessage,
         }
     }

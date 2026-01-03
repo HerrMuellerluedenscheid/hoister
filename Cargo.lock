@@ -423,7 +423,7 @@ dependencies = [
  "sqlx",
  "thiserror",
  "tokio",
- "tokio-stream",
+ "tower",
  "ts-rs",
 ]
 

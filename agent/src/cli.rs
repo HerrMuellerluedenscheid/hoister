@@ -35,8 +35,8 @@ pub(crate) fn configure_cli() -> Config {
         )
         .arg(
             Arg::new("test_message")
-                .long("test-message")
-                .help("send a test message".to_string())
+                .long("tests-message")
+                .help("send a tests message".to_string())
                 .num_args(0)
                 .required(false),
         )
