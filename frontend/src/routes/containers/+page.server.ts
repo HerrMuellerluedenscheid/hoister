@@ -2,9 +2,7 @@ import type {PageServerLoad} from './$types';
 import {getInspections} from "$lib/api/inspect";
 
 
-
-export const load: PageServerLoad = async ({ fetch }) => {
-
+export const load: PageServerLoad = async () => {
     try {
         return await getInspections()
     } catch (err) {

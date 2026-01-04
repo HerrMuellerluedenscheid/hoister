@@ -14,11 +14,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
-// Import your database module
 use crate::database::{Database, Deployment};
 use crate::sse::{ControllerEvent, sse_handler};
 use shared::{CreateDeployment, ProjectName, ServiceName};
 use tokio::sync::{RwLock, broadcast};
+use ts_rs::TS;
 
 type ContainerState = HashMap<ProjectName, HashMap<ServiceName, ContainerInspectResponse>>;
 
@@ -30,7 +30,8 @@ pub struct AppState {
     pub(crate) event_tx: broadcast::Sender<ControllerEvent>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export)]
 pub struct ApiResponse<T> {
     pub success: bool,
     pub data: Option<T>,
@@ -164,31 +165,57 @@ async fn post_container_state(
     StatusCode::OK.into_response()
 }
 
-#[derive(Serialize)]
+#[derive(TS, Serialize)]
+#[ts(export)]
 struct ContainerStateResponse {
-    container_inspections: ContainerState,
+    project_name: ProjectName,
+    service_name: ServiceName,
+    #[ts(type = "any")]
+    container_inspections: ContainerInspectResponse,
 }
+
+#[derive(TS, Serialize)]
+#[ts(export)]
+struct ContainerStateResponses(Vec<ContainerStateResponse>);
 
 async fn get_container_state_by_service_name(
     State(state): State<AppState>,
     Path((project_name, service_name)): Path<(ProjectName, ServiceName)>,
-) -> Result<Response, StatusCode> {
+) -> Result<Json<ApiResponse<ContainerStateResponse>>, StatusCode> {
     debug!("Received request for container state by id");
     let container_state = state.container_state.read().await;
     let response = container_state
         .get(&project_name)
         .and_then(|x| x.get(&service_name))
         .ok_or(StatusCode::NOT_FOUND)?;
-    Ok(Json(ApiResponse::success(response)).into_response())
+    Ok(Json::from(ApiResponse::success(ContainerStateResponse {
+        project_name: project_name.clone(),
+        service_name: service_name.clone(),
+        container_inspections: response.clone(),
+    })))
 }
 
-async fn get_container_state(State(state): State<AppState>) -> impl IntoResponse {
+async fn get_container_states(State(state): State<AppState>) -> impl IntoResponse {
     debug!("Received request for container state");
     let container_state = state.container_state.read().await;
-    let response = ContainerStateResponse {
-        container_inspections: container_state.clone(),
-    };
-    Json(ApiResponse::success(response)).into_response()
+    debug!("Sending container state: {:?}", container_state);
+    let mut states: Vec<ContainerStateResponse> = Vec::new();
+    for (project_name, services) in container_state.iter() {
+        for (service_name, container_inspection) in services.iter() {
+            debug!(
+                "Sending container state for project: {} service: {}",
+                project_name.as_str(),
+                service_name.as_str()
+            );
+            states.push(ContainerStateResponse {
+                project_name: project_name.clone(),
+                service_name: service_name.clone(),
+                container_inspections: container_inspection.clone(),
+            });
+        }
+    }
+
+    Json(ContainerStateResponses(states)).into_response()
 }
 
 pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> Router {
@@ -214,7 +241,7 @@ pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> 
             "/container/state/{project_name}",
             post(post_container_state),
         )
-        .route("/container/state", get(get_container_state))
+        .route("/container/state", get(get_container_states))
         .route(
             "/container/state/{project_name}/{service_name}",
             get(get_container_state_by_service_name),

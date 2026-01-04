@@ -1,7 +1,7 @@
 .PHONY: watch
 
 bindings:
-	rm -rf frontend/src/bindings && cargo test export_bindings && mv -f controller/bindings frontend/src
+	rm -rf frontend/src/bindings && cargo test export_bindings && mv -f controller/bindings frontend/src && mv shared/bindings/* frontend/src/bindings
 
 test-works:
 	docker build --no-cache -f test/works.Dockerfile --push -t emrius11/example:latest .
@@ -18,7 +18,10 @@ dev-controller:
 	export $$(cat .env.template | xargs) &&	cargo run --bin controller
 
 dev-hoister:
-	export $$(cat .env.template | xargs) && export $$(cat .env | xargs) && HOISTER_CONTROLLER_URL="http://localhost:3033" RUST_LOG=debug,bollard=info,hyper_util=info cargo run --bin hoister -- --watch 20
+	export $$(cat .env.template | xargs) && export $$(cat .env | xargs) && \
+ 	export HOISTER_CONTROLLER_URL="http://localhost:3033" && \
+ 	export RUST_LOG=debug,bollard=info,hyper_util=info && \
+ 	HOISTER_CONTROLLER_URL="http://localhost:3033" RUST_LOG=debug,bollard=info,hyper_util=info cargo run --bin hoister -- --watch 20
 
 test-message:
 	export $$(cat .env.template | xargs) && export $$(cat .env | xargs) &&	RUST_LOG=debug,bollard=info,hyper_util=info cargo run --bin hoister -- --test-message
