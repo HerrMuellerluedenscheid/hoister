@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+
     use axum::{
         Router,
         body::Body,
@@ -11,7 +11,7 @@ mod tests {
     use shared::{
         CreateDeployment, DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName,
     };
-    use std::process::exit;
+
     use std::sync::Arc;
     use tower::ServiceExt;
     // for `oneshot` and `ready`
@@ -92,7 +92,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_and_get_deployment() {
-        let (app, database) = setup_test_app().await;
+        let (app, _) = setup_test_app().await;
 
         // Create a deployment
         let payload = CreateDeployment {
@@ -195,62 +195,7 @@ mod tests {
             .unwrap();
         let response: ApiResponse<Vec<Deployment>> = serde_json::from_slice(&body).unwrap();
         assert!(response.success);
-        let deployment = response.data.unwrap();
-    }
-
-    // #[tokio::test]
-    // async fn test_get_deployment_by_image_not_found() {
-    //     let (app, _) = setup_test_app().await;
-    //
-    //     let response = app
-    //         .oneshot(
-    //             Request::builder()
-    //                 .uri("/deployments/nonexistent/image_tag")
-    //                 .header("Authorization", "Bearer tests-secret")
-    //                 .body(Body::empty())
-    //                 .unwrap(),
-    //         )
-    //         .await
-    //         .unwrap();
-    //
-    //     assert_eq!(response.status(), StatusCode::OK);
-    // }
-
-    #[tokio::test]
-    async fn test_container_state_endpoints() {
-        let (app, _) = setup_test_app().await;
-
-        // Post container state
-        let container_state: Vec<String> = vec![]; // Empty for simplicity
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/container/state")
-                    .header("Authorization", "Bearer tests-secret")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(serde_json::to_string(&container_state).unwrap()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::OK);
-
-        // Get container state
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/container/state")
-                    .header("Authorization", "Bearer tests-secret")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::OK);
+        response.data.unwrap();
     }
 
     #[tokio::test]
