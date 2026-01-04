@@ -214,7 +214,7 @@ impl Database {
     /// Get all deployments
     pub async fn get_all_deployments(&self) -> Result<Vec<Deployment>, DbError> {
         let deployments = sqlx::query_as::<_, Deployment>(
-            "SELECT id, digest, status, service_id, created_at FROM deployment ORDER BY created_at DESC",
+            "SELECT id, digest, status, service_id, created_at FROM deployment ORDER BY created_at DESC LIMIT 50",
         )
             .fetch_all(&self.pool)
             .await?;
@@ -230,11 +230,12 @@ impl Database {
     ) -> Result<Vec<Deployment>, DbError> {
         let project = self.get_project(project_name).await?;
         let service = self.get_service(&project, service_name).await?;
-        let deployments =
-            sqlx::query_as::<_, Deployment>("SELECT * FROM deployment WHERE service_id = ? ")
-                .bind(service.id)
-                .fetch_all(&self.pool)
-                .await?;
+        let deployments = sqlx::query_as::<_, Deployment>(
+            "SELECT * FROM deployment WHERE service_id = ? ORDER BY created_at DESC LIMIT 50",
+        )
+        .bind(service.id)
+        .fetch_all(&self.pool)
+        .await?;
 
         Ok(deployments)
     }
