@@ -4,7 +4,12 @@ lint:
 	cd frontend && npx prettier . --write
 
 bindings:
-	rm -rf frontend/src/bindings && cargo test export_bindings && mv -f controller/bindings frontend/src && mv shared/bindings/* frontend/src/bindings
+	rm -rf frontend/src/bindings \
+		&& cargo test export_bindings \
+		&& mv -f controller/bindings frontend/src \
+		&& mv shared/bindings/* frontend/src/bindings \
+		&& rm -rf shared/bindings \
+		&& rm -rf controller/bindings
 
 test-works:
 	docker build --no-cache -f test/works.Dockerfile --push -t emrius11/example:latest .
