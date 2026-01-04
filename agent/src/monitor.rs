@@ -121,13 +121,15 @@ async fn send_to_backend(
     project_name: ProjectName,
     states: &HashMap<ServiceName, ContainerInspectResponse>,
 ) -> Result<(), reqwest::Error> {
+    let url = format!("{}/{}", controller_url, project_name.as_str());
+
     let request = PostContainerStateRequest {
         project_name,
         payload: states.clone(),
     };
 
     let client = reqwest::Client::new();
-    client.post(controller_url).json(&request).send().await?;
+    client.post(url).json(&request).send().await?;
 
     Ok(())
 }

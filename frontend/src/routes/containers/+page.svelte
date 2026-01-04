@@ -1,7 +1,8 @@
 <script lang="ts">
     import InspectionCard from "$lib/components/InspectionCard.svelte";
+    import type {Inspection} from "$lib/api/inspect";
 
-    let { data }: { data: PageData } = $props();
+    let { data }: { data: Inspection } = $props();
 
 </script>
 {#if data.error}
@@ -11,11 +12,10 @@
     </div>
 {/if}
 
-
 <div class="max-w-7xl mx-auto p-6">
     <div class="grid grid-cols-[repeat(auto-fit,minmax(350px,1fr))] gap-4">
-        {#each data.inspections as inspection}
-            <InspectionCard {inspection} />
+        {#each data.inspections as inspection_data}
+            <InspectionCard {inspection_data} />
         {/each}
     </div>
 </div>

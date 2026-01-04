@@ -1,35 +1,23 @@
 import {error} from "@sveltejs/kit";
 import type {Deployment} from "../../bindings/Deployment";
 import {env} from '$env/dynamic/private';
+import type {ProjectName} from "../../bindings/ProjectName";
+import type { ServiceName } from "../../bindings/ServiceName";
+import type {ApiResponse} from "../../bindings/ApiResponse";
+import type {ContainerStateResponse} from "../../bindings/ContainerStateResponse";
 
 
 const BACKEND_URL = env.HOISTER_CONTROLLER_URL;
 
-interface DeploymentsResponse {
-    success: boolean;
-    data: Deployment[];
-    error: string | null;
-}
-
-
-export async function getDeploymentsByImage(project: string, imageName: string) {
+export async function getDeploymentsByServiceName(project_name: ProjectName, service_name: ServiceName): Promise<ApiResponse<Deployment>>  {
     if (!BACKEND_URL) {
         throw error(500, 'Backend URL not configured');
     }
-    const imageNameBase64 = Buffer.from(imageName).toString('base64');
-    const response = await fetch(`${BACKEND_URL}/deployments/${project}/${imageNameBase64}`);
+    const response = await fetch(`${BACKEND_URL}/deployments/${project_name}/${service_name}`);
 
     if (!response.ok) {
         throw error(response.status, 'Failed to load data from backend');
     }
 
-    const result = await response.json() as DeploymentsResponse;
-    if (!result.success || result.error) {
-        throw error(500, result.error || 'Unknown error from backend');
-    }
-
-    return {
-        deployments: result.data,
-        error: null
-    };
+    return await response.json();
 }

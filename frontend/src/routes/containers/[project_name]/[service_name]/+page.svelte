@@ -1,10 +1,12 @@
 <script lang="ts">
-    import type { PageData } from './$types';
+    import type {ContainerPageData} from "./+page.server";
 
-    let { data }: { data: PageData } = $props();
-    const container = data.inspections[0]
+    let { data }: { data: ContainerPageData } = $props();
+    const container = data.inspections.container_inspections;
+    const service_name = data.inspections.service_name
+    const project_name = data.inspections.project_name
 
-    function formatDate(dateString) {
+    function formatDate(dateString: string) {
         return new Date(dateString).toLocaleString();
     }
 
@@ -22,7 +24,6 @@
 </script>
 
 <div class="min-h-screen bg-gray-50 py-8">
-
     <div class="max-w-6xl mx-auto px-4">
         <!-- Header -->
         <div class="mb-8">

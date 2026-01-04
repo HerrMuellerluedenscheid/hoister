@@ -2,22 +2,16 @@
 
     import * as Card from "$lib/components/ui/card/index.js";
     import {onDestroy, onMount} from "svelte";
-    import type {InspectionType} from "$lib/types/docker";
+    import type {ContainerStateResponse} from "../../bindings/ContainerStateResponse";
 
+    const { inspection_data }: { inspection_data: ContainerStateResponse } = $props();
 
-    let { inspection }: { inspection: InspectionType } = $props();
-
+    const inspection = inspection_data.container_inspections;
     let hoisterEnabled = inspection.Config.Labels?.["hoister.enable"] === "true";
     let hoisterBackupVolumes = inspection.Config.Labels?.["hoister.backup-volumes"] === "true";
 
     let uptime = $state(getUptime(inspection.State.StartedAt));
     let interval: number;
-    //
-    // getDeploymentsByImage(inspection.Config.Image).then((deployments) => {
-    //     console.log(deployments);
-    // }).catch((error) => {
-    //     console.error("Error fetching deployments:", error);
-    // });
 
     onMount(() => {
         interval = setInterval(() => {
@@ -52,11 +46,11 @@
 
 </script>
 
-<a href="/containers/{inspection.Id}" class="block">
+<a href="/containers/{inspection_data.project_name}/{inspection_data.service_name}" class="block">
 
 <Card.Root class="shadow-sm hover:shadow-md transition-shadow min-h-50">
     <Card.Header>
-        <Card.Title class="flex justify-between items-center">{inspection.Config.Image}
+        <Card.Title class="flex justify-between items-center">{inspection_data.service_name}
             <span class="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 capitalize
                      {inspection.State.Status === 'running' ? 'bg-green-100 text-green-800' : ''}
                      {inspection.State.Status === 'exited' ? 'bg-red-100 text-red-800' : ''}
@@ -65,12 +59,15 @@
         </span>
         </Card.Title>
         <Card.Description>
-            <p class="text-sm text-gray-500">
+            <p class="text-xs text-gray-600">
                 Uptime: {uptime}
             </p>
         </Card.Description>
     </Card.Header>
     <Card.Content>
+        <h3 class="text-sm font-medium text-gray-600">
+            Image: {inspection.Config.Image}
+        </h3>
         <h3 class="text-sm font-mono font-medium text-gray-900">
             Container ID: {inspection.Id.slice(0, 12)}
         </h3>
