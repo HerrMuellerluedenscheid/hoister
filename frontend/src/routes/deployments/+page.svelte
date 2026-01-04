@@ -3,4 +3,4 @@
   import Deployments from '$lib/components/Deployments.svelte';
 </script>
 
-<Deployments {data}></Deployments>
+<Deployments data={data.deployments} />

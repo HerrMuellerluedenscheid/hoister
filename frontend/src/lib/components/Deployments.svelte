@@ -3,18 +3,11 @@
 </script>
 
 <div class="p-4">
-  {#if data.error}
-    <div class="mb-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-red-700">
-      <p class="font-bold">Error</p>
-      <p>{data.error}</p>
-    </div>
-  {/if}
-
-  {#if data.deployments.length === 0 && !data.error}
+  {#if data.length === 0 && !data.error}
     <div class="rounded border border-blue-200 bg-blue-50 px-4 py-3 text-blue-700">
       <p>No deployments found.</p>
     </div>
-  {:else if data.deployments.length > 0}
+  {:else if data.length > 0}
     <div class="overflow-x-auto">
       <table class="min-w-full rounded-lg border border-gray-200 bg-white shadow">
         <thead class="bg-gray-50">
@@ -22,12 +15,12 @@
             <th
               class="border-b px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-700 uppercase"
             >
-              Digest
+              Image Digest
             </th>
             <th
               class="border-b px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-700 uppercase"
             >
-              Status
+              Finished with Status
             </th>
             <th
               class="border-b px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-700 uppercase"
@@ -37,7 +30,7 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-200">
-          {#each data.deployments as item}
+          {#each data as item}
             <tr class="transition-colors hover:bg-gray-50">
               <td class="px-6 py-4 text-sm whitespace-nowrap text-gray-900">
                 {item.digest}

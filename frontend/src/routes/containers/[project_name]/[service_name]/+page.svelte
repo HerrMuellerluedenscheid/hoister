@@ -1,8 +1,10 @@
 <script lang="ts">
   import type { ContainerPageData } from './+page.server';
+  import Deployments from '$lib/components/Deployments.svelte';
 
   let { data }: { data: ContainerPageData } = $props();
   const container = data.inspections.container_inspections;
+  const deployments = data.deployments.slice(0, 8);
   const service_name = data.inspections.service_name;
   const project_name = data.inspections.project_name;
 
@@ -73,6 +75,12 @@
           <p class="mt-1 text-sm text-gray-900">{formatDate(container.State.FinishedAt)}</p>
         </div>
       </div>
+    </div>
+
+    <!-- Deployments -->
+    <div class="mb-6 rounded-lg bg-white p-6 shadow">
+      <h2 class="mb-4 text-xl font-semibold text-gray-900">Most recent Deployments</h2>
+      <Deployments data={deployments} />
     </div>
 
     <!-- Configuration Card -->
