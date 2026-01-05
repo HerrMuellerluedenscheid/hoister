@@ -9,6 +9,7 @@ FROM alpine AS runner
 
 LABEL maintainer="marius.kriegerowski@gmail.com"
 LABEL description="Deploy and roll back docker images (controller)"
+LABEL io.hoister.container="controller"
 
 VOLUME /data
 ENV HOISTER_DATABASE_PATH="sqlite:///data/sqlite.db"
