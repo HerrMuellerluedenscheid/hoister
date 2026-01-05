@@ -1,9 +1,9 @@
-use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use shared::{DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName};
 use sqlx::migrate::MigrateDatabase;
 use sqlx::{FromRow, Row, SqlitePool};
 use thiserror::Error;
+use tracing::{debug, info};
 use ts_rs::TS;
 
 type Digest = String;
@@ -40,6 +40,8 @@ pub struct Deployment {
     pub status: DeploymentStatus,
     pub service_id: i64,
     pub created_at: String,
+    pub service_name: String,
+    pub project_name: String,
 }
 
 #[derive(Debug)]
@@ -183,9 +185,7 @@ impl Database {
                 .bind(service_id)
                 .execute(&self.pool)
                 .await?;
-            debug!("{} - {}", digest.as_str(), status)
-        } else {
-            info!("{} - {}", digest.as_str(), status)
+            debug!("deleted {} - {}", digest.as_str(), status)
         }
 
         let result =
@@ -202,7 +202,17 @@ impl Database {
     /// Get deployment by ID
     pub async fn get_deployment(&self, id: i64) -> Result<Option<Deployment>, DbError> {
         let deployment = sqlx::query_as::<_, Deployment>(
-            "SELECT id, digest, status, service_id, created_at FROM deployment WHERE id = ?",
+            "SELECT
+                    d.id,
+                    d.digest,
+                    d.status,
+                    d.service_id,
+                    d.created_at,
+                    s.name as service_name,
+                    p.name as project_name
+                FROM deployment d                 JOIN service s ON d.service_id = s.id
+                JOIN project p ON s.project_id = p.id
+                WHERE d.id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -214,10 +224,22 @@ impl Database {
     /// Get all deployments
     pub async fn get_all_deployments(&self) -> Result<Vec<Deployment>, DbError> {
         let deployments = sqlx::query_as::<_, Deployment>(
-            "SELECT id, digest, status, service_id, created_at FROM deployment ORDER BY created_at DESC LIMIT 50",
+            "SELECT
+                    d.id,
+                    d.digest,
+                    d.status,
+                    d.service_id,
+                    d.created_at,
+                    s.name as service_name,
+                    p.name as project_name
+                FROM deployment d
+                JOIN service s ON d.service_id = s.id
+                JOIN project p ON s.project_id = p.id
+                ORDER BY d.created_at DESC
+                LIMIT 50",
         )
-            .fetch_all(&self.pool)
-            .await?;
+        .fetch_all(&self.pool)
+        .await?;
 
         Ok(deployments)
     }
@@ -231,7 +253,18 @@ impl Database {
         let project = self.get_project(project_name).await?;
         let service = self.get_service(&project, service_name).await?;
         let deployments = sqlx::query_as::<_, Deployment>(
-            "SELECT * FROM deployment WHERE service_id = ? ORDER BY created_at DESC LIMIT 50",
+            "SELECT
+                    d.id,
+                    d.digest,
+                    d.status,
+                    d.service_id,
+                    d.created_at,
+                    s.name as service_name,
+                    p.name as project_name
+                FROM deployment d
+                    JOIN service s ON d.service_id = s.id
+                    JOIN project p ON s.project_id = p.id
+                WHERE service_id = ? ORDER BY d.created_at DESC LIMIT 50",
         )
         .bind(service.id)
         .fetch_all(&self.pool)

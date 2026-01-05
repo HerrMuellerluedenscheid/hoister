@@ -2,7 +2,7 @@ import type { PageServerLoad } from './$types';
 
 import { getDeployments } from '$lib/api/deployments';
 
-export const load: PageServerLoad = async ({ fetch }) => {
+export const load: PageServerLoad = async () => {
   try {
     return await getDeployments();
   } catch (err) {

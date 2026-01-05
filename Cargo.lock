@@ -424,6 +424,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tower",
+ "tracing",
  "ts-rs",
 ]
 

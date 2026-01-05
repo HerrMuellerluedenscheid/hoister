@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
-use crate::database::{Database, Deployment};
+use crate::database::{Database, DbError, Deployment};
 use crate::sse::{ControllerEvent, sse_handler};
 use shared::{CreateDeployment, ProjectName, ServiceName};
 use tokio::sync::{RwLock, broadcast};
@@ -109,6 +109,9 @@ async fn get_deployments_by_service(
         .await
     {
         Ok(deployments) => Ok(Json(ApiResponse::success(deployments))),
+        Err(DbError::Database(sqlx::error::Error::RowNotFound)) => {
+            Ok(Json(ApiResponse::success(vec![])))
+        }
         Err(e) => {
             error!("Error getting deployment {service_name:?} | {project_name:?} : {e:?}");
             Err(StatusCode::INTERNAL_SERVER_ERROR)

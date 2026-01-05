@@ -18,6 +18,10 @@ RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 # Production stage
 FROM node:24-alpine
 
+LABEL maintainer="marius.kriegerowski@gmail.com"
+LABEL description="Deploy and roll back docker images (frontend)"
+LABEL io.hoister.container="frontend"
+
 WORKDIR /app
 
 # Copy package files and built output

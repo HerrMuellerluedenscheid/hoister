@@ -36,7 +36,7 @@ impl ImageName {
     }
 }
 
-#[derive(TS, Deserialize, Serialize, Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(TS, Deserialize, Serialize, Debug, Clone, Hash, Eq, PartialEq, Type)]
 #[ts(export)]
 pub struct ServiceName(pub String);
 
