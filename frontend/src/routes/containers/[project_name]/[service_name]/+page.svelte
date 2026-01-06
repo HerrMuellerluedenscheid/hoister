@@ -28,7 +28,7 @@
   <div class="mx-auto max-w-6xl px-4">
     <!-- Header -->
     <div class="mb-8">
-      <h1 class="mb-2 text-3xl font-bold text-gray-900">{container.Name}</h1>
+      <h1 class="mb-2 text-3xl font-bold text-gray-900">{project_name} | {service_name}</h1>
       <p class="font-mono text-sm text-gray-500">{container.Id}</p>
     </div>
 

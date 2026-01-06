@@ -11,9 +11,7 @@ export async function getContainerInspection(
   project_name: ProjectName,
   service_name: ServiceName
 ): Promise<ApiResponse<ContainerStateResponse>> {
-  console.log(
-    `Fetching container inspection for project: ${project_name}, service: ${service_name}`
-  );
+
   if (!BACKEND_URL) {
     throw error(500, 'Backend URL not configured');
   }
