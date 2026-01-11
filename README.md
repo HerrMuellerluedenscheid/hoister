@@ -75,7 +75,7 @@ HOISTER_REGISTRY_IDENTITYTOKEN
 HOISTER_REGISTRY_REGISTRYTOKEN
 ```
 
-For example, to access a private image on dockerhub using a [PAT](https://docs.docker.com/security/access-tokens/)
+For example, to access a private registry on dockerhub using a [PAT](https://docs.docker.com/security/access-tokens/) or the [github registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-to-the-container-registry) using a classic PAT
 
 ```
 HOISTER_REGISTRY_USERNAME=your-username

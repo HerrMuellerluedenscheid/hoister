@@ -6,6 +6,7 @@ const PASSWORD = process.env.HOISTER_AUTH_PASSWORD;
 
 export const actions = {
   default: async ({ request, cookies }) => {
+    console.debug("logging attempt");
     const data = await request.formData();
     const username = data.get('username');
     const password = data.get('password');
@@ -14,6 +15,7 @@ export const actions = {
     }
 
     if (username === USERNAME && password === PASSWORD) {
+      console.debug("logged in");
       cookies.set('session', 'authenticated', {
         path: '/',
         httpOnly: true,

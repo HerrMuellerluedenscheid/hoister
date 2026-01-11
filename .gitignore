@@ -3,3 +3,4 @@
 *.Dockerfile
 .env
 frontend/src/bindings
+content

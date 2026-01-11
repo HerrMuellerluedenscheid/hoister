@@ -1,4 +1,5 @@
 use controller::sse::ControllerEvent;
+use log::{info, warn};
 use reqwest::Client;
 use thiserror::Error;
 use tokio::sync::mpsc::Sender;
@@ -18,11 +19,11 @@ pub(crate) async fn consume_sse(
     let client = Client::new();
 
     loop {
-        println!("Connecting to SSE...");
+        info!("Connecting to SSE...");
 
         match try_consume_stream(&client, url, &tx_sse).await {
-            Ok(_) => println!("Stream ended normally"),
-            Err(e) => eprintln!("Stream error: {}", e),
+            Ok(_) => info!("Stream ended normally"),
+            Err(e) => warn!("Stream error: {}", e),
         }
 
         println!("Reconnecting in 5 seconds...");
