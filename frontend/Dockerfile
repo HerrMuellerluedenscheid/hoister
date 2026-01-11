@@ -41,6 +41,10 @@ EXPOSE 3000
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV ORIGIN=http://localhost:3000
+ENV USE_HTTPS=false
+ENV USE_SECURE_COOKIES=false
+ENV COOKIE_SAME_SITE=strict
+ENV SESSION_MAX_AGE=604800
 
 # Start the app
 CMD ["node", "build/index.js"]
