@@ -10,8 +10,9 @@ use bollard::models::{
 };
 use bollard::query_parameters::{
     CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions,
-    RemoveContainerOptions, RemoveVolumeOptions, RenameContainerOptions, StartContainerOptions,
-    StopContainerOptionsBuilder, WaitContainerOptions, WaitContainerOptionsBuilder,
+    RemoveContainerOptions, RemoveImageOptions, RemoveVolumeOptions, RenameContainerOptions,
+    StartContainerOptions, StopContainerOptionsBuilder, WaitContainerOptions,
+    WaitContainerOptionsBuilder,
 };
 use futures_util::{StreamExt, TryStreamExt};
 use lazy_static::lazy_static;
@@ -416,12 +417,21 @@ impl DockerHandler {
             .inspect_container(container_id, None::<InspectContainerOptions>)
             .await?;
 
-        let old_config = container_details.clone().config.unwrap();
-        let image_name = ImageName::new(old_config.image.expect("image name empty"));
+        let old_config = container_details
+            .clone()
+            .config
+            .expect("no config on container details");
+        let old_image_name = ImageName::new(old_config.image.clone().expect("image name empty"));
 
-        debug!("Checking for updates: {image_name:?}");
+        // Get the old image ID before update
+        let old_image_id = container_details
+            .image
+            .clone()
+            .ok_or(HoisterError::Docker("Old image ID not found".to_string()))?;
 
-        let (repo_name, image_tag) = image_name.split();
+        debug!("Checking for updates: {old_image_name:?}");
+
+        let (repo_name, image_tag) = old_image_name.split();
         trace!(
             "container details: {}",
             serde_json::to_string_pretty(&container_details).unwrap()
@@ -476,7 +486,7 @@ impl DockerHandler {
                 .inform_container_failed(
                     project.clone(),
                     service_identifier.clone(),
-                    image_name.clone(),
+                    old_image_name.clone(),
                     new_image_digest.clone(),
                 )
                 .await;
@@ -516,15 +526,18 @@ impl DockerHandler {
                 .inform_rollback_complete(
                     project.clone(),
                     service_identifier.clone(),
-                    image_name.clone(),
+                    old_image_name.clone(),
                     new_image_digest.clone(),
                 )
                 .await;
         } else {
-            debug!("Container updated successfully. deleting old container");
+            debug!("Container updated successfully. Cleaning up old container and image");
+
+            // Remove old container
             self.docker
                 .remove_container(&backup_name, Some(REMOVE_OPTIONS))
                 .await?;
+            info!("Old container removed: {}", backup_name);
 
             // Remove volume backups if update was successful
             if !volume_backups.is_empty() {
@@ -532,16 +545,42 @@ impl DockerHandler {
                 self.remove_volume_backups(&volume_backups).await?;
             }
 
-            info!("Container updated successfully. backup container removed");
+            // Remove old image
+            match self.remove_old_image(&old_image_id).await {
+                Ok(_) => info!("Old image removed: {}", old_image_id),
+                Err(e) => warn!(
+                    "Failed to remove old image {}: {}. It may still be in use by other containers.",
+                    old_image_id, e
+                ),
+            }
+
+            info!("Container updated successfully. Cleanup complete");
             self.deployment_handler
                 .inform_update_success(
                     project.clone(),
                     service_identifier.clone(),
-                    image_name.clone(),
+                    old_image_name.clone(),
                     new_image_digest.clone(),
                 )
                 .await;
         }
+        Ok(())
+    }
+
+    /// Remove an old Docker image
+    async fn remove_old_image(&self, image_id: &str) -> Result<(), HoisterError> {
+        debug!("Attempting to remove old image: {}", image_id);
+
+        let options = RemoveImageOptions {
+            force: false,
+            noprune: false,
+        };
+
+        self.docker
+            .remove_image(image_id, Some(options), None)
+            .await
+            .map_err(|e| HoisterError::Docker(format!("Failed to remove image: {}", e)))?;
+
         Ok(())
     }
 
