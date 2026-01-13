@@ -1,4 +1,6 @@
 <script lang="ts">
+  import {goto} from "$app/navigation";
+
   let { data } = $props();
 </script>
 
@@ -11,7 +13,7 @@
     <div class="overflow-x-auto">
       <table class="min-w-full rounded-lg border border-gray-200 bg-white shadow">
         <thead class="bg-gray-50">
-          <tr>
+          <tr           >
             <th
               class="border-b px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-700 uppercase"
             >
@@ -31,7 +33,9 @@
         </thead>
         <tbody class="divide-y divide-gray-200">
           {#each data as item}
-            <tr class="transition-colors hover:bg-gray-50">
+            <tr class="transition-colors hover:bg-gray-50 cursor-pointer"
+                onclick={() => goto(`/containers/${item.project_name}/${item.service_name}`)}
+            >
               <td class="px-6 py-4 text-sm whitespace-nowrap text-gray-900">
                 <p>{item.project_name} | {item.service_name}</p>
                 <p class="font-mono text-xs text-gray-500">Image ID: {item.digest.replace("sha256:", "").slice(0, 12)}</p>
