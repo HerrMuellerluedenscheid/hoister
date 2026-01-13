@@ -98,7 +98,7 @@ Add the following service to your docker-compose.yaml:
     environment:
       HOISTER_CONTROLLER_URL: "http://hoister-controller:3033"
       HOISTER_AUTH_USERNAME: admin
-      HOISTER_AUTH_PASSWORD: !a-super-secure-password!
+      HOISTER_AUTH_PASSWORD: !a-super-secure-password!   # This can be clear text (for simplicity) or hashed using bcrypt (better)
 ```
 
 Also make sure to set the `HOISTER_CONTROLLER_URL` environment variable in the Hoister container to point to the controller service.
