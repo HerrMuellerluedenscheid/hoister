@@ -102,3 +102,18 @@ Add the following service to your docker-compose.yaml:
 ```
 
 Also make sure to set the `HOISTER_CONTROLLER_URL` environment variable in the Hoister container to point to the controller service.
+
+## Troubleshooting
+
+### Permission denied on the socket
+
+```bash
+[...]
+dial unix /var/run/docker.sock: connect: permission denied
+```
+
+This error usually indicates that the calling user isn't a member of the `docker` user group. You can add a user `foo` to that group with:
+
+```bash
+sudo usermod -aG docker foo
+```

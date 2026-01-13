@@ -8,8 +8,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
       - no-new-privileges:true
-    depends_on:
-      - example
     env_file: ".env"
 
   hoister-controller:
