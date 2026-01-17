@@ -19,7 +19,6 @@ use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
 use shared::{ImageDigest, ImageName, ProjectName, ServiceName};
 use std::collections::HashMap;
-use std::env::current_dir;
 use std::error::Error;
 use std::path::Path;
 use std::time::Duration;
@@ -652,6 +651,7 @@ pub(crate) async fn get_service_identifier(
 }
 
 pub(crate) async fn get_project_name(docker: &Docker) -> Result<ProjectName, Box<dyn Error>> {
+    debug!("Detecting project name...");
     if let Ok(project_name) = env::var("HOISTER_PROJECT_NAME") {
         info!(
             "Using project name from HOISTER_PROJECT_NAME: {}",
@@ -665,7 +665,10 @@ pub(crate) async fn get_project_name(docker: &Docker) -> Result<ProjectName, Box
         "label".to_string(),
         vec!["io.hoister.container=agent".to_string()],
     );
-
+    filters.insert(
+        "status".to_string(),
+        vec!["created".to_string(), "running".to_string()],
+    );
     let options = ListContainersOptions {
         filters: Some(filters),
         ..Default::default()
@@ -675,22 +678,20 @@ pub(crate) async fn get_project_name(docker: &Docker) -> Result<ProjectName, Box
 
     if let Some(container) = containers.first()
         && let Some(labels) = &container.labels
-        && let Some(project) = labels.get("com.docker.compose.project")
     {
-        info!(
-            "Detected project name from hoister agent container: {}",
-            project
-        );
-        return Ok(ProjectName::new(project));
+        debug!("Agent container labels: {:?}", labels);
+
+        if let Some(project) = labels.get("com.docker.compose.project") {
+            info!(
+                "Detected project name from hoister agent container: {}",
+                project
+            );
+            return Ok(ProjectName::new(project));
+        } else {
+            warn!("Agent container found but missing com.docker.compose.project label");
+        }
     }
-
-    let fallback = current_dir()?
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("hoister")
-        .to_string();
-
-    Ok(ProjectName::new(fallback))
+    Err(HoisterError::ProjectNameDetectionFailed.into())
 }
 
 async fn create_container(
