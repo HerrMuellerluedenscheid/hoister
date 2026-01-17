@@ -1,5 +1,5 @@
 use crate::HoisterError;
-use crate::docker::{get_project_name, get_service_identifier};
+use crate::docker::get_service_identifier;
 use bollard::Docker;
 use bollard::models::{ContainerInspectResponse, ContainerSummary};
 use bollard::query_parameters::ListContainersOptions;
@@ -136,12 +136,12 @@ async fn send_to_backend(
 
 pub(crate) async fn start(
     controller_url: String,
+    project_name: ProjectName,
 ) -> Result<(), Box<dyn std::error::Error + 'static>> {
     info!("Starting monitor");
     let docker = Docker::connect_with_socket_defaults()?;
     let mut interval = time::interval(Duration::from_secs(5));
 
-    let project_name = get_project_name(&docker).await?;
     loop {
         interval.tick().await;
 

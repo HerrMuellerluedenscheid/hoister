@@ -42,6 +42,8 @@ enum HoisterError {
     BollardError(#[from] BollardError),
     #[error("Docker failed: {0}")]
     Docker(String),
+    #[error("Failed to get the project name")]
+    ProjectNameDetectionFailed,
 }
 
 struct SSEHandler {
@@ -80,17 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let (tx_sse, rx_sse) = mpsc::channel(32);
 
     let result_handler = DeploymentResultHandler::new(tx_notification);
-    if let Ok(controller_url) = env::var("HOISTER_CONTROLLER_URL") {
-        let url = controller_url.clone();
-        let url_state = format!("{}/container/state", controller_url);
 
-        tokio::spawn(async move { sse::consume_sse(format!("{url}/sse").as_str(), tx_sse).await });
-        tokio::spawn(async move {
-            monitor::start(url_state)
-                .await
-                .expect("Failed to start monitor");
-        });
-    }
     let dispatcher = setup_dispatcher();
     tokio::spawn(async move {
         start_notification_handler(rx_notification, dispatcher).await;
@@ -119,7 +111,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     tokio::spawn(async move {
         sse_handler.start().await;
     });
+
     let project_name = get_project_name(&docker.docker).await?;
+
+    if let Ok(controller_url) = env::var("HOISTER_CONTROLLER_URL") {
+        let url = controller_url.clone();
+        let url_state = format!("{}/container/state", controller_url);
+        let pn = project_name.clone();
+        tokio::spawn(async move { sse::consume_sse(format!("{url}/sse").as_str(), tx_sse).await });
+        tokio::spawn(async move {
+            monitor::start(url_state, pn)
+                .await
+                .expect("Failed to start monitor");
+        });
+    }
+
     loop {
         debug!("---------- start checking containers ----------");
         let now = SystemTime::now();
