@@ -38,5 +38,15 @@ services:
     volumes:
       - "example-volume:/data"
 
+  educk-api:
+    image: ghcr.io/herrmuellerluedenscheid/educk-rs:main
+    restart: always
+    ports:
+      - "3044:3044"
+    environment:
+      ENTSOE_API_KEY: ${ENTSOE_API_KEY}
+    labels:
+      - "hoister.enable=true"
+
 volumes:
   example-volume:

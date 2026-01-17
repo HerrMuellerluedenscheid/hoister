@@ -63,7 +63,16 @@ Check the [docker-compose.yaml](./docker-compose.yaml) example.
 
 ## Private Registries
 
-To access private registry, add the registry credentials to the hoister container using a sub-set of these environment variables:
+### [github registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-to-the-container-registry) using a classic PAT
+
+```
+HOISTER_REGISTRY_GHCR_USERNAME="your-github-username"
+HOISTER_REGISTRY_GHCR_TOKEN="ghp_DW1.............."
+```
+
+### Global configuration
+
+As a fallback you can use these environment variables to authenticate against a private registry:
 
 ```
 HOISTER_REGISTRY_USERNAME
@@ -73,13 +82,6 @@ HOISTER_REGISTRY_EMAIL
 HOISTER_REGISTRY_SERVERADDRESS
 HOISTER_REGISTRY_IDENTITYTOKEN
 HOISTER_REGISTRY_REGISTRYTOKEN
-```
-
-For example, to access a private registry on dockerhub using a [PAT](https://docs.docker.com/security/access-tokens/) or the [github registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-to-the-container-registry) using a classic PAT
-
-```
-HOISTER_REGISTRY_USERNAME=your-username
-HOISTER_REGISTRY_PASSWORD=your-generated-personal-access-token
 ```
 
 ## Frontend (optional)
