@@ -436,7 +436,8 @@ impl DockerHandler {
             serde_json::to_string_pretty(&container_details).unwrap()
         );
 
-        let new_image_digest = download_image(&self.docker, repo_name, image_tag).await?;
+        let new_image_digest =
+            download_image(&self.docker, ImageName::new(repo_name), image_tag).await?;
         debug!("Image pulled successfully ({new_image_digest:?})");
 
         // Check if volume backup is enabled via label
@@ -731,16 +732,19 @@ async fn create_container(
 }
 async fn download_image(
     docker: &Docker,
-    image_name: &str,
+    image_name: ImageName,
     image_tag: &str,
 ) -> Result<ImageDigest, HoisterError> {
     let mut update_available = false;
     let options = CreateImageOptions {
-        from_image: Some(image_name.to_owned()),
+        from_image: Some(image_name.0.clone()),
         tag: Some(image_tag.to_owned()),
         ..Default::default()
     };
-    let mut pull_stream = docker.create_image(Some(options), None, Some(CREDENTIALS.clone()));
+
+    let credentials = get_credentials(&image_name);
+
+    let mut pull_stream = docker.create_image(Some(options), None, credentials);
     while let Some(result) = pull_stream.next().await {
         match result {
             Ok(output) => {
@@ -760,7 +764,7 @@ async fn download_image(
         return Err(HoisterError::NoUpdateAvailable);
     }
 
-    let full_image_name = format!("{}:{}", image_name, image_tag);
+    let full_image_name = format!("{}:{}", image_name.as_str(), image_tag);
     info!("New image pulled image name image tag: {full_image_name}");
     let image_info = docker
         .inspect_image(&full_image_name)
@@ -771,6 +775,19 @@ async fn download_image(
         "The pulled image id is empty".to_string(),
     ))?;
     Ok(ImageDigest::new(new_image_digest))
+}
+
+fn get_credentials(image_name: &ImageName) -> Option<DockerCredentials> {
+    info!("Getting credentials for image: {}", image_name.as_str());
+    if image_name.as_str().starts_with("ghcr.io/") {
+        return Some(DockerCredentials {
+            username: env::var("HOISTER_REGISTRY_GHCR_USERNAME").ok(),
+            password: env::var("HOISTER_REGISTRY_GHCR_TOKEN").ok(),
+            ..Default::default()
+        });
+    }
+
+    Some(CREDENTIALS.clone())
 }
 
 async fn check_container_health(docker: &Docker, container_name: &str) -> Result<(), HoisterError> {
@@ -796,4 +813,16 @@ async fn check_container_health(docker: &Docker, container_name: &str) -> Result
     }
 
     Err(UpdateFailed(container.config.unwrap().image.unwrap()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_load_credentials() {
+        let credentials = get_credentials(&ImageName::new(
+            "ghcr.io/herrmuellerluedenscheid/educk-rs:main".to_string(),
+        ));
+        assert!(credentials.is_some());
+    }
 }
