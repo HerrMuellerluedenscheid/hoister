@@ -28,6 +28,7 @@ tokio-stream = "0.1.17"
 lazy_static = "1.5.0"
 chrono = "0.4.41"
 serde = "1.0.228"
+url = "2.5.7"
 
 [dev-dependencies]
 figment2 = { workspace = true, features = ["toml", "test"] }
