@@ -1,11 +1,24 @@
 use crate::HoisterError;
+use crate::config::Config;
 use chatterbox::message::{Dispatcher, Message};
 use log::{debug, error, info};
 use shared::{
     CreateDeployment, DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName,
 };
+use tokio::sync::broadcast::error::SendError;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
+
+#[allow(clippy::enum_variant_names)]
+#[derive(Debug, thiserror::Error)]
+enum NotificationError {
+    #[error("failed to send notification: {0}")]
+    SendError(#[from] reqwest::Error),
+    #[error("failed to send notification: {0:?}")]
+    BroadcastSendError(#[from] SendError<String>),
+    #[error(transparent)]
+    ParseError(#[from] url::ParseError),
+}
 
 pub struct DeploymentResultHandler {
     tx: Sender<CreateDeployment>,
@@ -79,25 +92,36 @@ impl DeploymentResultHandler {
 }
 
 pub(super) async fn start_notification_handler(
+    config: &Config,
     mut rx: Receiver<CreateDeployment>,
     dispatcher: Dispatcher,
 ) {
     while let Some(message) = rx.recv().await {
-        send(&message, &dispatcher).await;
+        send(config, &message, &dispatcher).await;
     }
 }
 
-async fn send_to_controller(result: &CreateDeployment) {
+async fn send_to_controller(
+    config: &Config,
+    result: &CreateDeployment,
+) -> Result<(), NotificationError> {
     let client = reqwest::Client::new();
-    let url = std::env::var("HOISTER_CONTROLLER_URL");
-    if url.is_err() {
-        info!("HOISTER_CONTROLLER_URL not defined");
-        return;
-    }
-    let token = std::env::var("HOISTER_CONTROLLER_TOKEN").unwrap_or_default();
+    let (url, token) = match config.controller {
+        Some(ref controller) => {
+            debug!(
+                "sending deployment request to controller: {}",
+                &controller.url
+            );
+            let token = controller.token.as_deref().unwrap_or_default();
+            (&controller.url, token)
+        }
+        None => {
+            info!("HOISTER_CONTROLLER_URL not defined");
+            return Ok(());
+        }
+    };
 
-    let mut url = url.unwrap();
-    url.push_str("/deployments");
+    let url = url.join("/deployments")?;
     let res = client
         .post(url)
         .header("Content-Type", "application/json")
@@ -106,69 +130,74 @@ async fn send_to_controller(result: &CreateDeployment) {
         .send()
         .await;
     debug!("response: {:?}", res);
+    Ok(())
 }
 
-async fn send_to_chatterbox(result: &CreateDeployment, dispatcher: &Dispatcher) {
+async fn send_to_chatterbox(
+    result: &CreateDeployment,
+    dispatcher: &Dispatcher,
+) -> Result<(), NotificationError> {
     match result.status {
-        DeploymentStatus::NoUpdate => {}
+        DeploymentStatus::NoUpdate => Ok(()),
         _ => {
             let message: Message = result.into();
-            _ = dispatcher
-                .dispatch(&message)
-                .inspect_err(|e| error!("failed to dispatch message: {e}"));
+            dispatcher.dispatch(&message)?;
+            Ok(())
         }
     }
 }
 
-pub(crate) async fn send(result: &CreateDeployment, dispatcher: &Dispatcher) {
+pub(crate) async fn send(config: &Config, result: &CreateDeployment, dispatcher: &Dispatcher) {
     debug!("sending deployment request");
-    send_to_controller(result).await;
-    send_to_chatterbox(result, dispatcher).await;
+
+    let (result1, result2) = tokio::join!(
+        send_to_controller(config, result),
+        send_to_chatterbox(result, dispatcher)
+    );
+
+    if let Err(e) = result1 {
+        error!("Failed to send to controller: {:?}", e);
+    }
+    if let Err(e) = result2 {
+        error!("Failed to send to chatterbox: {:?}", e);
+    }
 }
 
-pub(crate) fn setup_dispatcher() -> Dispatcher {
-    let slack = match std::env::var("HOISTER_SLACK_WEBHOOK_URL") {
-        Ok(webhook_url) => {
-            info!("Using Slack dispatcher");
-            let channel =
-                std::env::var("HOISTER_SLACK_CHANNEL").expect("HOISTER_SLACK_CHANNEL not defined");
-            Some(chatterbox::dispatcher::slack::Slack {
-                webhook_url,
-                channel,
-            })
-        }
-        Err(_) => {
-            info!("HOISTER_SLACK_WEBHOOK_URL not defined");
-            None
-        }
+pub(crate) fn setup_dispatcher(config: &Config) -> Option<Dispatcher> {
+    if std::env::var("HOISTER_SLACK_WEBHOOK_URL").is_ok()
+        || std::env::var("HOISTER_SLACK_CHANNEL").is_ok()
+        || std::env::var("HOISTER_TELEGRAM_BOT_TOKEN").is_ok()
+        || std::env::var("HOISTER_TELEGRAM_CHAT_ID").is_ok()
+        || std::env::var("HOISTER_DISCORD_BOT_TOKEN").is_ok()
+    {
+        error!(
+            "The following environment variables are deprecated: HOISTER_SLACK_WEBHOOK_URL, HOISTER_SLACK_CHANNEL, HOISTER_TELEGRAM_BOT_TOKEN, HOISTER_TELEGRAM_CHAT_ID, HOISTER_DISCORD_BOT_TOKEN. Please change the prefix to HOISTER_DISPATCHERS instead."
+        )
     };
-    let telegram = match std::env::var("HOISTER_TELEGRAM_BOT_TOKEN") {
-        Ok(bot_token) => {
-            info!("Using Telegram dispatcher");
-            let chat_id = std::env::var("HOISTER_TELEGRAM_CHAT_ID")
-                .expect("HOISTER_TELEGRAM_CHAT_ID not defined");
-            Some(chatterbox::dispatcher::telegram::Telegram { bot_token, chat_id })
+
+    let dispatcher_config = config.dispatcher.clone()?;
+    let slack = dispatcher_config.slack.map(|s| {
+        info!("Using Slack dispatcher");
+        chatterbox::dispatcher::slack::Slack {
+            webhook_url: s.webhook.to_string(),
+            channel: s.channel,
         }
-        Err(_) => {
-            info!("HOISTER_TELEGRAM_BOT_TOKEN not defined");
-            None
+    });
+    let telegram = dispatcher_config.telegram.map(|t| {
+        info!("Using Telegram dispatcher");
+        chatterbox::dispatcher::telegram::Telegram {
+            bot_token: t.token,
+            chat_id: t.chat,
         }
-    };
-    let discord = match std::env::var("HOISTER_DISCORD_BOT_TOKEN") {
-        Ok(bot_token) => {
-            info!("Using Discord dispatcher");
-            let channel_id = std::env::var("HOISTER_DISCORD_CHANNEL_ID")
-                .expect("HOISTER_DISCORD_CHANNEL_ID not defined");
-            Some(chatterbox::dispatcher::discord::Discord {
-                bot_token,
-                channel_id,
-            })
+    });
+    let discord = dispatcher_config.discord.map(|d| {
+        info!("Using Telegram dispatcher");
+        chatterbox::dispatcher::discord::Discord {
+            bot_token: d.token,
+            channel_id: d.channel,
         }
-        Err(_) => {
-            info!("HOISTER_DISCORD_BOT_TOKEN not defined");
-            None
-        }
-    };
+    });
+
     let sender = chatterbox::dispatcher::Sender {
         slack,
         telegram,
@@ -176,7 +205,7 @@ pub(crate) fn setup_dispatcher() -> Dispatcher {
         email: None,
     };
 
-    Dispatcher::new(sender)
+    Some(Dispatcher::new(sender))
 }
 
 impl From<HoisterError> for Option<Message> {

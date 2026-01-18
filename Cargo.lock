@@ -983,6 +983,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-stream",
+ "url",
 ]
 
 [[package]]

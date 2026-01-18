@@ -1,5 +1,6 @@
 use crate::HoisterError;
 use crate::HoisterError::UpdateFailed;
+use crate::config::Registry;
 use crate::env;
 use crate::notifications::DeploymentResultHandler;
 use bollard::Docker;
@@ -15,25 +16,12 @@ use bollard::query_parameters::{
     WaitContainerOptionsBuilder,
 };
 use futures_util::{StreamExt, TryStreamExt};
-use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
 use shared::{ImageDigest, ImageName, ProjectName, ServiceName};
 use std::collections::HashMap;
 use std::error::Error;
 use std::path::Path;
 use std::time::Duration;
-
-lazy_static! {
-    static ref CREDENTIALS: DockerCredentials = DockerCredentials {
-        username: env::var("HOISTER_REGISTRY_USERNAME").ok(),
-        password: env::var("HOISTER_REGISTRY_PASSWORD").ok(),
-        auth: env::var("HOISTER_REGISTRY_AUTH").ok(),
-        email: env::var("HOISTER_REGISTRY_EMAIL").ok(),
-        serveraddress: env::var("HOISTER_REGISTRY_SERVERADDRESS").ok(),
-        identitytoken: env::var("HOISTER_REGISTRY_IDENTITYTOKEN").ok(),
-        registrytoken: env::var("HOISTER_REGISTRY_REGISTRYTOKEN").ok(),
-    };
-}
 
 pub(crate) type ContainerID = String;
 pub(crate) type VolumeName = String;
@@ -47,6 +35,7 @@ const REMOVE_OPTIONS: RemoveContainerOptions = RemoveContainerOptions {
 pub(crate) struct DockerHandler {
     pub(crate) docker: Docker,
     deployment_handler: DeploymentResultHandler,
+    registries: Option<Registry>,
 }
 
 struct VolumeBackup {
@@ -55,11 +44,15 @@ struct VolumeBackup {
 }
 
 impl DockerHandler {
-    pub(crate) fn new(deployment_handler: DeploymentResultHandler) -> Self {
+    pub(crate) fn new(
+        deployment_handler: DeploymentResultHandler,
+        registries: Option<Registry>,
+    ) -> Self {
         let docker = Docker::connect_with_local_defaults().unwrap();
         Self {
             docker,
             deployment_handler,
+            registries,
         }
     }
 
@@ -436,8 +429,13 @@ impl DockerHandler {
             serde_json::to_string_pretty(&container_details).unwrap()
         );
 
-        let new_image_digest =
-            download_image(&self.docker, ImageName::new(repo_name), image_tag).await?;
+        let new_image_digest = download_image(
+            &self.docker,
+            ImageName::new(repo_name),
+            image_tag,
+            self.registries.as_ref(),
+        )
+        .await?;
         debug!("Image pulled successfully ({new_image_digest:?})");
 
         // Check if volume backup is enabled via label
@@ -734,6 +732,7 @@ async fn download_image(
     docker: &Docker,
     image_name: ImageName,
     image_tag: &str,
+    registries: Option<&Registry>,
 ) -> Result<ImageDigest, HoisterError> {
     let mut update_available = false;
     let options = CreateImageOptions {
@@ -742,7 +741,7 @@ async fn download_image(
         ..Default::default()
     };
 
-    let credentials = get_credentials(&image_name);
+    let credentials = get_credentials(registries, &image_name);
 
     let mut pull_stream = docker.create_image(Some(options), None, credentials);
     while let Some(result) = pull_stream.next().await {
@@ -777,17 +776,20 @@ async fn download_image(
     Ok(ImageDigest::new(new_image_digest))
 }
 
-fn get_credentials(image_name: &ImageName) -> Option<DockerCredentials> {
+fn get_credentials(
+    registries: Option<&Registry>,
+    image_name: &ImageName,
+) -> Option<DockerCredentials> {
     info!("Getting credentials for image: {}", image_name.as_str());
     if image_name.as_str().starts_with("ghcr.io/") {
+        let ghcr = registries?.ghcr.as_ref()?;
         return Some(DockerCredentials {
-            username: env::var("HOISTER_REGISTRY_GHCR_USERNAME").ok(),
-            password: env::var("HOISTER_REGISTRY_GHCR_TOKEN").ok(),
+            username: Some(ghcr.username.to_string()),
+            password: Some(ghcr.token.to_string()),
             ..Default::default()
         });
     }
-
-    Some(CREDENTIALS.clone())
+    None
 }
 
 async fn check_container_health(docker: &Docker, container_name: &str) -> Result<(), HoisterError> {
@@ -820,9 +822,10 @@ mod tests {
     use super::*;
     #[test]
     fn test_load_credentials() {
-        let credentials = get_credentials(&ImageName::new(
-            "ghcr.io/herrmuellerluedenscheid/educk-rs:main".to_string(),
-        ));
-        assert!(credentials.is_some());
+        let credentials = get_credentials(
+            None,
+            &ImageName::new("ghcr.io/herrmuellerluedenscheid/educk-rs:main".to_string()),
+        );
+        assert!(credentials.is_none());
     }
 }

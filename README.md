@@ -49,14 +49,14 @@ Finally, push a new image to your registry using the same tag, and Hoister will 
 Define the following environment variables to receive update and rollback notifications via **Telegram**, **Slack**, **Discord** or **Email**:
 
 ```shell
-export HOISTER_SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXX"
-export HOISTER_SLACK_CHANNEL="#my-update-channel"
-export HOISTER_TELEGRAM_BOT_TOKEN="12345656789:XXXXXXXXXX-XXXXXXXXX-XXXXXXXXX"
-export HOISTER_TELEGRAM_CHAT_ID="9999999999"
-export HOISTER_DISCORD_BOT_TOKEN="soijf23JASDFOIJ@.Gj7gl8.sdfoij234sdf_sdfijoij23lijasdASDF"
-export HOISTER_DISCORD_CHANNEL_ID="12334556898709812334"
-export HOISTER_CONTROLLER_URL="http://hoister-controller:3033"   # if you want to use the front end
-export HOISTER_SCHEDULE_INTERVAL=60   # in seconds
+export HOISTER_REGISTRY_SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXX"
+export HOISTER_REGISTRY_SLACK_CHANNEL="#my-update-channel"
+export HOISTER_REGISTRY_TELEGRAM_BOT_TOKEN="12345656789:XXXXXXXXXX-XXXXXXXXX-XXXXXXXXX"
+export HOISTER_REGISTRY_TELEGRAM_CHAT_ID="9999999999"
+export HOISTER_REGISTRY_DISCORD_BOT_TOKEN="soijf23JASDFOIJ@.Gj7gl8.sdfoij234sdf_sdfijoij23lijasdASDF"
+export HOISTER_REGISTRY_DISCORD_CHANNEL_ID="12334556898709812334"
+export HOISTER_REGISTRY_CONTROLLER_URL="http://hoister-controller:3033"   # if you want to use the front end
+export HOISTER_REGISTRY_SCHEDULE_INTERVAL=60   # in seconds
 ```
 
 Check the [docker-compose.yaml](./docker-compose.yaml) example.

@@ -76,17 +76,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     let config_path = "/config.toml";
-    let config = crate::config::load_config(config_path.as_ref()).await;
+    let config = Arc::new(config::load_config(config_path.as_ref()).await);
 
     let (tx_notification, rx_notification) = mpsc::channel(32);
     let (tx_sse, rx_sse) = mpsc::channel(32);
 
     let result_handler = DeploymentResultHandler::new(tx_notification);
 
-    let dispatcher = setup_dispatcher();
-    tokio::spawn(async move {
-        start_notification_handler(rx_notification, dispatcher).await;
+    let _ = setup_dispatcher(&config).map(|d| {
+        let c = Arc::clone(&config);
+        tokio::spawn(async move {
+            start_notification_handler(&c, rx_notification, d).await;
+        });
     });
+
     info!("Starting hoister");
     if config.send_test_message {
         info!("Sending tests message");
@@ -105,7 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    let docker = Arc::new(DockerHandler::new(result_handler));
+    let docker = Arc::new(DockerHandler::new(result_handler, config.registry.clone()));
 
     let mut sse_handler = SSEHandler::new(docker.clone(), rx_sse);
     tokio::spawn(async move {
@@ -114,9 +117,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     let project_name = get_project_name(&docker.docker).await?;
 
-    if let Ok(controller_url) = env::var("HOISTER_CONTROLLER_URL") {
-        let url = controller_url.clone();
-        let url_state = format!("{}/container/state", controller_url);
+    if let Some(controller_config) = &config.controller {
+        let url = controller_config.url.clone();
+        let url_state = format!("{}/container/state", controller_config.url);
         let pn = project_name.clone();
         tokio::spawn(async move { sse::consume_sse(format!("{url}/sse").as_str(), tx_sse).await });
         tokio::spawn(async move {
