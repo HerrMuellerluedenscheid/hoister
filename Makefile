@@ -29,7 +29,7 @@ dev-hoister:
 	export $$(cat .env.template | xargs) && export $$(cat .env | xargs) && \
  	export HOISTER_CONTROLLER_URL="http://localhost:3033" && \
  	export RUST_LOG=debug,bollard=info,hyper_util=info && \
- 	HOISTER_CONTROLLER_URL="http://localhost:3033" RUST_LOG=debug,bollard=info,hyper_util=info cargo run --bin hoister -- --watch 20
+ 	HOISTER_CONTROLLER_URL="http://localhost:3033" RUST_LOG=debug,bollard=info,hyper_util=info cargo run --bin hoister
 
 test-message:
 	export $$(cat .env.template | xargs) && export $$(cat .env | xargs) &&	RUST_LOG=debug,bollard=info,hyper_util=info cargo run --bin hoister -- --test-message
