@@ -56,7 +56,7 @@ export HOISTER_TELEGRAM_CHAT_ID="9999999999"
 export HOISTER_DISCORD_BOT_TOKEN="soijf23JASDFOIJ@.Gj7gl8.sdfoij234sdf_sdfijoij23lijasdASDF"
 export HOISTER_DISCORD_CHANNEL_ID="12334556898709812334"
 export HOISTER_CONTROLLER_URL="http://hoister-controller:3033"   # if you want to use the front end
-export WATCH_INTERVAL=60   # in seconds
+export HOISTER_SCHEDULE_INTERVAL=60   # in seconds
 ```
 
 Check the [docker-compose.yaml](./docker-compose.yaml) example.

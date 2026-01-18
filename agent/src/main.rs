@@ -1,5 +1,5 @@
 //! Fetch info of all running containers concurrently
-mod cli;
+mod config;
 mod docker;
 mod monitor;
 mod notifications;
@@ -12,7 +12,6 @@ use log::{debug, error, info};
 
 use bollard::errors::Error as BollardError;
 
-use crate::cli::configure_cli;
 use crate::docker::{ContainerID, DockerHandler, get_project_name};
 use bollard::models::ContainerCreateResponse;
 use env_logger::Env;
@@ -76,7 +75,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     set_group_id();
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
-    let config = configure_cli();
+    let config_path = "/config.toml";
+    let config = crate::config::load_config(config_path.as_ref()).await;
 
     let (tx_notification, rx_notification) = mpsc::channel(32);
     let (tx_sse, rx_sse) = mpsc::channel(32);
@@ -88,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         start_notification_handler(rx_notification, dispatcher).await;
     });
     info!("Starting hoister");
-    if let Some(true) = config.send_test_message {
+    if config.send_test_message {
         info!("Sending tests message");
         result_handler.test_message().await;
         // await 1 second to allow the message to be sent
@@ -137,9 +137,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             debug!("result: {:?}", result);
         }
 
-        if config.interval.is_some() {
+        if config.schedule.interval.is_some() {
             while running.load(Ordering::SeqCst)
-                && now.elapsed().unwrap() < Duration::from_secs(config.interval.unwrap())
+                && now.elapsed().unwrap() < Duration::from_secs(config.schedule.interval.unwrap())
             {
                 sleep(Duration::from_millis(500)).await;
             }
