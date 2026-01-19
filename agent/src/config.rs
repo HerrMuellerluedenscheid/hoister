@@ -31,6 +31,7 @@ pub(crate) struct Dispatcher {
     pub(crate) telegram: Option<Telegram>,
     pub(crate) discord: Option<Discord>,
     pub(crate) slack: Option<Slack>,
+    pub(crate) gotify: Option<Gotify>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -49,6 +50,12 @@ pub(crate) struct Discord {
 pub(crate) struct Slack {
     pub(crate) webhook: Url,
     pub(crate) channel: ChannelName,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct Gotify {
+    pub(crate) server: Url,
+    pub(crate) token: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]
