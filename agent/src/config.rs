@@ -1,3 +1,5 @@
+use chrono::Utc;
+use cron::Schedule as CronSchedule;
 use serde::Deserialize;
 use std::path::Path;
 
@@ -52,6 +54,26 @@ pub(crate) struct Slack {
 #[derive(Deserialize, Debug, Clone)]
 pub(crate) struct Schedule {
     pub(crate) interval: Option<u64>,
+    pub(crate) cron: Option<CronSchedule>,
+}
+
+impl Schedule {
+    pub(crate) fn sleep(&self) -> std::time::Duration {
+        let seconds = match &self.cron {
+            None => self
+                .interval
+                .expect("Either `interval` or `cron` has to be defined"),
+            Some(schedule) => {
+                let upcoming = schedule.upcoming(Utc).next().unwrap();
+                upcoming
+                    .signed_duration_since(Utc::now())
+                    .num_seconds()
+                    .max(0) as u64
+            }
+        };
+
+        std::time::Duration::from_secs(seconds)
+    }
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -79,15 +101,22 @@ pub(crate) async fn load_config(config_path: &Path) -> Config {
         .expect("Failed to load config");
     config
 }
-#[test]
-fn test_load_config() {
-    use figment2::Jail;
-    Jail::expect_with(|jail: &mut Jail| {
-        jail.create_file(
-            "config-test.toml",
-            r#"
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn test_load_config() {
+        use figment2::Jail;
+        Jail::expect_with(|jail: &mut Jail| {
+            jail.create_file(
+                "config-test.toml",
+                r#"
             [schedule]
             interval=10
+            cron="0 * * * * * *"
 
             [registry.ghcr]
             username="foo"
@@ -105,35 +134,46 @@ fn test_load_config() {
             token="foo"
             channel="getsoverriddenbyenvvar"
             "#,
-        )?;
+            )?;
 
-        jail.set_env("HOISTER_registry_ghcr_username", "xxx");
-        jail.set_env("HOISTER_schedule_name", "bar");
-        jail.set_env("HOISTER_CONTROLLER_URL", "http://foobar:3033");
-        jail.set_env("HOISTER_DISPATCHER_discord_token", "discord_token");
-        jail.set_env("HOISTER_dispatcher_discord_channel", "123123");
+            jail.set_env("HOISTER_registry_ghcr_username", "xxx");
+            jail.set_env("HOISTER_schedule_name", "bar");
+            jail.set_env("HOISTER_CONTROLLER_URL", "http://foobar:3033");
+            jail.set_env("HOISTER_DISPATCHER_discord_token", "discord_token");
+            jail.set_env("HOISTER_dispatcher_discord_channel", "123123");
 
-        let config_path = "config-test.toml";
+            let config_path = "config-test.toml";
 
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let config = rt.block_on(load_config(config_path.as_ref()));
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let config = rt.block_on(load_config(config_path.as_ref()));
 
-        let dispatcher = config.dispatcher.unwrap();
-        assert_eq!(config.registry.unwrap().ghcr.unwrap().username, "xxx");
-        assert_eq!(
-            config.controller.unwrap().url,
-            Url::from("http://foobar:3033".parse().unwrap())
-        );
-        assert_eq!(
-            dispatcher.discord.as_ref().unwrap().token,
-            "discord_token".to_string()
-        );
-        assert_eq!(dispatcher.discord.as_ref().unwrap().channel, 123123,);
-        assert_eq!(
-            dispatcher.slack.as_ref().unwrap().channel,
-            "channel-name".to_string()
-        );
+            let dispatcher = config.dispatcher.unwrap();
+            assert_eq!(config.registry.unwrap().ghcr.unwrap().username, "xxx");
+            assert_eq!(
+                config.controller.unwrap().url,
+                Url::from("http://foobar:3033".parse().unwrap())
+            );
+            assert_eq!(
+                dispatcher.discord.as_ref().unwrap().token,
+                "discord_token".to_string()
+            );
+            assert_eq!(dispatcher.discord.as_ref().unwrap().channel, 123123,);
+            assert_eq!(
+                dispatcher.slack.as_ref().unwrap().channel,
+                "channel-name".to_string()
+            );
 
-        Ok(())
-    });
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn test_schedule_cron() {
+        let expression = "0 * * * * * *";
+        let schedule = Schedule {
+            interval: Some(10),
+            cron: Some(CronSchedule::from_str(expression).unwrap()),
+        };
+        assert_eq!(schedule.sleep().as_secs() < 60, true); // any schedule should be less than 60 seconds
+    }
 }
