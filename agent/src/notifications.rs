@@ -201,10 +201,19 @@ pub(crate) fn setup_dispatcher(config: &Config) -> Option<Dispatcher> {
         }
     });
 
+    let gotify = dispatcher_config.gotify.map(|g| {
+        info!("Using Gotify dispatcher");
+        chatterbox::dispatcher::gotify::Gotify {
+            server_url: g.server,
+            app_token: g.token,
+        }
+    });
+
     let sender = chatterbox::dispatcher::Sender {
         slack,
         telegram,
         discord,
+        gotify,
         email: None,
     };
 
