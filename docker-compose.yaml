@@ -45,8 +45,7 @@ services:
     restart: always
     ports:
       - "3044:3044"
-    environment:
-      ENTSOE_API_KEY: ${ENTSOE_API_KEY}
+    env_file: ".env"
     labels:
       - "hoister.enable=true"
 

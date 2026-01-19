@@ -96,14 +96,14 @@ pub(super) async fn start_notification_handler(
     mut rx: Receiver<CreateDeployment>,
     dispatcher: Dispatcher,
 ) {
-    while let Some(message) = rx.recv().await {
-        send(config, &message, &dispatcher).await;
+    while let Some(deployment_message) = rx.recv().await {
+        send(config, &deployment_message, &dispatcher).await;
     }
 }
 
 async fn send_to_controller(
+    deployment_message: &CreateDeployment,
     config: &Config,
-    result: &CreateDeployment,
 ) -> Result<(), NotificationError> {
     let client = reqwest::Client::new();
     let (url, token) = match config.controller {
@@ -126,7 +126,7 @@ async fn send_to_controller(
         .post(url)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {token})"))
-        .json(&result)
+        .json(&deployment_message)
         .send()
         .await;
     debug!("response: {:?}", res);
@@ -134,25 +134,28 @@ async fn send_to_controller(
 }
 
 async fn send_to_chatterbox(
-    result: &CreateDeployment,
+    deployment_message: &CreateDeployment,
     dispatcher: &Dispatcher,
 ) -> Result<(), NotificationError> {
-    match result.status {
+    match deployment_message.status {
         DeploymentStatus::NoUpdate => Ok(()),
         _ => {
-            let message: Message = result.into();
+            let message = deployment_message.to_message();
             dispatcher.dispatch(&message)?;
             Ok(())
         }
     }
 }
 
-pub(crate) async fn send(config: &Config, result: &CreateDeployment, dispatcher: &Dispatcher) {
+pub(crate) async fn send(
+    config: &Config,
+    deployment_message: &CreateDeployment,
+    dispatcher: &Dispatcher,
+) {
     debug!("sending deployment request");
-
     let (result1, result2) = tokio::join!(
-        send_to_controller(config, result),
-        send_to_chatterbox(result, dispatcher)
+        send_to_controller(deployment_message, config),
+        send_to_chatterbox(deployment_message, dispatcher)
     );
 
     if let Err(e) = result1 {

@@ -115,15 +115,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         sse_handler.start().await;
     });
 
-    let project_name = get_project_name(&docker.docker).await?;
+    let project_name = match &config.project {
+        None => get_project_name(&docker.docker).await?,
+        Some(pn) => pn.clone(),
+    };
 
     if let Some(controller_config) = &config.controller {
-        let url = controller_config.url.clone();
-        let url_state = format!("{}/container/state", controller_config.url);
+        let mut url_sse = controller_config.url.clone();
+        let url_state = controller_config.url.clone();
+        url_sse.set_path("sse");
         let pn = project_name.clone();
-        tokio::spawn(async move { sse::consume_sse(format!("{url}/sse").as_str(), tx_sse).await });
+        tokio::spawn(async move { sse::consume_sse(url_sse.as_str(), tx_sse).await });
         tokio::spawn(async move {
-            monitor::start(url_state, pn)
+            monitor::start(&url_state, pn)
                 .await
                 .expect("Failed to start monitor");
         });
