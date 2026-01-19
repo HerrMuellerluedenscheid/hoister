@@ -46,17 +46,18 @@ Finally, push a new image to your registry using the same tag, and Hoister will 
 📬 Notifications and Configuration
 ----------------------------------
 
-Define the following environment variables to receive update and rollback notifications via **Telegram**, **Slack**, **Discord** or **Email**:
+Define the following environment variables to schedule checks and receive updates and rollback notifications via **Telegram**, **Slack**, **Discord** or **Email**:
 
 ```shell
-export HOISTER_REGISTRY_SLACK_WEBHOOK="https://hooks.slack.com/services/XXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXX"  # Webhook URL
-export HOISTER_REGISTRY_SLACK_CHANNEL="#my-update-channel"
-export HOISTER_REGISTRY_TELEGRAM_TOKEN="12345656789:XXXXXXXXXX-XXXXXXXXX-XXXXXXXXX"  # Bot token
-export HOISTER_REGISTRY_TELEGRAM_CHAT="9999999999"                        # Chat ID
-export HOISTER_REGISTRY_DISCORD_TOKEN="soijf23JASDFOIJ@.Gj7gl8.sdfoij234sdf_sdfijoij23lijasdASDF"   # Bot token
-export HOISTER_REGISTRY_DISCORD_CHANNEL="12334556898709812334"            # Channel ID
-export HOISTER_REGISTRY_CONTROLLER_URL="http://hoister-controller:3033"   # if you want to use the front end
-export HOISTER_REGISTRY_SCHEDULE_INTERVAL=60   # in seconds
+HOISTER_REGISTRY_SLACK_WEBHOOK="https://hooks.slack.com/services/XXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXX"  # Webhook URL
+HOISTER_REGISTRY_SLACK_CHANNEL="#my-update-channel"
+HOISTER_REGISTRY_TELEGRAM_TOKEN="12345656789:XXXXXXXXXX-XXXXXXXXX-XXXXXXXXX"  # Bot token
+HOISTER_REGISTRY_TELEGRAM_CHAT="9999999999"                        # Chat ID
+HOISTER_REGISTRY_DISCORD_TOKEN="soijf23JASDFOIJ@.Gj7gl8.sdfoij234sdf_sdfijoij23lijasdASDF"   # Bot token
+HOISTER_REGISTRY_DISCORD_CHANNEL="12334556898709812334"            # Channel ID
+HOISTER_REGISTRY_CONTROLLER_URL="http://hoister-controller:3033"   # if you want to use the front end
+HOISTER_REGISTRY_SCHEDULE_INTERVAL=60                              # sleep in seconds between checks
+HOISTER_REGISTRY_SCHEDULE_CRON="0 * * * * * *"                     # cron expression to schedule the checks (precedence over interval)
 ```
 
 Check the [docker-compose.yaml](./docker-compose.yaml) example.

@@ -21,12 +21,15 @@ use std::default::Default;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use thiserror::Error;
 use tokio::time::sleep;
 
 use crate::notifications::{DeploymentResultHandler, setup_dispatcher, start_notification_handler};
-use controller::sse::ControllerEvent;
+
+use crate::sse::SSEHandler;
+use shared::ProjectName;
+use std::error::Error;
 #[allow(unused_imports)]
 use std::{env, process};
 use tokio::sync::mpsc;
@@ -43,30 +46,6 @@ enum HoisterError {
     Docker(String),
     #[error("Failed to get the project name")]
     ProjectNameDetectionFailed,
-}
-
-struct SSEHandler {
-    docker: Arc<DockerHandler>,
-    rx: mpsc::Receiver<ControllerEvent>,
-}
-
-impl SSEHandler {
-    fn new(docker: Arc<DockerHandler>, rx: mpsc::Receiver<ControllerEvent>) -> Self {
-        Self { docker, rx }
-    }
-
-    async fn start(&mut self) {
-        while let Some(message) = self.rx.recv().await {
-            match message {
-                ControllerEvent::Retry((project_name, container_id)) => {
-                    self.docker
-                        .update_container(&project_name, &container_id)
-                        .await
-                        .expect("TODO: panic message");
-                }
-            }
-        }
-    }
 }
 
 #[tokio::main]
@@ -135,27 +114,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     loop {
         debug!("---------- start checking containers ----------");
-        let now = SystemTime::now();
-        let containers = docker.get_containers(&project_name).await?;
-        for container in containers {
-            debug!("Checking container {:?}", container.id);
-            let container_id: ContainerID = container.id.unwrap_or_default();
-            let result = docker.update_container(&project_name, &container_id).await;
-            debug!("result: {:?}", result);
-        }
+        run_update_check(&docker, &project_name).await?;
+        let sleep = config.schedule.sleep();
+        debug!("---------- end checking containers ----------");
+        debug!("sleeping for {} seconds...", sleep.as_secs_f64());
 
-        if config.schedule.interval.is_some() {
-            while running.load(Ordering::SeqCst)
-                && now.elapsed().unwrap() < Duration::from_secs(config.schedule.interval.unwrap())
-            {
-                sleep(Duration::from_millis(500)).await;
-            }
-            if !running.load(Ordering::SeqCst) {
-                break;
-            }
-        } else {
-            break;
-        }
+        tokio::time::sleep(sleep).await;
+    }
+}
+
+async fn run_update_check(
+    docker: &DockerHandler,
+    project_name: &ProjectName,
+) -> Result<(), Box<dyn Error>> {
+    let containers = docker.get_containers(project_name).await?;
+    for container in containers {
+        debug!("Checking container {:?}", container.id);
+        let container_id: ContainerID = container.id.expect("container ID missing");
+        let result = docker.update_container(project_name, &container_id).await;
+        debug!("result: {:?}", result);
     }
     Ok(())
 }

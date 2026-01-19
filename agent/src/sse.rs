@@ -1,10 +1,37 @@
+use crate::docker::DockerHandler;
 use controller::sse::ControllerEvent;
 use log::{info, warn};
 use reqwest::Client;
+use std::sync::Arc;
 use thiserror::Error;
+use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::{Duration, sleep};
 use tokio_stream::StreamExt;
+
+pub struct SSEHandler {
+    docker: Arc<DockerHandler>,
+    rx: mpsc::Receiver<ControllerEvent>,
+}
+
+impl SSEHandler {
+    pub(crate) fn new(docker: Arc<DockerHandler>, rx: mpsc::Receiver<ControllerEvent>) -> Self {
+        Self { docker, rx }
+    }
+
+    pub(crate) async fn start(&mut self) {
+        while let Some(message) = self.rx.recv().await {
+            match message {
+                ControllerEvent::Retry((project_name, container_id)) => {
+                    self.docker
+                        .update_container(&project_name, &container_id)
+                        .await
+                        .expect("TODO: panic message");
+                }
+            }
+        }
+    }
+}
 
 #[derive(Debug, Error)]
 pub(super) enum SSEError {

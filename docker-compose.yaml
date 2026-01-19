@@ -22,6 +22,8 @@ services:
     image: emrius11/hoister-frontend:latest
     build:
       context: frontend
+    labels:
+      - "hoister.enable=true"
     ports:
       - "3000:3000"
     environment:
