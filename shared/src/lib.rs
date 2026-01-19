@@ -125,6 +125,10 @@ impl CreateDeployment {
             status: DeploymentStatus::TestMessage,
         }
     }
+
+    pub fn to_message(&self) -> Message {
+        Message::new(self.status.to_string(), self.to_string())
+    }
 }
 
 impl From<&CreateDeployment> for Message {

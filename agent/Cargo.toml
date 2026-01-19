@@ -25,7 +25,6 @@ ctrlc = "3.4"
 libc = "0.2.172"
 reqwest = { version = "0.12.23", default-features = false, features = ["rustls-tls-webpki-roots", "json", "stream"] }
 tokio-stream = "0.1.17"
-lazy_static = "1.5.0"
 chrono = "0.4.41"
 serde = "1.0.228"
 url = "2.5.7"

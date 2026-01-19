@@ -5,6 +5,7 @@ use bollard::models::{ContainerInspectResponse, ContainerSummary};
 use bollard::query_parameters::ListContainersOptions;
 use controller::server::PostContainerStateRequest;
 use log::{debug, error, info};
+use reqwest::Url;
 use shared::{ProjectName, ServiceName};
 use std::collections::HashMap;
 use std::time::Duration;
@@ -117,25 +118,28 @@ fn redact_credentials(inspect: &mut ContainerInspectResponse) {
 }
 
 async fn send_to_backend(
-    controller_url: &str,
+    controller_url: &Url,
     project_name: ProjectName,
     states: &HashMap<ServiceName, ContainerInspectResponse>,
 ) -> Result<(), reqwest::Error> {
-    let url = format!("{}/{}", controller_url, project_name.as_str());
-
+    let url = controller_url
+        .join(format!("container/state/{}", project_name.as_str()).as_str())
+        .expect("failed to join url");
+    // let url = controller_url.join("/project_name.as_str()).expect("failed to join url");
     let request = PostContainerStateRequest {
         project_name,
         payload: states.clone(),
     };
 
     let client = reqwest::Client::new();
-    client.post(url).json(&request).send().await?;
-
+    println!("sending to {}", url);
+    let response = client.post(url).json(&request).send().await?;
+    response.error_for_status()?;
     Ok(())
 }
 
 pub(crate) async fn start(
-    controller_url: String,
+    controller_url: &Url,
     project_name: ProjectName,
 ) -> Result<(), Box<dyn std::error::Error + 'static>> {
     info!("Starting monitor");
@@ -148,7 +152,7 @@ pub(crate) async fn start(
         match fetch_container_info(&project_name, &docker).await {
             Ok(current_states) => {
                 if let Err(e) =
-                    send_to_backend(&controller_url, project_name.clone(), &current_states).await
+                    send_to_backend(controller_url, project_name.clone(), &current_states).await
                 {
                     error!("Failed to send to backend: {}", e);
                 } else {

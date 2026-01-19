@@ -20,4 +20,4 @@ COPY --from=shell-builder /bin/sh /bin/sh
 COPY --from=shell-builder /bin/cp /bin/cp
 COPY --from=builder /app/target/release/hoister .
 
-CMD ["hoister"]
+CMD ["./hoister"]

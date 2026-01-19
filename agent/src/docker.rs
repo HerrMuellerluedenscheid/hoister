@@ -651,11 +651,8 @@ pub(crate) async fn get_service_identifier(
 
 pub(crate) async fn get_project_name(docker: &Docker) -> Result<ProjectName, Box<dyn Error>> {
     debug!("Detecting project name...");
-    if let Ok(project_name) = env::var("HOISTER_PROJECT_NAME") {
-        info!(
-            "Using project name from HOISTER_PROJECT_NAME: {}",
-            project_name
-        );
+    if let Ok(project_name) = env::var("HOISTER_PROJECT") {
+        info!("Using project name from HOISTER_PROJECT: {}", project_name);
         return Ok(ProjectName::new(project_name));
     }
 

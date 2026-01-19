@@ -334,9 +334,9 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
 name = "chatterbox"
-version = "2.1.3"
+version = "2.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab35a6ae9911b21b286715c381efc6105f29c0812d25289872318ae0a60b11c5"
+checksum = "765e241e989b4a6ecfc90530d5155ed3d4daffa7b818df384c5a461dd3b288f9"
 dependencies = [
  "lettre",
  "log",
@@ -973,7 +973,6 @@ dependencies = [
  "env_logger",
  "figment2",
  "futures-util",
- "lazy_static",
  "libc",
  "log",
  "reqwest",

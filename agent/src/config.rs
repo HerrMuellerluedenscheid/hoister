@@ -6,9 +6,11 @@ use figment2::{
     providers::{Env, Format, Toml},
 };
 use reqwest::Url;
+use shared::ProjectName;
 
-type ChannelId = String;
-type ChatId = String;
+type ChannelId = u64;
+type ChannelName = String;
+type ChatId = u64;
 type BotToken = String;
 
 #[derive(Deserialize, Debug, Clone)]
@@ -44,7 +46,7 @@ pub(crate) struct Discord {
 #[derive(Deserialize, Debug, Clone)]
 pub(crate) struct Slack {
     pub(crate) webhook: Url,
-    pub(crate) channel: ChannelId,
+    pub(crate) channel: ChannelName,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -60,6 +62,7 @@ pub(crate) struct Controller {
 
 #[derive(Deserialize, Debug, Clone)]
 pub(crate) struct Config {
+    pub(crate) project: Option<ProjectName>,
     #[serde(default)]
     pub(crate) send_test_message: bool,
     pub(crate) schedule: Schedule,
@@ -92,7 +95,7 @@ fn test_load_config() {
 
             [dispatcher.telegram]
             token="123456789:qwertyuiopasdfghjkl"
-            chat="123456789"
+            chat=123456789
 
             [dispatcher.slack]
             webhook="https://hooks.slack.com/xxx/xx"
@@ -108,7 +111,7 @@ fn test_load_config() {
         jail.set_env("HOISTER_schedule_name", "bar");
         jail.set_env("HOISTER_CONTROLLER_URL", "http://foobar:3033");
         jail.set_env("HOISTER_DISPATCHER_discord_token", "discord_token");
-        jail.set_env("HOISTER_dispatcher_discord_channel", "asdfasdf");
+        jail.set_env("HOISTER_dispatcher_discord_channel", "123123");
 
         let config_path = "config-test.toml";
 
@@ -125,10 +128,7 @@ fn test_load_config() {
             dispatcher.discord.as_ref().unwrap().token,
             "discord_token".to_string()
         );
-        assert_eq!(
-            dispatcher.discord.as_ref().unwrap().channel,
-            "asdfasdf".to_string()
-        );
+        assert_eq!(dispatcher.discord.as_ref().unwrap().channel, 123123,);
         assert_eq!(
             dispatcher.slack.as_ref().unwrap().channel,
             "channel-name".to_string()

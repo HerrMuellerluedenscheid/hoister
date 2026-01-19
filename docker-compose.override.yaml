@@ -1,0 +1,11 @@
+services:
+  gotify:
+    image: gotify/server
+    restart: always
+    ports:
+      - "8090:80"
+    environment:
+      - TZ=Europe/Berlin
+      - GOTIFY_REGISTRATION=false
+#    volumes:
+#      - ./data:/app/data
