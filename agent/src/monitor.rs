@@ -75,6 +75,7 @@ fn redact_credentials(inspect: &mut ContainerInspectResponse) {
         && let Some(env_vars) = config.env.as_mut()
     {
         let sensitive_keywords = [
+            "SLACK_WEBHOOK",
             "password",
             "passwd",
             "pwd",
