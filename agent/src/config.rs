@@ -1,14 +1,13 @@
 use chrono::Utc;
 use cron::Schedule as CronSchedule;
-use serde::Deserialize;
-use std::path::Path;
-
 use figment2::{
     Figment,
     providers::{Env, Format, Toml},
 };
 use reqwest::Url;
+use serde::Deserialize;
 use shared::ProjectName;
+use std::path::Path;
 
 type ChannelId = u64;
 type ChannelName = String;
@@ -32,6 +31,7 @@ pub(crate) struct Dispatcher {
     pub(crate) discord: Option<Discord>,
     pub(crate) slack: Option<Slack>,
     pub(crate) gotify: Option<Gotify>,
+    pub(crate) email: Option<Email>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -56,6 +56,21 @@ pub(crate) struct Slack {
 pub(crate) struct Gotify {
     pub(crate) server: Url,
     pub(crate) token: String,
+}
+
+#[allow(clippy::upper_case_acronyms)]
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct SMTP {
+    pub(crate) user: String,
+    pub(crate) password: String,
+    pub(crate) server: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct Email {
+    pub(crate) smtp: SMTP,
+    pub(crate) from: Option<String>,
+    pub(crate) recipient: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]

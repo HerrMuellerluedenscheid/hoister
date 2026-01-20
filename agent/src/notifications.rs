@@ -194,7 +194,7 @@ pub(crate) fn setup_dispatcher(config: &Config) -> Option<Dispatcher> {
         }
     });
     let discord = dispatcher_config.discord.map(|d| {
-        info!("Using Telegram dispatcher");
+        info!("Using Discord dispatcher");
         chatterbox::dispatcher::discord::Discord {
             bot_token: d.token,
             channel_id: d.channel,
@@ -209,12 +209,25 @@ pub(crate) fn setup_dispatcher(config: &Config) -> Option<Dispatcher> {
         }
     });
 
+    let email = dispatcher_config.email.map(|e| {
+        info!("Using email dispatcher");
+        chatterbox::dispatcher::email::Email {
+            smtp_user: e.smtp.user.clone(),
+            smtp_password: e.smtp.password,
+            smtp_server: e.smtp.server,
+            smtp_port: 587,
+            receiver_address: e.recipient,
+            sender_address: e.smtp.user,
+            sender_name: e.from.unwrap_or("no-reply".to_string()),
+        }
+    });
+
     let sender = chatterbox::dispatcher::Sender {
         slack,
         telegram,
         discord,
         gotify,
-        email: None,
+        email,
     };
 
     Some(Dispatcher::new(sender))
