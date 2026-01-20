@@ -7,7 +7,7 @@ use bollard::Docker;
 use bollard::auth::DockerCredentials;
 use bollard::models::{
     ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary,
-    HealthStatusEnum, MountPointTypeEnum, VolumeCreateOptions,
+    HealthStatusEnum, MountPointTypeEnum, NetworkingConfig, VolumeCreateOptions,
 };
 use bollard::query_parameters::{
     CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions,
@@ -439,13 +439,7 @@ impl DockerHandler {
         debug!("Image pulled successfully ({new_image_digest:?})");
 
         // Check if volume backup is enabled via label
-        let enable_volume_backup = container_details
-            .config
-            .as_ref()
-            .and_then(|c| c.labels.as_ref())
-            .and_then(|l| l.get("hoister.backup-volumes"))
-            .map(|v| v == "true")
-            .unwrap_or(false);
+        let enable_volume_backup = Self::has_volume_backup_enabled(&container_details);
 
         // Backup volumes if enabled
         let volume_backups = if enable_volume_backup {
@@ -563,6 +557,17 @@ impl DockerHandler {
                 .await;
         }
         Ok(())
+    }
+
+    /// Check if the `hoister.backup-volume` flag is set to `true`.
+    fn has_volume_backup_enabled(container_inspect: &ContainerInspectResponse) -> bool {
+        container_inspect
+            .config
+            .as_ref()
+            .and_then(|c| c.labels.as_ref())
+            .and_then(|l| l.get("hoister.backup-volumes"))
+            .map(|v| v == "true")
+            .unwrap_or(false)
     }
 
     /// Remove an old Docker image
@@ -694,10 +699,15 @@ async fn create_container(
     docker: &Docker,
     container_details: ContainerInspectResponse,
 ) -> Result<ContainerCreateResponse, HoisterError> {
-    let host_config = container_details.host_config.unwrap_or_default();
+    let host_config = container_details.host_config;
+    let network_settings = container_details.network_settings.unwrap_or_default();
+    let network_config = NetworkingConfig {
+        endpoints_config: network_settings.networks,
+    };
 
     let mut config = ContainerCreateBody {
-        host_config: Some(host_config),
+        host_config,
+        networking_config: Some(network_config),
         ..Default::default()
     };
 
