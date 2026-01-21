@@ -2,7 +2,7 @@ name: Build All Services
 
 on:
   push:
-    branches: [ "main", "feature/native-build-stages" ]
+    branches: [ "main", "feature/native-build-stages", "foo" ]
     tags:
       - 'v*.*.*'
 
@@ -18,6 +18,7 @@ jobs:
       context: .
       dockerfile: agent/Dockerfile
       image_name: emrius11/hoister
+      digest_name: 'hoister'
     secrets:
       registry_password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
@@ -27,6 +28,7 @@ jobs:
       context: .
       dockerfile: controller/Dockerfile
       image_name: emrius11/hoister-controller
+      digest_name: 'controller'
     secrets:
       registry_password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
@@ -36,6 +38,6 @@ jobs:
       context: frontend
       dockerfile: frontend/Dockerfile
       image_name: emrius11/hoister-frontend
-      runs-on: 'ubuntu-24.04'
+      digest_name: 'frontend'
     secrets:
       registry_password: ${{ secrets.DOCKERHUB_PASSWORD }}
