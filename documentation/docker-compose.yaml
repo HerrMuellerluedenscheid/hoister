@@ -1,0 +1,11 @@
+services:
+
+  docs:
+    image: nginx:alpine
+    ports:
+      - "8081:80"
+      - "443:443"
+    volumes:
+      - ${HOISTER_DOCS}:/usr/share/nginx/html
+    env_file:
+      - .env

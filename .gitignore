@@ -1,6 +1,7 @@
 .idea
+.vscode
 **/target
 *.Dockerfile
 .env
 frontend/src/bindings
-content
+media-content
