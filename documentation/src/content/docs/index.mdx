@@ -1,0 +1,39 @@
+---
+title: Hoister
+description: Keep your containers up to date with Hoister
+hero:
+  tagline: Keep your containers up to update
+  image:
+    file: ../../assets/hoister-logo.svg
+  actions:
+    - text: Get Started
+      link: /guides/getting-started/
+      icon: right-arrow
+    - text: Hoister on github
+      link: https://github.com/HerrMuellerluedenscheid/hoister
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Keep your Containers up to date
+
+<CardGrid stagger>
+	<Card title="Stay Informed" icon="pencil">
+        Get notified via Email, Slack, Discord, Gotify [and more to come]
+	</Card>
+	<Card title="Fearless Updates" icon="document">
+	    Automatic roll-back in case of failure
+	</Card>
+    <Card title="Mind your data" icon="document">
+        Automatically restores volumes in case of failure
+    </Card>
+	<Card title="Easy to Setup" icon="add-document">
+        Simple configuration through labels or toml files
+	</Card>
+	<Card title="Efficient" icon="setting">
+        Minimum CPU / Memory Footprint
+	</Card>
+
+</CardGrid>

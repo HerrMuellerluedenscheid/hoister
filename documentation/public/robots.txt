@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# Sitemap will be available after build
+Sitemap: https://docs.hoister.io/sitemap-index.xml

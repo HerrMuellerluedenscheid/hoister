@@ -54,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     set_group_id();
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
-    let config_path = "/config.toml";
+    let config_path = "/hoister.toml";
     let config = Arc::new(config::load_config(config_path.as_ref()).await);
 
     let (tx_notification, rx_notification) = mpsc::channel(32);
