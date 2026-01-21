@@ -2,7 +2,7 @@ name: Build All Services
 
 on:
   push:
-    branches: [ "main", "feature/native-build-stages" ]
+    branches: [ "main" ]
     tags:
       - 'v*.*.*'
 
