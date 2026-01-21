@@ -75,7 +75,9 @@ fn redact_credentials(inspect: &mut ContainerInspectResponse) {
         && let Some(env_vars) = config.env.as_mut()
     {
         let sensitive_keywords = [
-            "SLACK_WEBHOOK",
+            "telegram_chat_id",
+            "discord_channel_id",
+            "slack_webhook",
             "password",
             "passwd",
             "pwd",
@@ -126,14 +128,13 @@ async fn send_to_backend(
     let url = controller_url
         .join(format!("container/state/{}", project_name.as_str()).as_str())
         .expect("failed to join url");
-    // let url = controller_url.join("/project_name.as_str()).expect("failed to join url");
+
     let request = PostContainerStateRequest {
         project_name,
         payload: states.clone(),
     };
 
     let client = reqwest::Client::new();
-    println!("sending to {}", url);
     let response = client.post(url).json(&request).send().await?;
     response.error_for_status()?;
     Ok(())
