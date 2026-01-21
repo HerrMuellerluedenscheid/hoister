@@ -1,7 +1,7 @@
 use crate::HoisterError;
 use crate::config::Config;
 use chatterbox::message::{Dispatcher, Message};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use shared::{
     CreateDeployment, DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName,
 };
@@ -173,7 +173,7 @@ pub(crate) fn setup_dispatcher(config: &Config) -> Option<Dispatcher> {
         || std::env::var("HOISTER_TELEGRAM_CHAT_ID").is_ok()
         || std::env::var("HOISTER_DISCORD_BOT_TOKEN").is_ok()
     {
-        error!(
+        warn!(
             "The following environment variables are deprecated: HOISTER_SLACK_WEBHOOK_URL, HOISTER_SLACK_CHANNEL, HOISTER_TELEGRAM_BOT_TOKEN, HOISTER_TELEGRAM_CHAT_ID, HOISTER_DISCORD_BOT_TOKEN. Please change the prefix to HOISTER_DISPATCHERS instead."
         )
     };
