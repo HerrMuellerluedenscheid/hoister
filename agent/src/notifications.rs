@@ -225,7 +225,7 @@ pub(crate) fn setup_dispatcher(config: &Config) -> Option<Dispatcher> {
             smtp_port: 587,
             receiver_address: e.recipient,
             sender_address: e.smtp.user,
-            sender_name: e.from.unwrap_or("no-reply".to_string()),
+            sender_name: e.from.unwrap_or("hoister".to_string()),
         }
     });
 
