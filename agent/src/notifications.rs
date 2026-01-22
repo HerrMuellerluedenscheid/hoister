@@ -11,7 +11,7 @@ use tokio::sync::mpsc::Sender;
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, thiserror::Error)]
-enum NotificationError {
+pub(crate) enum NotificationError {
     #[error("failed to send notification: {0}")]
     SendError(#[from] reqwest::Error),
     #[error("failed to send notification: {0:?}")]
@@ -74,7 +74,8 @@ impl DeploymentResultHandler {
         image: ImageName,
         digest: ImageDigest,
     ) {
-        self.tx
+        match self
+            .tx
             .send(CreateDeployment {
                 project,
                 service,
@@ -83,7 +84,13 @@ impl DeploymentResultHandler {
                 status: DeploymentStatus::Success,
             })
             .await
-            .unwrap();
+        {
+            Ok(_) => {}
+            Err(e) => {
+                error!("Failed to send notification");
+                error!("Error: {:?}", e);
+            }
+        };
     }
 
     pub(crate) async fn test_message(&self) {
