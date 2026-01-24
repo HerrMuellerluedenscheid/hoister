@@ -787,7 +787,7 @@ fn get_credentials(
     registries: Option<&Registry>,
     image_name: &ImageName,
 ) -> Option<DockerCredentials> {
-    info!("Getting credentials for image: {}", image_name.as_str());
+    debug!("Getting credentials for image: {}", image_name.as_str());
     if image_name.as_str().starts_with("ghcr.io/") {
         let ghcr = registries?.ghcr.as_ref()?;
         return Some(DockerCredentials {
