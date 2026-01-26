@@ -32,7 +32,7 @@ impl ImageName {
 
     pub fn split(&self) -> (&str, &str) {
         let split: Vec<&str> = self.0.split(':').collect();
-        (split[0], split[1])
+        (split[0], split.get(1).unwrap_or(&"latest"))
     }
 }
 
@@ -134,5 +134,23 @@ impl CreateDeployment {
 impl From<&CreateDeployment> for Message {
     fn from(val: &CreateDeployment) -> Self {
         Message::new(val.status.to_string(), val.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_image_name_split_with_tag() {
+        let image = ImageName::new("emrius11/example:latest");
+        assert_eq!(image.split(), ("emrius11/example", "latest"));
+    }
+
+    #[test]
+    // Ensure that the default tag is "latest" if no tag is specified
+    fn test_image_name_split_no_tag() {
+        let image = ImageName::new("emrius11/example");
+        assert_eq!(image.split(), ("emrius11/example", "latest"));
     }
 }
