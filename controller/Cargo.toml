@@ -8,13 +8,14 @@ tokio = {workspace = true}
 log = {workspace = true}
 env_logger = { workspace = true }
 bollard = { workspace = true }
-shared = { path = "../shared" }
+serde = {workspace = true}
+
+hoister_shared = { path = "../hoister_shared" }
 
 thiserror = "2.0.16"
 sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio"] }
 axum = { version = "0.8.4", features = ["json"] }
 http = "1.3.1"
-serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0"
 ts-rs = "11.0.1"
 futures-util = "0.3.31"

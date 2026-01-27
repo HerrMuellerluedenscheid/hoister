@@ -1,5 +1,5 @@
+use hoister_shared::{DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName};
 use serde::{Deserialize, Serialize};
-use shared::{DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName};
 use sqlx::migrate::MigrateDatabase;
 use sqlx::{FromRow, Row, SqlitePool};
 use thiserror::Error;

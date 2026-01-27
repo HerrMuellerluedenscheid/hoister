@@ -1,10 +1,10 @@
 use crate::HoisterError;
 use crate::config::Config;
 use chatterbox::message::{Dispatcher, Message};
-use log::{debug, error, info, warn};
-use shared::{
+use hoister_shared::{
     CreateDeployment, DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName,
 };
+use log::{debug, error, info, warn};
 use tokio::sync::broadcast::error::SendError;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;

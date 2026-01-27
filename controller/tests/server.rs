@@ -8,7 +8,7 @@ mod tests {
     };
     use controller::database::{Database, Deployment};
     use controller::server::{ApiResponse, create_app};
-    use shared::{
+    use hoister_shared::{
         CreateDeployment, DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName,
     };
 

@@ -16,7 +16,7 @@ chatterbox = {workspace = true}
 figment2 = { workspace = true }
 
 controller = {path = "../controller"}
-shared = {path = "../shared"}
+hoister_shared = {path = "../hoister_shared"}
 
 futures-util = "0.3.31"
 serde_json = "1.0.140"
@@ -26,9 +26,9 @@ libc = "0.2.172"
 reqwest = { version = "0.12.23", default-features = false, features = ["rustls-tls-webpki-roots", "json", "stream"] }
 tokio-stream = "0.1.17"
 chrono = "0.4.41"
-serde = "1.0.228"
-url = "2.5.7"
+serde = {workspace = true}
 cron = { version = "0.15.0" , features = ["serde"]}
+url = "2.5.7"
 
 [dev-dependencies]
 figment2 = { workspace = true, features = ["toml", "test"] }
