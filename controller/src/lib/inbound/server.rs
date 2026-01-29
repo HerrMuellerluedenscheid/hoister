@@ -14,18 +14,21 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
-use crate::database::{Database, DbError, Deployment};
+use crate::domain::deployments::ports::{DeploymentsRepository, DeploymentsService};
+use crate::domain::deployments::service::Service;
+use crate::outbound::sqlite::Sqlite;
 use crate::sse::{ControllerEvent, sse_handler};
 use hoister_shared::{CreateDeployment, ProjectName, ServiceName};
 use tokio::sync::{RwLock, broadcast};
 use ts_rs::TS;
+use crate::domain::deployments::models::deployment::{CreateDeploymentRequest, Deployment, GetDeploymentError};
 
 type ContainerState = HashMap<ProjectName, HashMap<ServiceName, ContainerInspectResponse>>;
 
 #[derive(Clone)]
-pub struct AppState {
+pub struct AppState<DS: DeploymentsService> {
+    deployments_service: Arc<DS>,
     container_state: Arc<RwLock<ContainerState>>,
-    pub(crate) database: Arc<Database>,
     pub(crate) api_secret: Option<String>,
     pub(crate) event_tx: broadcast::Sender<ControllerEvent>,
 }
@@ -49,8 +52,8 @@ impl<T> ApiResponse<T> {
 }
 
 // Authentication middleware
-async fn auth_middleware(
-    State(state): State<AppState>,
+async fn auth_middleware<DS: DeploymentsService>(
+    State(state): State<AppState<DS>>,
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
@@ -85,10 +88,10 @@ async fn health() -> &'static str {
     "OK"
 }
 
-async fn get_deployments(
-    State(state): State<AppState>,
+async fn get_deployments<DS: DeploymentsService>(
+    State(state): State<AppState<DS>>,
 ) -> Result<Json<ApiResponse<Vec<Deployment>>>, StatusCode> {
-    match state.database.get_all_deployments().await {
+    match state.deployments_service.get_all_deployments().await {
         Ok(deployments) => Ok(Json(ApiResponse::success(deployments))),
         Err(e) => {
             error!("Error getting deployments: {e:?}");
@@ -97,19 +100,19 @@ async fn get_deployments(
     }
 }
 
-async fn get_deployments_by_service(
-    State(state): State<AppState>,
+async fn get_deployments_by_service<DS: DeploymentsService>(
+    State(state): State<AppState<DS>>,
     Path((project_name, service_name)): Path<(ProjectName, ServiceName)>,
 ) -> Result<Json<ApiResponse<Vec<Deployment>>>, StatusCode> {
     debug!("get service by name: {:?}", service_name);
 
     match state
-        .database
+        .deployments_service
         .get_deployments_of_service(&project_name, &service_name)
         .await
     {
         Ok(deployments) => Ok(Json(ApiResponse::success(deployments))),
-        Err(DbError::Database(sqlx::error::Error::RowNotFound)) => {
+        Err(GetDeploymentError::DeploymentNotFound) => {
             Ok(Json(ApiResponse::success(vec![])))
         }
         Err(e) => {
@@ -119,24 +122,19 @@ async fn get_deployments_by_service(
     }
 }
 
-async fn create_deployment(
-    State(state): State<AppState>,
+async fn create_deployment<DS: DeploymentsService>(
+    State(state): State<AppState<DS>>,
     Json(payload): Json<CreateDeployment>,
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
     match state
-        .database
+        .deployments_service
         .create_deployment(
-            &payload.project,
-            &payload.service,
-            &payload.image,
-            &payload.digest,
-            &payload.status,
+            &CreateDeploymentRequest::from(payload)
         )
         .await
     {
-        Ok(id) => match state.database.get_deployment(id).await {
-            Ok(Some(deployment)) => Ok(Json(ApiResponse::success(deployment))),
-            Ok(None) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+        Ok(id) => match state.deployments_service.get_deployment(id).await {
+            Ok(deployment) => Ok(Json(ApiResponse::success(deployment))),
             Err(e) => {
                 eprintln!("Error retrieving created deployment: {e:?}");
                 Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -155,8 +153,8 @@ pub struct PostContainerStateRequest {
     pub payload: HashMap<ServiceName, ContainerInspectResponse>,
 }
 
-async fn post_container_state(
-    State(state): State<AppState>,
+async fn post_container_state<DS: DeploymentsService>(
+    State(state): State<AppState<DS>>,
     Json(payload): Json<PostContainerStateRequest>,
 ) -> impl IntoResponse {
     debug!(
@@ -181,8 +179,8 @@ struct ContainerStateResponse {
 #[ts(export)]
 struct ContainerStateResponses(Vec<ContainerStateResponse>);
 
-async fn get_container_state_by_service_name(
-    State(state): State<AppState>,
+async fn get_container_state_by_service_name<DS: DeploymentsService>(
+    State(state): State<AppState<DS>>,
     Path((project_name, service_name)): Path<(ProjectName, ServiceName)>,
 ) -> Result<Json<ApiResponse<ContainerStateResponse>>, StatusCode> {
     debug!("Received request for container state by id");
@@ -198,7 +196,9 @@ async fn get_container_state_by_service_name(
     })))
 }
 
-async fn get_container_states(State(state): State<AppState>) -> impl IntoResponse {
+async fn get_container_states<DS: DeploymentsService>(
+    State(state): State<AppState<DS>>,
+) -> impl IntoResponse {
     debug!("Received request for container state");
     let container_state = state.container_state.read().await;
     debug!("Sending container state: {:?}", container_state);
@@ -221,15 +221,7 @@ async fn get_container_states(State(state): State<AppState>) -> impl IntoRespons
     Json(ContainerStateResponses(states)).into_response()
 }
 
-pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> Router {
-    let (event_tx, _) = broadcast::channel::<ControllerEvent>(100);
-
-    let state = AppState {
-        container_state: Arc::new(RwLock::new(HashMap::new())),
-        database,
-        api_secret,
-        event_tx,
-    };
+pub async fn create_app<DR: DeploymentsRepository>(state: AppState<Service<DR>>) -> Router {
 
     Router::new()
         .route("/health", get(health))
@@ -257,11 +249,27 @@ pub async fn create_app(database: Arc<Database>, api_secret: Option<String>) -> 
 }
 
 pub async fn start_server(
-    database: Arc<Database>,
     api_secret: Option<String>,
     port: u16,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let app = create_app(database, api_secret).await;
+
+    let (event_tx, _) = broadcast::channel::<ControllerEvent>(100);
+
+    let database_url = "ffooo";
+    let repo = Sqlite::new(database_url)
+        .await
+        .expect("Failed to connect to database");
+    let deployments_service = Service::new(repo);
+
+    let state = AppState {
+        deployments_service: Arc::new(deployments_service),
+        container_state: Arc::new(RwLock::new(HashMap::new())),
+        api_secret,
+        event_tx,
+    };
+
+
+    let app = create_app(state).await;
     let listener = TcpListener::bind(format!("0.0.0.0:{port}")).await?;
 
     info!("Server running on http://0.0.0.0:{port}");

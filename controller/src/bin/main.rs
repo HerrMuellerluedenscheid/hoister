@@ -1,12 +1,9 @@
-use crate::database::Database;
-use crate::server::start_server;
+use controller::inbound::server::start_server;
 use env_logger::Env;
 use log::info;
-use std::sync::Arc;
 
-mod database;
-mod server;
-mod sse;
+use controller::domain::deployments::service::Service;
+use controller::outbound::sqlite::Sqlite;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,14 +13,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("HOISTER_DATABASE_PATH must be set (full path to sqlite file)");
 
     info!("Connecting to database: {db_path}");
-    let db = Database::new(&db_path).await?;
-    let db = Arc::new(db);
+    let db = Sqlite::new(&db_path).await?;
+    let deployments_service = Service::new(db.clone());
 
     db.init().await?;
     let auth_token = std::env::var("AUTH_TOKEN").ok();
     info!("Starting server on port {port}");
     start_server(
-        db,
         auth_token,
         port.parse()
             .expect("Failed to parse HOISTER_CONTROLLER_PORT to integer"),

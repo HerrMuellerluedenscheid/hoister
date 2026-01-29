@@ -1,4 +1,5 @@
-use crate::server::AppState;
+use crate::domain::deployments::ports::DeploymentsService;
+use crate::inbound::server::AppState;
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures_util::stream::Stream;
@@ -13,8 +14,8 @@ pub enum ControllerEvent {
     Retry((ProjectName, ContainerID)),
 }
 
-pub(crate) async fn sse_handler(
-    State(state): State<AppState>,
+pub(crate) async fn sse_handler<DS: DeploymentsService>(
+    State(state): State<AppState<DS>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let mut rx = state.event_tx.subscribe();
 
