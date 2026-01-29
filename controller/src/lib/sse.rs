@@ -1,4 +1,4 @@
-use crate::server::AppState;
+use crate::inbound::server::AppState;
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures_util::stream::Stream;

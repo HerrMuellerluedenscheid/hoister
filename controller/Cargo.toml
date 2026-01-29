@@ -1,7 +1,16 @@
+
 [package]
 name = "controller"
 version = "0.1.0"
 edition = "2024"
+
+[lib]
+name = "controller"
+path = "src/lib/lib.rs"
+
+[[bin]]
+name = "controller"
+path = "src/bin/main.rs"
 
 [dependencies]
 tokio = {workspace = true}

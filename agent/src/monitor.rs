@@ -3,7 +3,7 @@ use crate::docker::get_service_identifier;
 use bollard::Docker;
 use bollard::models::{ContainerInspectResponse, ContainerSummary};
 use bollard::query_parameters::ListContainersOptions;
-use controller::server::PostContainerStateRequest;
+use controller::inbound::server::PostContainerStateRequest;
 use hoister_shared::{ProjectName, ServiceName};
 use log::{debug, error, info};
 use reqwest::Url;
