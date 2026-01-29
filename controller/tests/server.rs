@@ -6,17 +6,17 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use controller::database::{Database, Deployment};
-    use controller::server::{ApiResponse, create_app};
     use hoister_shared::{
         CreateDeployment, DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName,
     };
 
+    use controller::inbound::server::{ApiResponse, create_app};
     use std::sync::Arc;
     use tower::ServiceExt;
     // for `oneshot` and `ready`
 
     async fn setup_test_app() -> (Router, Arc<Database>) {
+        
         let database = Arc::new(Database::new("sqlite::memory:").await.unwrap());
         database.init().await.unwrap();
 

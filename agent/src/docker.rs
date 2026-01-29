@@ -421,7 +421,7 @@ impl DockerHandler {
             .clone()
             .ok_or(HoisterError::Docker("Old image ID not found".to_string()))?;
 
-        debug!("Checking for updates: {old_image_name:?}");
+        debug!("Checking for deployments: {old_image_name:?}");
 
         let (repo_name, image_tag) = old_image_name.split();
         trace!(

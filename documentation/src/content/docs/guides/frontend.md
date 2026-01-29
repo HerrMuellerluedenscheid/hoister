@@ -12,14 +12,14 @@ service:
   hoister-controller:
     image: emrius11/hoister-controller:latest
     labels:
-      - "hoister.enable=true"  # enable updates
+      - "hoister.enable=true"  # enable deployments
     volumes:
-      - controller-data:/data  # to persist updates across restarts
+      - controller-data:/data  # to persist deployments across restarts
 
   hoister-frontend:
     image: emrius11/hoister-frontend:latest
     labels:
-      - "hoister.enable=true"  # enable updates
+      - "hoister.enable=true"  # enable deployments
     ports:
       - "3000:3000"
     environment:

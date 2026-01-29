@@ -7,8 +7,8 @@ bindings:
 	rm -rf frontend/src/bindings \
 		&& cargo test export_bindings \
 		&& mv -f controller/bindings frontend/src \
-		&& mv shared/bindings/* frontend/src/bindings \
-		&& rm -rf shared/bindings \
+		&& mv hoister_shared/bindings/* frontend/src/bindings \
+		&& rm -rf hoister_shared/bindings \
 		&& rm -rf controller/bindings
 
 test-works:
