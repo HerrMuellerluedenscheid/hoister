@@ -6,12 +6,12 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use controller::database::{Database, Deployment};
-    use controller::server::{ApiResponse, create_app};
-    use shared::{
+    use hoister_shared::{
         CreateDeployment, DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName,
     };
 
+    use controller::inbound::server::{ApiResponse, create_app};
+    use controller::outbound::database::{Database, Deployment};
     use std::sync::Arc;
     use tower::ServiceExt;
     // for `oneshot` and `ready`

@@ -28,7 +28,7 @@ use tokio::time::sleep;
 use crate::notifications::{DeploymentResultHandler, setup_dispatcher, start_notification_handler};
 
 use crate::sse::SSEHandler;
-use shared::ProjectName;
+use hoister_shared::ProjectName;
 use std::error::Error;
 #[allow(unused_imports)]
 use std::{env, process};

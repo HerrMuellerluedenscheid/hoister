@@ -1,12 +1,8 @@
-use crate::database::Database;
-use crate::server::start_server;
+use controller::inbound::server::start_server;
+use controller::outbound::database::Database;
 use env_logger::Env;
 use log::info;
 use std::sync::Arc;
-
-mod database;
-mod server;
-mod sse;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -14,9 +14,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
-use crate::database::{Database, DbError, Deployment};
+use crate::outbound::database::{Database, DbError, Deployment};
 use crate::sse::{ControllerEvent, sse_handler};
-use shared::{CreateDeployment, ProjectName, ServiceName};
+use hoister_shared::{CreateDeployment, ProjectName, ServiceName};
 use tokio::sync::{RwLock, broadcast};
 use ts_rs::TS;
 

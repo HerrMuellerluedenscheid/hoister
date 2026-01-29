@@ -4,9 +4,9 @@ use figment2::{
     Figment,
     providers::{Env, Format, Toml},
 };
+use hoister_shared::ProjectName;
 use reqwest::Url;
 use serde::Deserialize;
-use shared::ProjectName;
 use std::path::Path;
 
 type ChannelId = u64;

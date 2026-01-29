@@ -403,11 +403,11 @@ dependencies = [
  "bollard",
  "env_logger",
  "futures-util",
+ "hoister_shared",
  "http",
  "log",
  "serde",
  "serde_json",
- "shared",
  "sqlx",
  "thiserror",
  "tokio",
@@ -986,16 +986,26 @@ dependencies = [
  "env_logger",
  "figment2",
  "futures-util",
+ "hoister_shared",
  "libc",
  "log",
  "reqwest",
  "serde",
  "serde_json",
- "shared",
  "thiserror",
  "tokio",
  "tokio-stream",
  "url",
+]
+
+[[package]]
+name = "hoister_shared"
+version = "0.1.0"
+dependencies = [
+ "chatterbox",
+ "serde",
+ "sqlx",
+ "ts-rs",
 ]
 
 [[package]]
@@ -2278,16 +2288,6 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
-]
-
-[[package]]
-name = "shared"
-version = "0.1.0"
-dependencies = [
- "chatterbox",
- "serde",
- "sqlx",
- "ts-rs",
 ]
 
 [[package]]

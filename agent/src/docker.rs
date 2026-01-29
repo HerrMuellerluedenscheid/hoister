@@ -16,8 +16,8 @@ use bollard::query_parameters::{
     WaitContainerOptionsBuilder,
 };
 use futures_util::{StreamExt, TryStreamExt};
+use hoister_shared::{ImageDigest, ImageName, ProjectName, ServiceName};
 use log::{debug, error, info, trace, warn};
-use shared::{ImageDigest, ImageName, ProjectName, ServiceName};
 use std::collections::HashMap;
 use std::error::Error;
 use std::path::Path;
