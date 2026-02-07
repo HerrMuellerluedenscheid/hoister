@@ -18,6 +18,7 @@ log = {workspace = true}
 env_logger = { workspace = true }
 bollard = { workspace = true }
 serde = {workspace = true}
+figment2 = {workspace = true}
 
 hoister_shared = { path = "../hoister_shared" }
 

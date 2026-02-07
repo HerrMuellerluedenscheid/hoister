@@ -1,6 +1,8 @@
-use hoister_shared::{ProjectName, ServiceName};
-use crate::domain::deployments::models::deployment::{CreateDeploymentError, CreateDeploymentRequest, Deployment, DeploymentId, GetDeploymentError};
+use crate::domain::deployments::models::deployment::{
+    CreateDeploymentError, CreateDeploymentRequest, Deployment, DeploymentId, GetDeploymentError,
+};
 use crate::domain::deployments::ports::{DeploymentsRepository, DeploymentsService};
+use hoister_shared::{ProjectName, ServiceName};
 
 #[derive(Clone)]
 pub struct Service<DR: DeploymentsRepository> {
@@ -22,9 +24,7 @@ impl<DR: DeploymentsRepository> DeploymentsService for Service<DR> {
         self.deployments_repository.create_deployment(req).await
     }
 
-    async fn get_all_deployments(
-        &self,
-    ) -> Result<Vec<Deployment>, GetDeploymentError>{
+    async fn get_all_deployments(&self) -> Result<Vec<Deployment>, GetDeploymentError> {
         self.deployments_repository.get_all_deployments().await
     }
 
@@ -32,7 +32,13 @@ impl<DR: DeploymentsRepository> DeploymentsService for Service<DR> {
         self.deployments_repository.get_deployment(id).await
     }
 
-    async fn get_deployments_of_service(&self, project_name: &ProjectName, service_name: &ServiceName) -> Result<Vec<Deployment>, GetDeploymentError> {
-        self.deployments_repository.get_deployments_of_service(project_name, service_name).await
+    async fn get_deployments_of_service(
+        &self,
+        project_name: &ProjectName,
+        service_name: &ServiceName,
+    ) -> Result<Vec<Deployment>, GetDeploymentError> {
+        self.deployments_repository
+            .get_deployments_of_service(project_name, service_name)
+            .await
     }
 }

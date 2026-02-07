@@ -16,7 +16,6 @@ mod tests {
     // for `oneshot` and `ready`
 
     async fn setup_test_app() -> (Router, Arc<Database>) {
-        
         let database = Arc::new(Database::new("sqlite::memory:").await.unwrap());
         database.init().await.unwrap();
 
