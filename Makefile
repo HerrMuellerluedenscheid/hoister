@@ -23,7 +23,7 @@ dev-frontend: bindings
 	export $$(cat .env.template | xargs) && cd frontend && npm run dev
 
 dev-controller:
-	export $$(cat .env.template | xargs) &&	cargo run --bin controller
+	export $$(cat .env.template | xargs) &&	export HOISTER_CONTROLLER_DATABASE_PATH=/tmp/hoister-dev.sqlite && cargo run --bin controller
 
 dev-hoister:
 	export $$(cat .env.template | xargs) && export $$(cat .env | xargs) && \
