@@ -1,6 +1,5 @@
 #[cfg(test)]
 mod tests {
-
     use axum::{
         Router,
         body::Body,
@@ -9,23 +8,52 @@ mod tests {
     use hoister_shared::{
         CreateDeployment, DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName,
     };
+    use std::collections::HashMap;
 
-    use controller::inbound::server::{ApiResponse, create_app};
+    use controller::config::Config;
+    use controller::domain::deployments::models::deployment::{
+        CreateDeploymentRequest, Deployment,
+    };
+    use controller::domain::deployments::ports::DeploymentsService;
+    use controller::domain::deployments::service::Service;
+    use controller::inbound::server::{ApiResponse, AppState, create_app};
+    use controller::outbound::sqlite::Sqlite;
+    use controller::sse::ControllerEvent;
     use std::sync::Arc;
+    use tokio::sync::{RwLock, broadcast};
     use tower::ServiceExt;
     // for `oneshot` and `ready`
 
-    async fn setup_test_app() -> (Router, Arc<Database>) {
-        let database = Arc::new(Database::new("sqlite::memory:").await.unwrap());
-        database.init().await.unwrap();
+    async fn get_service(config: &Config) -> Service<Sqlite> {
+        let repo = Sqlite::new(&config.database_path)
+            .await
+            .expect("Failed to connect to database");
+        Service::new(repo)
+    }
 
-        let app = create_app(database.clone(), Some("tests-secret".to_string())).await;
-        (app, database)
+    async fn setup_test_app() -> Router {
+        let config = Config {
+            api_secret: None,
+            port: 3034,
+            database_path: "/tmp/deleteme".to_string(),
+        };
+        let (event_tx, _) = broadcast::channel::<ControllerEvent>(100);
+
+        let deployments_service = get_service(&config).await;
+        let state = AppState {
+            deployments_service: Arc::new(deployments_service),
+            container_state: Arc::new(RwLock::new(HashMap::new())),
+            api_secret: config.api_secret.clone(),
+            event_tx,
+        };
+
+        let app = create_app(state).await;
+        app
     }
 
     #[tokio::test]
     async fn test_health_endpoint_no_auth_required() {
-        let (app, _) = setup_test_app().await;
+        let app = setup_test_app().await;
 
         let response = app
             .oneshot(
@@ -47,7 +75,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_deployments_requires_auth() {
-        let (app, _) = setup_test_app().await;
+        let app = setup_test_app().await;
 
         let response = app
             .oneshot(
@@ -64,7 +92,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_deployments_with_valid_auth() {
-        let (app, _) = setup_test_app().await;
+        let app = setup_test_app().await;
 
         let response = app
             .oneshot(
@@ -91,7 +119,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_and_get_deployment() {
-        let (app, _) = setup_test_app().await;
+        let app = setup_test_app().await;
 
         // Create a deployment
         let payload = CreateDeployment {
@@ -156,21 +184,26 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_deployment_by_image() {
-        let (app, database) = setup_test_app().await;
+        let app = setup_test_app().await;
         let image_name = ImageName::new("aaa");
         let service_name = ServiceName::new("tests-service");
         let project_name = ProjectName::new("tests-project");
         // Create a deployment first
-        database
-            .create_deployment(
-                &project_name,
-                &service_name,
-                &image_name,
-                &ImageDigest::new("sha256:abc123"),
-                &DeploymentStatus::Pending,
-            )
-            .await
-            .unwrap();
+
+        let database_service = get_service(&Config {
+            api_secret: None,
+            port: 3034,
+            database_path: "/tmp/deleteme".to_string(),
+        })
+        .await;
+        let req = CreateDeploymentRequest {
+            project_name: project_name.clone(),
+            service_name: service_name.clone(),
+            image_name: image_name.clone(),
+            image_digest: ImageDigest::new("sha256:abc123"),
+            deployment_status: DeploymentStatus::Pending,
+        };
+        database_service.create_deployment(&req).await.unwrap();
 
         let response = app
             .oneshot(
@@ -199,7 +232,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_auth_with_invalid_token() {
-        let (app, _) = setup_test_app().await;
+        let app = setup_test_app().await;
 
         let response = app
             .oneshot(
@@ -217,7 +250,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_auth_without_bearer_prefix() {
-        let (app, _) = setup_test_app().await;
+        let app = setup_test_app().await;
 
         let response = app
             .oneshot(

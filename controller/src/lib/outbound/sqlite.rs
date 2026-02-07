@@ -148,7 +148,7 @@ impl Sqlite {
         let project = Project {
             id: ProjectId(row.get("id")),
             name: ProjectName(row.get("name")),
-            created_at: row.get("create_at"),
+            created_at: row.get("created_at"),
         };
         Ok(project)
     }
@@ -172,7 +172,7 @@ impl Sqlite {
             id: ServiceId(row.get("id")),
             name: ServiceName(row.get("name")),
             project_id: ProjectId(row.get("project_id")),
-            created_at: row.get("create_at"),
+            created_at: row.get("created_at"),
         };
         Ok(result)
     }
