@@ -8,29 +8,29 @@ use axum::{
     routing::{get, post},
 };
 use bollard::models::ContainerInspectResponse;
-use log::{debug, error, info};
+use log::{debug, error};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::net::TcpListener;
 
+use crate::domain::deployments::models::deployment::{
+    CreateDeploymentRequest, Deployment, GetDeploymentError,
+};
 use crate::domain::deployments::ports::{DeploymentsRepository, DeploymentsService};
 use crate::domain::deployments::service::Service;
-use crate::outbound::sqlite::Sqlite;
 use crate::sse::{ControllerEvent, sse_handler};
 use hoister_shared::{CreateDeployment, ProjectName, ServiceName};
 use tokio::sync::{RwLock, broadcast};
 use ts_rs::TS;
-use crate::domain::deployments::models::deployment::{CreateDeploymentRequest, Deployment, GetDeploymentError};
 
 type ContainerState = HashMap<ProjectName, HashMap<ServiceName, ContainerInspectResponse>>;
 
 #[derive(Clone)]
 pub struct AppState<DS: DeploymentsService> {
-    deployments_service: Arc<DS>,
-    container_state: Arc<RwLock<ContainerState>>,
-    pub(crate) api_secret: Option<String>,
-    pub(crate) event_tx: broadcast::Sender<ControllerEvent>,
+    pub deployments_service: Arc<DS>,
+    pub container_state: Arc<RwLock<ContainerState>>,
+    pub api_secret: Option<String>,
+    pub event_tx: broadcast::Sender<ControllerEvent>,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -112,9 +112,7 @@ async fn get_deployments_by_service<DS: DeploymentsService>(
         .await
     {
         Ok(deployments) => Ok(Json(ApiResponse::success(deployments))),
-        Err(GetDeploymentError::DeploymentNotFound) => {
-            Ok(Json(ApiResponse::success(vec![])))
-        }
+        Err(GetDeploymentError::DeploymentNotFound) => Ok(Json(ApiResponse::success(vec![]))),
         Err(e) => {
             error!("Error getting deployment {service_name:?} | {project_name:?} : {e:?}");
             Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -128,9 +126,7 @@ async fn create_deployment<DS: DeploymentsService>(
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
     match state
         .deployments_service
-        .create_deployment(
-            &CreateDeploymentRequest::from(payload)
-        )
+        .create_deployment(&CreateDeploymentRequest::from(payload))
         .await
     {
         Ok(id) => match state.deployments_service.get_deployment(id).await {
@@ -222,7 +218,6 @@ async fn get_container_states<DS: DeploymentsService>(
 }
 
 pub async fn create_app<DR: DeploymentsRepository>(state: AppState<Service<DR>>) -> Router {
-
     Router::new()
         .route("/health", get(health))
         .route("/sse", get(sse_handler))
@@ -246,41 +241,4 @@ pub async fn create_app<DR: DeploymentsRepository>(state: AppState<Service<DR>>)
             auth_middleware,
         ))
         .with_state(state)
-}
-
-pub async fn start_server(
-    api_secret: Option<String>,
-    port: u16,
-) -> Result<(), Box<dyn std::error::Error>> {
-
-    let (event_tx, _) = broadcast::channel::<ControllerEvent>(100);
-
-    let database_url = "ffooo";
-    let repo = Sqlite::new(database_url)
-        .await
-        .expect("Failed to connect to database");
-    let deployments_service = Service::new(repo);
-
-    let state = AppState {
-        deployments_service: Arc::new(deployments_service),
-        container_state: Arc::new(RwLock::new(HashMap::new())),
-        api_secret,
-        event_tx,
-    };
-
-
-    let app = create_app(state).await;
-    let listener = TcpListener::bind(format!("0.0.0.0:{port}")).await?;
-
-    info!("Server running on http://0.0.0.0:{port}");
-    info!("Health check: http://0.0.0.0:{port}/health (no auth required)");
-    info!("Protected API endpoints (require Authorization: Bearer <secret>):");
-    info!("  GET    /sse                   - server side events");
-    info!("  GET    /deployments           - Get all deployments");
-    info!("  POST   /deployments           - Create deployment");
-    info!("  GET    /deployments/:id       - Get deployment by ID");
-    info!("  PUT    /deployments/:id       - Update deployment");
-
-    axum::serve(listener, app).await?;
-    Ok(())
 }

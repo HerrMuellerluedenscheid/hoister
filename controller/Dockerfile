@@ -12,7 +12,7 @@ LABEL description="Deploy and roll back docker images (controller)"
 LABEL io.hoister.container="controller"
 
 VOLUME /data
-ENV HOISTER_DATABASE_PATH="sqlite:///data/sqlite.db"
+ENV HOISTER_CONTROLLER_DATABASE_PATH="sqlite:///data/sqlite.db"
 ENV HOISTER_CONTROLLER_PORT=3033
 
 WORKDIR /app

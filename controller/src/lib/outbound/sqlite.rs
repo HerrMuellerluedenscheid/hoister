@@ -1,11 +1,14 @@
-use log::error;
-use crate::domain::deployments::models::deployment::{CreateDeploymentError, CreateDeploymentRequest, Deployment, DeploymentId, GetDeploymentError, GetProjectError, Project, ProjectId};
-use crate::domain::deployments::ports::DeploymentsRepository;
-use sqlx::{Row,Error as SqlxError, SqlitePool};
-use sqlx::migrate::MigrateDatabase;
-use tracing::{debug, info};
-use hoister_shared::{DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName};
+use crate::domain::deployments::models::deployment::{
+    CreateDeploymentError, CreateDeploymentRequest, Deployment, DeploymentId, GetDeploymentError,
+    GetProjectError, Project, ProjectId,
+};
 use crate::domain::deployments::models::service::{Service, ServiceId};
+use crate::domain::deployments::ports::DeploymentsRepository;
+use hoister_shared::{DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName};
+use log::error;
+use sqlx::migrate::MigrateDatabase;
+use sqlx::{Error as SqlxError, Row, SqlitePool};
+use tracing::{debug, info};
 
 #[derive(Debug, Clone)]
 pub struct Sqlite {
@@ -13,7 +16,6 @@ pub struct Sqlite {
 }
 
 impl Sqlite {
-
     pub async fn new(database_url: &str) -> Result<Self, SqlxError> {
         info!("Connecting to database: {database_url}");
         if !sqlx::Sqlite::database_exists(database_url).await? {
@@ -51,8 +53,8 @@ impl Sqlite {
         );
         "#,
         )
-            .execute(&self.pool)
-            .await?;
+        .execute(&self.pool)
+        .await?;
 
         Ok(())
     }
@@ -74,18 +76,21 @@ impl Sqlite {
                 ORDER BY d.created_at DESC
                 LIMIT 50",
         )
-            .fetch_all(&self.pool)
-            .await?;
+        .fetch_all(&self.pool)
+        .await?;
 
-        let deployments = rows.iter().map(|row| Deployment {
-            id: DeploymentId(row.get("id")),
-            digest: row.get("digest"),
-            status: row.get("status"),
-            service_id: row.get("service_id"),
-            created_at: row.get("created_at"),
-            service_name: ServiceName(row.get("service_name")),
-            project_name: ProjectName(row.get("project_name")),
-        }).collect();
+        let deployments = rows
+            .iter()
+            .map(|row| Deployment {
+                id: DeploymentId(row.get("id")),
+                digest: row.get("digest"),
+                status: row.get("status"),
+                service_id: row.get("service_id"),
+                created_at: row.get("created_at"),
+                service_name: ServiceName(row.get("service_name")),
+                project_name: ProjectName(row.get("project_name")),
+            })
+            .collect();
 
         Ok(deployments)
     }
@@ -99,9 +104,9 @@ impl Sqlite {
             RETURNING id
             "#,
         )
-            .bind(name.as_str())
-            .fetch_one(&self.pool)
-            .await?;
+        .bind(name.as_str())
+        .fetch_one(&self.pool)
+        .await?;
 
         Ok(result.get("id"))
     }
@@ -120,11 +125,11 @@ impl Sqlite {
             RETURNING id
             "#,
         )
-            .bind(project_id)
-            .bind(name.as_str())
-            .bind(image.as_str())
-            .fetch_one(&self.pool)
-            .await?;
+        .bind(project_id)
+        .bind(name.as_str())
+        .bind(image.as_str())
+        .fetch_one(&self.pool)
+        .await?;
 
         Ok(result.get("id"))
     }
@@ -136,14 +141,14 @@ impl Sqlite {
             SELECT * FROM project WHERE project.name = ?
             "#,
         )
-            .bind(project_name.as_str())
-            .fetch_one(&self.pool)
-            .await?;
+        .bind(project_name.as_str())
+        .fetch_one(&self.pool)
+        .await?;
 
-        let project = Project{
+        let project = Project {
             id: ProjectId(row.get("id")),
             name: ProjectName(row.get("name")),
-            created_at: row.get("create_at")
+            created_at: row.get("create_at"),
         };
         Ok(project)
     }
@@ -158,16 +163,16 @@ impl Sqlite {
             SELECT * FROM service WHERE service.name = ? AND service.project_id = ?
             "#,
         )
-            .bind(service_name.as_str())
-            .bind(project.id.0)
-            .fetch_one(&self.pool)
-            .await?;
+        .bind(service_name.as_str())
+        .bind(project.id.0)
+        .fetch_one(&self.pool)
+        .await?;
 
-        let result = Service{
+        let result = Service {
             id: ServiceId(row.get("id")),
             name: ServiceName(row.get("name")),
             project_id: ProjectId(row.get("project_id")),
-            created_at: row.get("create_at")
+            created_at: row.get("create_at"),
         };
         Ok(result)
     }
@@ -180,7 +185,6 @@ impl Sqlite {
             .await?;
         Ok(())
     }
-
 
     /// Get deployment by ID
     pub async fn get_deployment(&self, id: DeploymentId) -> Result<Deployment, SqlxError> {
@@ -197,13 +201,11 @@ impl Sqlite {
                 JOIN project p ON s.project_id = p.id
                 WHERE d.id = ?",
         )
-            .bind(id.0)
-            .fetch_one(&self.pool)
-            .await?;
+        .bind(id.0)
+        .fetch_one(&self.pool)
+        .await?;
 
-
-
-        let deployment = Deployment{
+        let deployment = Deployment {
             id: DeploymentId(row.get("id")),
             digest: row.get("digest"),
             status: row.get("status"),
@@ -238,18 +240,21 @@ impl Sqlite {
                     JOIN project p ON s.project_id = p.id
                 WHERE service_id = ? ORDER BY d.created_at DESC LIMIT 50",
         )
-            .bind(service.id.0)
-            .fetch_all(&self.pool)
-            .await?;
-        let deployments = rows.iter().map(|row| Deployment {
-            id: DeploymentId(row.get("id")),
-            digest: row.get("digest"),
-            status: row.get("status"),
-            service_id: row.get("service_id"),
-            created_at: row.get("created_at"),
-            service_name: ServiceName(row.get("service_name")),
-            project_name: ProjectName(row.get("project_name")),
-        }).collect();
+        .bind(service.id.0)
+        .fetch_all(&self.pool)
+        .await?;
+        let deployments = rows
+            .iter()
+            .map(|row| Deployment {
+                id: DeploymentId(row.get("id")),
+                digest: row.get("digest"),
+                status: row.get("status"),
+                service_id: row.get("service_id"),
+                created_at: row.get("created_at"),
+                service_name: ServiceName(row.get("service_name")),
+                project_name: ProjectName(row.get("project_name")),
+            })
+            .collect();
 
         Ok(deployments)
     }
@@ -260,7 +265,7 @@ impl Sqlite {
         service_name: &ServiceName,
         image: &ImageName,
         digest: &ImageDigest,
-        status: &DeploymentStatus
+        status: &DeploymentStatus,
     ) -> Result<DeploymentId, SqlxError> {
         // Upsert project and service
         let project_id = self.upsert_project(project_name).await?;
@@ -277,7 +282,8 @@ impl Sqlite {
                 .bind(status)
                 .bind(service_id)
                 .execute(&self.pool)
-                .await.expect("Failed to insert deployment")    ;
+                .await
+                .expect("Failed to insert deployment");
 
         Ok(DeploymentId(result.last_insert_rowid()))
     }
@@ -288,49 +294,58 @@ impl DeploymentsRepository for Sqlite {
         &self,
         req: &CreateDeploymentRequest,
     ) -> Result<DeploymentId, CreateDeploymentError> {
-        self.create_deployment(&req.project_name,
-                               &req.service_name,
-                               &req.image_name,
-                               &req.image_digest,
-                               &req.deployment_status).await.map_err(|e| {
+        self.create_deployment(
+            &req.project_name,
+            &req.service_name,
+            &req.image_name,
+            &req.image_digest,
+            &req.deployment_status,
+        )
+        .await
+        .map_err(|e| {
             error!("Failed to create deployment: {:?}", e);
             CreateDeploymentError::UnknownError
         })
     }
 
     async fn get_all_deployments(&self) -> Result<Vec<Deployment>, GetDeploymentError> {
-        self.get_all_deployments().await
-            .map_err(|e|{
-                error!("Failed to get all deployments: {:?}", e);
-                GetDeploymentError::UnknownError
-            }
-        )
+        self.get_all_deployments().await.map_err(|e| {
+            error!("Failed to get all deployments: {:?}", e);
+            GetDeploymentError::UnknownError
+        })
     }
 
-    async fn get_deployment(&self, deployment_id: DeploymentId) -> Result<Deployment, GetDeploymentError> {
-        self.get_deployment(deployment_id).await
-            .map_err(|e|{
-                error!("Failed to get all deployments: {:?}", e);
-                match e{
-                    sqlx::error::Error::RowNotFound => GetDeploymentError::DeploymentNotFound,
-                    _ => GetDeploymentError::UnknownError
-                }
+    async fn get_deployment(
+        &self,
+        deployment_id: DeploymentId,
+    ) -> Result<Deployment, GetDeploymentError> {
+        self.get_deployment(deployment_id).await.map_err(|e| {
+            error!("Failed to get all deployments: {:?}", e);
+            match e {
+                sqlx::error::Error::RowNotFound => GetDeploymentError::DeploymentNotFound,
+                _ => GetDeploymentError::UnknownError,
             }
-        )
+        })
     }
 
     async fn get_deployments_of_service(
         &self,
         project_name: &ProjectName,
-        service_name: &ServiceName) -> Result<Vec<Deployment>, GetDeploymentError> {
-            self.get_deployments_of_service(project_name, service_name).await.map_err(|e| {
-                error!("Failed to get deployments of service: {:?} {:?} | {:?}", project_name, service_name, e);
+        service_name: &ServiceName,
+    ) -> Result<Vec<Deployment>, GetDeploymentError> {
+        self.get_deployments_of_service(project_name, service_name)
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to get deployments of service: {:?} {:?} | {:?}",
+                    project_name, service_name, e
+                );
                 match e {
                     sqlx::error::Error::RowNotFound => GetDeploymentError::DeploymentNotFound,
-                    _ => GetDeploymentError::UnknownError
+                    _ => GetDeploymentError::UnknownError,
                 }
             })
-        }
+    }
 
     async fn get_project(&self, project_name: &ProjectName) -> Result<Project, GetProjectError> {
         self.get_project(project_name).await.map_err(|e| {

@@ -1,6 +1,8 @@
-use log::error;
+use crate::domain::deployments::models::deployment::{
+    CreateDeploymentError, CreateDeploymentRequest, Deployment, DeploymentId, GetDeploymentError,
+    GetProjectError, Project,
+};
 use hoister_shared::{ProjectName, ServiceName};
-use crate::domain::deployments::models::deployment::{CreateDeploymentError, CreateDeploymentRequest, Deployment, DeploymentId, GetDeploymentError, GetProjectError, Project};
 
 // An deployments repository stores deployments
 pub trait DeploymentsRepository: Send + Sync + 'static + Clone {
@@ -14,14 +16,19 @@ pub trait DeploymentsRepository: Send + Sync + 'static + Clone {
     ) -> impl Future<Output = Result<Vec<Deployment>, GetDeploymentError>> + Send;
 
     fn get_deployment(
-        &self, deployment_id: DeploymentId
+        &self,
+        deployment_id: DeploymentId,
     ) -> impl Future<Output = Result<Deployment, GetDeploymentError>> + Send;
 
     fn get_deployments_of_service(
         &self,
         project_name: &ProjectName,
-        service_name: &ServiceName) -> impl Future<Output=Result<Vec<Deployment>, GetDeploymentError>> + Send;
-    fn get_project(&self, project_name: &ProjectName) -> impl Future<Output=Result<Project, GetProjectError>> + Send;
+        service_name: &ServiceName,
+    ) -> impl Future<Output = Result<Vec<Deployment>, GetDeploymentError>> + Send;
+    fn get_project(
+        &self,
+        project_name: &ProjectName,
+    ) -> impl Future<Output = Result<Project, GetProjectError>> + Send;
 }
 
 // An deployments services manages deployments
@@ -35,10 +42,14 @@ pub trait DeploymentsService: Send + Sync + 'static + Clone {
         &self,
     ) -> impl Future<Output = Result<Vec<Deployment>, GetDeploymentError>> + Send;
 
-    fn get_deployment(&self, id: DeploymentId
+    fn get_deployment(
+        &self,
+        id: DeploymentId,
     ) -> impl Future<Output = Result<Deployment, GetDeploymentError>> + Send;
 
-    fn get_deployments_of_service(&self, project_name: &ProjectName, service_name: &ServiceName)
-        -> impl Future<Output = Result<Vec<Deployment>, GetDeploymentError>> + Send;
-
+    fn get_deployments_of_service(
+        &self,
+        project_name: &ProjectName,
+        service_name: &ServiceName,
+    ) -> impl Future<Output = Result<Vec<Deployment>, GetDeploymentError>> + Send;
 }

@@ -402,6 +402,7 @@ dependencies = [
  "axum",
  "bollard",
  "env_logger",
+ "figment2",
  "futures-util",
  "hoister_shared",
  "http",
