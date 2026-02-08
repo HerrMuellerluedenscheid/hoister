@@ -23,6 +23,7 @@ impl Sqlite {
         }
 
         let pool = SqlitePool::connect(database_url).await?;
+
         Ok(Self { pool })
     }
 

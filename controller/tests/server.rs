@@ -24,18 +24,26 @@ mod tests {
     use tower::ServiceExt;
     // for `oneshot` and `ready`
 
+    fn unique_db_path() -> String {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        let id = COUNTER.fetch_add(1, Ordering::SeqCst);
+        format!("/tmp/hoister_test_{}_{}", std::process::id(), id)
+    }
+
     async fn get_service(config: &Config) -> Service<Sqlite> {
         let repo = Sqlite::new(&config.database_path)
             .await
             .expect("Failed to connect to database");
+        repo.init().await.expect("Failed to initialize database");
         Service::new(repo)
     }
 
-    async fn setup_test_app() -> Router {
+    async fn setup_test_app() -> (Router, Config) {
         let config = Config {
-            api_secret: None,
+            api_secret: Some("tests-secret".to_string()),
             port: 3034,
-            database_path: "/tmp/deleteme".to_string(),
+            database_path: unique_db_path(),
         };
         let (event_tx, _) = broadcast::channel::<ControllerEvent>(100);
 
@@ -48,12 +56,12 @@ mod tests {
         };
 
         let app = create_app(state).await;
-        app
+        (app, config)
     }
 
     #[tokio::test]
     async fn test_health_endpoint_no_auth_required() {
-        let app = setup_test_app().await;
+        let (app, _config) = setup_test_app().await;
 
         let response = app
             .oneshot(
@@ -75,7 +83,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_deployments_requires_auth() {
-        let app = setup_test_app().await;
+        let (app, _config) = setup_test_app().await;
 
         let response = app
             .oneshot(
@@ -92,7 +100,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_deployments_with_valid_auth() {
-        let app = setup_test_app().await;
+        let (app, _config) = setup_test_app().await;
 
         let response = app
             .oneshot(
@@ -119,7 +127,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_and_get_deployment() {
-        let app = setup_test_app().await;
+        let (app, _config) = setup_test_app().await;
 
         // Create a deployment
         let payload = CreateDeployment {
@@ -184,18 +192,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_deployment_by_image() {
-        let app = setup_test_app().await;
+        let (app, config) = setup_test_app().await;
         let image_name = ImageName::new("aaa");
         let service_name = ServiceName::new("tests-service");
         let project_name = ProjectName::new("tests-project");
         // Create a deployment first
 
-        let database_service = get_service(&Config {
-            api_secret: None,
-            port: 3034,
-            database_path: "/tmp/deleteme".to_string(),
-        })
-        .await;
+        let database_service = get_service(&config).await;
         let req = CreateDeploymentRequest {
             project_name: project_name.clone(),
             service_name: service_name.clone(),
@@ -232,7 +235,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_auth_with_invalid_token() {
-        let app = setup_test_app().await;
+        let (app, _config) = setup_test_app().await;
 
         let response = app
             .oneshot(
@@ -250,7 +253,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_auth_without_bearer_prefix() {
-        let app = setup_test_app().await;
+        let (app, _config) = setup_test_app().await;
 
         let response = app
             .oneshot(
