@@ -1,16 +1,17 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import type { ActionData } from './$types';
 
-  let error = '';
+  let { form }: { form: ActionData } = $props();
 </script>
 
 <div class="flex min-h-screen items-center justify-center bg-gray-50">
   <div class="w-full max-w-md space-y-8 rounded-lg bg-white p-8 shadow">
     <h2 class="text-center text-3xl font-bold text-gray-900">Sign in</h2>
 
-    {#if error}
+    {#if form?.error}
       <div class="rounded border border-red-200 bg-red-50 px-4 py-3 text-red-700">
-        {error}
+        {form.error}
       </div>
     {/if}
 
