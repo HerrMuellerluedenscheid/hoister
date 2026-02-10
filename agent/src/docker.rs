@@ -626,32 +626,55 @@ impl DockerHandler {
 ///     1) (if) explicitly set by label `hoister.identifier`
 ///     2) (if) in docker compose -> service name
 ///     3) else container name
+///
+/// Retries inspection a few times to handle race conditions during Docker Compose startup
+/// where labels may not yet be available.
 pub(crate) async fn get_service_identifier(
     docker: &Docker,
     container_id: &ContainerID,
 ) -> Result<ServiceName, HoisterError> {
-    let container_details = docker
-        .inspect_container(container_id, None::<InspectContainerOptions>)
-        .await
-        .inspect_err(|x| error!("Error inspecting container: {x:?}"))?;
+    const MAX_RETRIES: u32 = 10;
+    const RETRY_DELAY: Duration = Duration::from_millis(500);
 
-    let container_config = container_details.clone().config.unwrap();
+    for attempt in 0..=MAX_RETRIES {
+        let container_details = docker
+            .inspect_container(container_id, None::<InspectContainerOptions>)
+            .await
+            .inspect_err(|x| error!("Error inspecting container: {x:?}"))?;
 
-    let labels = container_config.labels.unwrap_or_default();
-    let identifier = labels.get("hoister.identifier");
-    if let Some(id) = identifier {
-        return Ok(ServiceName::new(id));
+        let container_config = container_details.clone().config.unwrap();
+
+        let labels = container_config.labels.unwrap_or_default();
+
+        if let Some(id) = labels.get("hoister.identifier") {
+            return Ok(ServiceName::new(id));
+        }
+
+        if let Some(id) = labels.get("com.docker.compose.service") {
+            return Ok(ServiceName::new(id));
+        }
+
+        if attempt < MAX_RETRIES {
+            debug!(
+                "Service identifier labels not found for container {}, retrying ({}/{})...",
+                container_id,
+                attempt + 1,
+                MAX_RETRIES
+            );
+            tokio::time::sleep(RETRY_DELAY).await;
+        } else {
+            // All retries exhausted, fall back to container name
+            let name = container_details.name.unwrap_or_default();
+            let name = name.trim_start_matches('/');
+            warn!(
+                "Could not find service identifier labels after {} retries, falling back to container name: {}",
+                MAX_RETRIES, name
+            );
+            return Ok(ServiceName::new(name));
+        }
     }
 
-    let identifier = labels.get("com.docker.compose.service");
-    if let Some(id) = identifier {
-        return Ok(ServiceName::new(id));
-    }
-
-    let name = container_details.name.unwrap_or_default();
-    // remove legacy prefix
-    let name = name.trim_start_matches('/');
-    Ok(ServiceName::new(name))
+    unreachable!()
 }
 
 pub(crate) async fn get_project_name(docker: &Docker) -> Result<ProjectName, Box<dyn Error>> {
