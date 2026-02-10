@@ -118,17 +118,19 @@ pub struct CreateDeployment {
     pub image: ImageName,
     pub digest: ImageDigest,
     pub status: DeploymentStatus,
+    pub hostname: HostName,
 }
 
 impl Display for CreateDeployment {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let body = format!(
-            "image {} update to {}\nfinished with status {:?}\n(project {} | service {})",
+            "image {} update to {}\nfinished with status {:?}\n(project {} | service {} | host {})",
             self.image.as_str(),
             self.digest.as_str(),
             self.status,
             self.project.as_str(),
-            self.service.as_str()
+            self.service.as_str(),
+            self.hostname.as_str()
         );
 
         write!(f, "{}", body)
@@ -143,6 +145,7 @@ impl CreateDeployment {
             image: ImageName::new("tests:latest"),
             digest: ImageDigest::new("sha256:tests"),
             status: DeploymentStatus::TestMessage,
+            hostname: HostName::default(),
         }
     }
 

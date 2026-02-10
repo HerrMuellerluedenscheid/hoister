@@ -2,7 +2,7 @@ use crate::HoisterError;
 use crate::config::Config;
 use chatterbox::message::{Dispatcher, Message};
 use hoister_shared::{
-    CreateDeployment, DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName,
+    CreateDeployment, DeploymentStatus, HostName, ImageDigest, ImageName, ProjectName, ServiceName,
 };
 use log::{debug, error, info, warn};
 use tokio::sync::broadcast::error::SendError;
@@ -22,11 +22,12 @@ pub(crate) enum NotificationError {
 
 pub struct DeploymentResultHandler {
     tx: Sender<CreateDeployment>,
+    hostname: HostName,
 }
 
 impl DeploymentResultHandler {
-    pub(crate) fn new(tx: Sender<CreateDeployment>) -> Self {
-        Self { tx }
+    pub(crate) fn new(tx: Sender<CreateDeployment>, hostname: HostName) -> Self {
+        Self { tx, hostname }
     }
 
     pub(crate) async fn inform_container_failed(
@@ -43,6 +44,7 @@ impl DeploymentResultHandler {
                 image,
                 digest,
                 status: DeploymentStatus::Failed,
+                hostname: self.hostname.clone(),
             })
             .await
             .unwrap();
@@ -62,6 +64,7 @@ impl DeploymentResultHandler {
                 image,
                 digest,
                 status: DeploymentStatus::RollbackFinished,
+                hostname: self.hostname.clone(),
             })
             .await
             .unwrap();
@@ -82,6 +85,7 @@ impl DeploymentResultHandler {
                 image,
                 digest,
                 status: DeploymentStatus::Success,
+                hostname: self.hostname.clone(),
             })
             .await
         {

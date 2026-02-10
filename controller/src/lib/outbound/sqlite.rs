@@ -4,7 +4,7 @@ use crate::domain::deployments::models::deployment::{
 };
 use crate::domain::deployments::models::service::{Service, ServiceId};
 use crate::domain::deployments::ports::DeploymentsRepository;
-use hoister_shared::{DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName};
+use hoister_shared::{DeploymentStatus, HostName, ImageDigest, ImageName, ProjectName, ServiceName};
 use log::error;
 use sqlx::migrate::MigrateDatabase;
 use sqlx::{Error as SqlxError, Row, SqlitePool};
@@ -44,10 +44,12 @@ impl Sqlite {
                     d.service_id,
                     d.created_at,
                     s.name as service_name,
-                    p.name as project_name
+                    p.name as project_name,
+                    COALESCE(h.hostname, 'unknown') as hostname
                 FROM deployment d
                 JOIN service s ON d.service_id = s.id
                 JOIN project p ON s.project_id = p.id
+                LEFT JOIN host h ON d.host_id = h.id
                 ORDER BY d.created_at DESC
                 LIMIT 50",
         )
@@ -64,6 +66,7 @@ impl Sqlite {
                 created_at: row.get("created_at"),
                 service_name: ServiceName(row.get("service_name")),
                 project_name: ProjectName(row.get("project_name")),
+                hostname: HostName::new(row.get::<String, _>("hostname")),
             })
             .collect();
 
@@ -103,6 +106,24 @@ impl Sqlite {
         .bind(project_id)
         .bind(name.as_str())
         .bind(image.as_str())
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(result.get("id"))
+    }
+
+    /// Upsert a host by hostname, returning its UUID
+    pub async fn upsert_host(&self, hostname: &HostName) -> Result<Vec<u8>, SqlxError> {
+        let id = uuid::Uuid::new_v4().as_bytes().to_vec();
+        let result = sqlx::query(
+            r#"
+            INSERT INTO host (id, hostname) VALUES (?, ?)
+            ON CONFLICT(hostname) DO UPDATE SET hostname = hostname
+            RETURNING id
+            "#,
+        )
+        .bind(&id)
+        .bind(hostname.as_str())
         .fetch_one(&self.pool)
         .await?;
 
@@ -171,9 +192,12 @@ impl Sqlite {
                     d.service_id,
                     d.created_at,
                     s.name as service_name,
-                    p.name as project_name
-                FROM deployment d                 JOIN service s ON d.service_id = s.id
+                    p.name as project_name,
+                    COALESCE(h.hostname, 'unknown') as hostname
+                FROM deployment d
+                JOIN service s ON d.service_id = s.id
                 JOIN project p ON s.project_id = p.id
+                LEFT JOIN host h ON d.host_id = h.id
                 WHERE d.id = ?",
         )
         .bind(id.0)
@@ -188,6 +212,7 @@ impl Sqlite {
             created_at: row.get("created_at"),
             service_name: ServiceName(row.get("service_name")),
             project_name: ProjectName(row.get("project_name")),
+            hostname: HostName::new(row.get::<String, _>("hostname")),
         };
 
         Ok(deployment)
@@ -209,10 +234,12 @@ impl Sqlite {
                     d.service_id,
                     d.created_at,
                     s.name as service_name,
-                    p.name as project_name
+                    p.name as project_name,
+                    COALESCE(h.hostname, 'unknown') as hostname
                 FROM deployment d
                     JOIN service s ON d.service_id = s.id
                     JOIN project p ON s.project_id = p.id
+                    LEFT JOIN host h ON d.host_id = h.id
                 WHERE service_id = ? ORDER BY d.created_at DESC LIMIT 50",
         )
         .bind(service.id.0)
@@ -228,6 +255,7 @@ impl Sqlite {
                 created_at: row.get("created_at"),
                 service_name: ServiceName(row.get("service_name")),
                 project_name: ProjectName(row.get("project_name")),
+                hostname: HostName::new(row.get::<String, _>("hostname")),
             })
             .collect();
 
@@ -241,24 +269,28 @@ impl Sqlite {
         image: &ImageName,
         digest: &ImageDigest,
         status: &DeploymentStatus,
+        hostname: &HostName,
     ) -> Result<DeploymentId, SqlxError> {
-        // Upsert project and service
+        // Upsert project, service, and host
         let project_id = self.upsert_project(project_name).await?;
         let service_id = self.upsert_service(project_id, service_name, image).await?;
+        let host_id = self.upsert_host(hostname).await?;
 
         if matches!(status, DeploymentStatus::NoUpdate) {
             self.clear_last_no_update_deployment(service_id).await?;
             debug!("deleted {} - {}", digest.as_str(), status)
         }
 
-        let result =
-            sqlx::query("INSERT INTO deployment (digest, status, service_id) VALUES (?, ?, ?)")
-                .bind(digest.as_str())
-                .bind(status)
-                .bind(service_id)
-                .execute(&self.pool)
-                .await
-                .expect("Failed to insert deployment");
+        let result = sqlx::query(
+            "INSERT INTO deployment (digest, status, service_id, host_id) VALUES (?, ?, ?, ?)",
+        )
+        .bind(digest.as_str())
+        .bind(status)
+        .bind(service_id)
+        .bind(&host_id)
+        .execute(&self.pool)
+        .await
+        .expect("Failed to insert deployment");
 
         Ok(DeploymentId(result.last_insert_rowid()))
     }
@@ -275,6 +307,7 @@ impl DeploymentsRepository for Sqlite {
             &req.image_name,
             &req.image_digest,
             &req.deployment_status,
+            &req.hostname,
         )
         .await
         .map_err(|e| {

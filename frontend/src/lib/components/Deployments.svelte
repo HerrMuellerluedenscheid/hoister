@@ -17,6 +17,11 @@
             <th
               class="border-b px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-700 uppercase"
             >
+              Host
+            </th>
+            <th
+              class="border-b px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-700 uppercase"
+            >
               Project | Service
             </th>
             <th
@@ -34,8 +39,11 @@
         <tbody class="divide-y divide-gray-200">
           {#each data as item}
             <tr class="transition-colors hover:bg-gray-50 cursor-pointer"
-                onclick={() => goto(`/containers/${item.project_name}/${item.service_name}`)}
+                onclick={() => goto(`/containers/${item.hostname}/${item.project_name}/${item.service_name}`)}
             >
+              <td class="px-6 py-4 text-sm whitespace-nowrap text-gray-500">
+                {item.hostname}
+              </td>
               <td class="px-6 py-4 text-sm whitespace-nowrap text-gray-900">
                 <p>{item.project_name} | {item.service_name}</p>
                 <p class="font-mono text-xs text-gray-500">Image ID: {item.digest.replace("sha256:", "").slice(0, 12)}</p>
