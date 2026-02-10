@@ -64,6 +64,26 @@ impl ProjectName {
     }
 }
 
+#[derive(TS, Deserialize, Serialize, Debug, Clone, Hash, Eq, PartialEq)]
+#[ts(export)]
+pub struct HostName(pub String);
+
+impl HostName {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self(name.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for HostName {
+    fn default() -> Self {
+        Self(String::from("undefined"))
+    }
+}
+
 #[derive(TS, Deserialize, Debug, Clone, Serialize, Type)]
 #[ts(export)]
 #[repr(u8)]

@@ -104,9 +104,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         let url_state = controller_config.url.clone();
         url_sse.set_path("sse");
         let pn = project_name.clone();
+        let hn = config.hostname.clone();
         tokio::spawn(async move { sse::consume_sse(url_sse.as_str(), tx_sse).await });
         tokio::spawn(async move {
-            monitor::start(&url_state, pn)
+            monitor::start(&url_state, pn, hn)
                 .await
                 .expect("Failed to start monitor");
         });
