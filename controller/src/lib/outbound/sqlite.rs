@@ -311,13 +311,15 @@ impl DeploymentsRepository for Sqlite {
         self.get_deployments_of_service(project_name, service_name)
             .await
             .map_err(|e| {
-                error!(
-                    "Failed to get deployments of service: {:?} {:?} | {:?}",
-                    project_name, service_name, e
-                );
                 match e {
                     sqlx::error::Error::RowNotFound => GetDeploymentError::DeploymentNotFound,
-                    _ => GetDeploymentError::UnknownError,
+                    _ => {
+                        error!(
+                            "Failed to get deployments of service: {:?} {:?} | {:?}",
+                            project_name, service_name, e
+                        );
+                        GetDeploymentError::UnknownError
+                    },
                 }
             })
     }
