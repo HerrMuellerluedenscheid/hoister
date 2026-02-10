@@ -35,7 +35,7 @@ mod tests {
         let repo = Sqlite::new(&config.database_path)
             .await
             .expect("Failed to connect to database");
-        repo.init().await.expect("Failed to initialize database");
+        repo.migrate().await.expect("Failed to run migrations");
         Service::new(repo)
     }
 

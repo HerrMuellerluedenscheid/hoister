@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let repo = Sqlite::new(&config.database_path)
         .await
         .expect("Failed to connect to database");
-    repo.init().await?;
+    repo.migrate().await?;
     let deployments_service = Service::new(repo);
 
     let state = AppState {

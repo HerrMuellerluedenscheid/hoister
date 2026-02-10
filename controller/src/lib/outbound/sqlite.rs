@@ -27,36 +27,10 @@ impl Sqlite {
         Ok(Self { pool })
     }
 
-    /// Initialize the database with required tables
-    pub async fn init(&self) -> Result<(), SqlxError> {
-        info!("Initializing database");
-        sqlx::query(
-            r#"
-        CREATE TABLE IF NOT EXISTS project (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-        CREATE TABLE IF NOT EXISTS service (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            project_id INTEGER NOT NULL REFERENCES project(id),
-            name TEXT NOT NULL,
-            image TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(project_id, name)
-        );
-        CREATE TABLE IF NOT EXISTS deployment (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            digest TEXT NOT NULL,
-            status INTEGER NOT NULL CHECK (status IN (0, 1, 2, 3, 4, 5)),
-            service_id INTEGER NOT NULL REFERENCES service(id),
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-        "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
+    /// Run embedded database migrations.
+    pub async fn migrate(&self) -> Result<(), SqlxError> {
+        info!("Running database migrations");
+        sqlx::migrate!().run(&self.pool).await.map_err(|e| SqlxError::Migrate(Box::new(e)))?;
         Ok(())
     }
 
