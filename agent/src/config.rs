@@ -4,7 +4,7 @@ use figment2::{
     Figment,
     providers::{Env, Format, Toml},
 };
-use hoister_shared::ProjectName;
+use hoister_shared::{HostName, ProjectName};
 use reqwest::Url;
 use serde::Deserialize;
 use std::path::Path;
@@ -107,6 +107,8 @@ pub(crate) struct Controller {
 #[derive(Deserialize, Debug, Clone)]
 pub(crate) struct Config {
     pub(crate) project: Option<ProjectName>,
+    #[serde(default)]
+    pub(crate) hostname: HostName,
     #[serde(default)]
     pub(crate) send_test_message: bool,
     pub(crate) schedule: Schedule,
