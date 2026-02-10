@@ -1,5 +1,5 @@
 use hoister_shared::{
-    CreateDeployment, DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName,
+    CreateDeployment, DeploymentStatus, HostName, ImageDigest, ImageName, ProjectName, ServiceName,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Type};
@@ -18,6 +18,7 @@ pub struct CreateDeploymentRequest {
     pub image_name: ImageName,
     pub image_digest: ImageDigest,
     pub deployment_status: DeploymentStatus,
+    pub hostname: HostName,
 }
 
 impl From<CreateDeployment> for CreateDeploymentRequest {
@@ -28,6 +29,7 @@ impl From<CreateDeployment> for CreateDeploymentRequest {
             service_name: val.service,
             project_name: val.project,
             deployment_status: val.status,
+            hostname: val.hostname,
         }
     }
 }
@@ -42,6 +44,7 @@ pub struct Deployment {
     pub created_at: String,
     pub service_name: ServiceName,
     pub project_name: ProjectName,
+    pub hostname: HostName,
 }
 
 #[derive(Debug, Error)]

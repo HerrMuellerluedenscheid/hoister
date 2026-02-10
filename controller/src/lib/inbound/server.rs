@@ -19,11 +19,12 @@ use crate::domain::deployments::models::deployment::{
 use crate::domain::deployments::ports::{DeploymentsRepository, DeploymentsService};
 use crate::domain::deployments::service::Service;
 use crate::sse::{ControllerEvent, sse_handler};
-use hoister_shared::{CreateDeployment, ProjectName, ServiceName};
+use hoister_shared::{CreateDeployment, HostName, ProjectName, ServiceName};
 use tokio::sync::{RwLock, broadcast};
 use ts_rs::TS;
 
-type ContainerState = HashMap<ProjectName, HashMap<ServiceName, ContainerInspectResponse>>;
+type ContainerState =
+    HashMap<HostName, HashMap<ProjectName, HashMap<ServiceName, ContainerInspectResponse>>>;
 
 #[derive(Clone)]
 pub struct AppState<DS: DeploymentsService> {
@@ -151,20 +152,25 @@ pub struct PostContainerStateRequest {
 
 async fn post_container_state<DS: DeploymentsService>(
     State(state): State<AppState<DS>>,
+    Path((hostname, project_name)): Path<(HostName, ProjectName)>,
     Json(payload): Json<PostContainerStateRequest>,
 ) -> impl IntoResponse {
     debug!(
-        "Received container state update for project: {}",
-        payload.project_name.as_str()
+        "Received container state update for host: {} project: {}",
+        hostname.as_str(),
+        project_name.as_str()
     );
     let mut lock = state.container_state.write().await;
-    lock.insert(payload.project_name, payload.payload);
+    lock.entry(hostname)
+        .or_default()
+        .insert(project_name, payload.payload);
     StatusCode::OK.into_response()
 }
 
 #[derive(TS, Serialize)]
 #[ts(export)]
 struct ContainerStateResponse {
+    hostname: HostName,
     project_name: ProjectName,
     service_name: ServiceName,
     #[ts(type = "any")]
@@ -177,15 +183,17 @@ struct ContainerStateResponses(Vec<ContainerStateResponse>);
 
 async fn get_container_state_by_service_name<DS: DeploymentsService>(
     State(state): State<AppState<DS>>,
-    Path((project_name, service_name)): Path<(ProjectName, ServiceName)>,
+    Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
 ) -> Result<Json<ApiResponse<ContainerStateResponse>>, StatusCode> {
     debug!("Received request for container state by id");
     let container_state = state.container_state.read().await;
     let response = container_state
-        .get(&project_name)
-        .and_then(|x| x.get(&service_name))
+        .get(&hostname)
+        .and_then(|h| h.get(&project_name))
+        .and_then(|p| p.get(&service_name))
         .ok_or(StatusCode::NOT_FOUND)?;
     Ok(Json::from(ApiResponse::success(ContainerStateResponse {
+        hostname: hostname.clone(),
         project_name: project_name.clone(),
         service_name: service_name.clone(),
         container_inspections: response.clone(),
@@ -199,18 +207,22 @@ async fn get_container_states<DS: DeploymentsService>(
     let container_state = state.container_state.read().await;
     debug!("Sending container state: {:?}", container_state);
     let mut states: Vec<ContainerStateResponse> = Vec::new();
-    for (project_name, services) in container_state.iter() {
-        for (service_name, container_inspection) in services.iter() {
-            debug!(
-                "Sending container state for project: {} service: {}",
-                project_name.as_str(),
-                service_name.as_str()
-            );
-            states.push(ContainerStateResponse {
-                project_name: project_name.clone(),
-                service_name: service_name.clone(),
-                container_inspections: container_inspection.clone(),
-            });
+    for (hostname, projects) in container_state.iter() {
+        for (project_name, services) in projects.iter() {
+            for (service_name, container_inspection) in services.iter() {
+                debug!(
+                    "Sending container state for host: {} project: {} service: {}",
+                    hostname.as_str(),
+                    project_name.as_str(),
+                    service_name.as_str()
+                );
+                states.push(ContainerStateResponse {
+                    hostname: hostname.clone(),
+                    project_name: project_name.clone(),
+                    service_name: service_name.clone(),
+                    container_inspections: container_inspection.clone(),
+                });
+            }
         }
     }
 
@@ -228,12 +240,12 @@ pub async fn create_app<DR: DeploymentsRepository>(state: AppState<Service<DR>>)
             get(get_deployments_by_service),
         )
         .route(
-            "/container/state/{project_name}",
+            "/container/state/{hostname}/{project_name}",
             post(post_container_state),
         )
         .route("/container/state", get(get_container_states))
         .route(
-            "/container/state/{project_name}/{service_name}",
+            "/container/state/{hostname}/{project_name}/{service_name}",
             get(get_container_state_by_service_name),
         )
         .layer(middleware::from_fn_with_state(

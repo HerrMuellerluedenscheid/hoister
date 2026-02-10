@@ -60,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let (tx_notification, rx_notification) = mpsc::channel(32);
     let (tx_sse, rx_sse) = mpsc::channel(32);
 
-    let result_handler = DeploymentResultHandler::new(tx_notification);
+    let result_handler = DeploymentResultHandler::new(tx_notification, config.hostname.clone());
 
     let _ = setup_dispatcher(&config).map(|d| {
         let c = Arc::clone(&config);

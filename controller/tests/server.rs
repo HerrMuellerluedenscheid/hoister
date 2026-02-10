@@ -6,7 +6,8 @@ mod tests {
         http::{Request, StatusCode},
     };
     use hoister_shared::{
-        CreateDeployment, DeploymentStatus, ImageDigest, ImageName, ProjectName, ServiceName,
+        CreateDeployment, DeploymentStatus, HostName, ImageDigest, ImageName, ProjectName,
+        ServiceName,
     };
     use std::collections::HashMap;
 
@@ -136,6 +137,7 @@ mod tests {
             image: ImageName::new("nginx:latest"),
             digest: ImageDigest::new("sha256:abc123"),
             status: DeploymentStatus::Pending,
+            hostname: HostName::new("test-host"),
         };
 
         let response = app
@@ -205,6 +207,7 @@ mod tests {
             image_name: image_name.clone(),
             image_digest: ImageDigest::new("sha256:abc123"),
             deployment_status: DeploymentStatus::Pending,
+            hostname: HostName::new("test-host"),
         };
         database_service.create_deployment(&req).await.unwrap();
 
