@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "scripts": {
     "dev": "astro dev",
-    "deploy": "astro build && scp -r ./dist/* ${HOISTER_HOSTNAME_DOCS}:/var/www/html/documentation/",
+    "deploy": "astro build && scp -r ./dist/* ${HOISTER_DEPLOY_HOSTNAME_DOCS}:/var/www/html/documentation/",
     "start": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
