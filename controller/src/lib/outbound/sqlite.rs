@@ -4,7 +4,9 @@ use crate::domain::deployments::models::deployment::{
 };
 use crate::domain::deployments::models::service::{Service, ServiceId};
 use crate::domain::deployments::ports::DeploymentsRepository;
-use hoister_shared::{DeploymentStatus, HostName, ImageDigest, ImageName, ProjectName, ServiceName};
+use hoister_shared::{
+    DeploymentStatus, HostName, ImageDigest, ImageName, ProjectName, ServiceName,
+};
 use log::error;
 use sqlx::migrate::MigrateDatabase;
 use sqlx::{Error as SqlxError, Row, SqlitePool};
@@ -30,7 +32,10 @@ impl Sqlite {
     /// Run embedded database migrations.
     pub async fn migrate(&self) -> Result<(), SqlxError> {
         info!("Running database migrations");
-        sqlx::migrate!().run(&self.pool).await.map_err(|e| SqlxError::Migrate(Box::new(e)))?;
+        sqlx::migrate!()
+            .run(&self.pool)
+            .await
+            .map_err(|e| SqlxError::Migrate(Box::new(e)))?;
         Ok(())
     }
 
@@ -343,16 +348,14 @@ impl DeploymentsRepository for Sqlite {
     ) -> Result<Vec<Deployment>, GetDeploymentError> {
         self.get_deployments_of_service(project_name, service_name)
             .await
-            .map_err(|e| {
-                match e {
-                    sqlx::error::Error::RowNotFound => GetDeploymentError::DeploymentNotFound,
-                    _ => {
-                        error!(
-                            "Failed to get deployments of service: {:?} {:?} | {:?}",
-                            project_name, service_name, e
-                        );
-                        GetDeploymentError::UnknownError
-                    },
+            .map_err(|e| match e {
+                sqlx::error::Error::RowNotFound => GetDeploymentError::DeploymentNotFound,
+                _ => {
+                    error!(
+                        "Failed to get deployments of service: {:?} {:?} | {:?}",
+                        project_name, service_name, e
+                    );
+                    GetDeploymentError::UnknownError
                 }
             })
     }

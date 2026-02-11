@@ -64,7 +64,7 @@ impl ProjectName {
     }
 }
 
-#[derive(TS, Deserialize, Serialize, Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(TS, Deserialize, Serialize, Debug, Clone, Hash, Eq, PartialEq, PartialOrd, Ord)]
 #[ts(export)]
 pub struct HostName(pub String);
 

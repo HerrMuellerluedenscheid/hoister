@@ -9,9 +9,9 @@ mod tests {
         CreateDeployment, DeploymentStatus, HostName, ImageDigest, ImageName, ProjectName,
         ServiceName,
     };
-    use std::collections::HashMap;
 
     use controller::config::Config;
+    use controller::domain::container_state::service::Service as ContainerStateService;
     use controller::domain::deployments::models::deployment::{
         CreateDeploymentRequest, Deployment,
     };
@@ -19,9 +19,10 @@ mod tests {
     use controller::domain::deployments::service::Service;
     use controller::inbound::server::{ApiResponse, AppState, create_app};
     use controller::outbound::sqlite::Sqlite;
+    use controller::outbound::state_memory::StateMemory;
     use controller::sse::ControllerEvent;
     use std::sync::Arc;
-    use tokio::sync::{RwLock, broadcast};
+    use tokio::sync::broadcast;
     use tower::ServiceExt;
     // for `oneshot` and `ready`
 
@@ -49,9 +50,10 @@ mod tests {
         let (event_tx, _) = broadcast::channel::<ControllerEvent>(100);
 
         let deployments_service = get_service(&config).await;
+        let container_state_service = ContainerStateService::new(StateMemory::default());
         let state = AppState {
             deployments_service: Arc::new(deployments_service),
-            container_state: Arc::new(RwLock::new(HashMap::new())),
+            container_state_service: Arc::new(container_state_service),
             api_secret: config.api_secret.clone(),
             event_tx,
         };

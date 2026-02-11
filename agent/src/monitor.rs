@@ -155,8 +155,13 @@ pub(crate) async fn start(
 
         match fetch_container_info(&project_name, &docker).await {
             Ok(current_states) => {
-                if let Err(e) =
-                    send_to_backend(controller_url, project_name.clone(), hostname.clone(), &current_states).await
+                if let Err(e) = send_to_backend(
+                    controller_url,
+                    project_name.clone(),
+                    hostname.clone(),
+                    &current_states,
+                )
+                .await
                 {
                     error!("Failed to send to backend: {}", e);
                 } else {

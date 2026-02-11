@@ -1,14 +1,15 @@
 use controller::config::get_config;
-use controller::domain::deployments::service::Service;
+use controller::domain::container_state::service::Service as ContainerStateService;
+use controller::domain::deployments::service::Service as DeploymentsService;
 use controller::inbound::server::{AppState, create_app};
 use controller::outbound::sqlite::Sqlite;
+use controller::outbound::state_memory::StateMemory;
 use controller::sse::ControllerEvent;
 use env_logger::Env;
 use log::info;
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::broadcast;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,15 +17,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = get_config();
 
     let (event_tx, _) = broadcast::channel::<ControllerEvent>(100);
-    let repo = Sqlite::new(&config.database_path)
+    let deployments_repo = Sqlite::new(&config.database_path)
         .await
         .expect("Failed to connect to database");
-    repo.migrate().await?;
-    let deployments_service = Service::new(repo);
+    deployments_repo.migrate().await?;
+    let deployments_service = DeploymentsService::new(deployments_repo);
 
+    let container_state_repo = StateMemory::default();
+    let container_state_service = ContainerStateService::new(container_state_repo);
     let state = AppState {
         deployments_service: Arc::new(deployments_service),
-        container_state: Arc::new(RwLock::new(HashMap::new())),
+        container_state_service: Arc::new(container_state_service),
         api_secret: config.api_secret.clone(),
         event_tx,
     };

@@ -13,23 +13,21 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::domain::container_state::models::state::{AddContainerStateRequest, ContainerStateData};
+use crate::domain::container_state::port::ContainerStateService;
 use crate::domain::deployments::models::deployment::{
     CreateDeploymentRequest, Deployment, GetDeploymentError,
 };
-use crate::domain::deployments::ports::{DeploymentsRepository, DeploymentsService};
-use crate::domain::deployments::service::Service;
+use crate::domain::deployments::ports::DeploymentsService;
 use crate::sse::{ControllerEvent, sse_handler};
 use hoister_shared::{CreateDeployment, HostName, ProjectName, ServiceName};
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::broadcast;
 use ts_rs::TS;
 
-type ContainerState =
-    HashMap<HostName, HashMap<ProjectName, HashMap<ServiceName, ContainerInspectResponse>>>;
-
 #[derive(Clone)]
-pub struct AppState<DS: DeploymentsService> {
+pub struct AppState<DS: DeploymentsService, CS: ContainerStateService> {
     pub deployments_service: Arc<DS>,
-    pub container_state: Arc<RwLock<ContainerState>>,
+    pub container_state_service: Arc<CS>,
     pub api_secret: Option<String>,
     pub event_tx: broadcast::Sender<ControllerEvent>,
 }
@@ -53,8 +51,8 @@ impl<T> ApiResponse<T> {
 }
 
 // Authentication middleware
-async fn auth_middleware<DS: DeploymentsService>(
-    State(state): State<AppState<DS>>,
+async fn auth_middleware<DS: DeploymentsService, CS: ContainerStateService>(
+    State(state): State<AppState<DS, CS>>,
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
@@ -89,8 +87,8 @@ async fn health() -> &'static str {
     "OK"
 }
 
-async fn get_deployments<DS: DeploymentsService>(
-    State(state): State<AppState<DS>>,
+async fn get_deployments<DS: DeploymentsService, CS: ContainerStateService>(
+    State(state): State<AppState<DS, CS>>,
 ) -> Result<Json<ApiResponse<Vec<Deployment>>>, StatusCode> {
     match state.deployments_service.get_all_deployments().await {
         Ok(deployments) => Ok(Json(ApiResponse::success(deployments))),
@@ -101,8 +99,8 @@ async fn get_deployments<DS: DeploymentsService>(
     }
 }
 
-async fn get_deployments_by_service<DS: DeploymentsService>(
-    State(state): State<AppState<DS>>,
+async fn get_deployments_by_service<DS: DeploymentsService, CS: ContainerStateService>(
+    State(state): State<AppState<DS, CS>>,
     Path((project_name, service_name)): Path<(ProjectName, ServiceName)>,
 ) -> Result<Json<ApiResponse<Vec<Deployment>>>, StatusCode> {
     debug!("get service by name: {:?}", service_name);
@@ -121,8 +119,8 @@ async fn get_deployments_by_service<DS: DeploymentsService>(
     }
 }
 
-async fn create_deployment<DS: DeploymentsService>(
-    State(state): State<AppState<DS>>,
+async fn create_deployment<DS: DeploymentsService, CS: ContainerStateService>(
+    State(state): State<AppState<DS, CS>>,
     Json(payload): Json<CreateDeployment>,
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
     match state
@@ -150,8 +148,8 @@ pub struct PostContainerStateRequest {
     pub payload: HashMap<ServiceName, ContainerInspectResponse>,
 }
 
-async fn post_container_state<DS: DeploymentsService>(
-    State(state): State<AppState<DS>>,
+async fn post_container_state<DS: DeploymentsService, CS: ContainerStateService>(
+    State(state): State<AppState<DS, CS>>,
     Path((hostname, project_name)): Path<(HostName, ProjectName)>,
     Json(payload): Json<PostContainerStateRequest>,
 ) -> impl IntoResponse {
@@ -160,10 +158,14 @@ async fn post_container_state<DS: DeploymentsService>(
         hostname.as_str(),
         project_name.as_str()
     );
-    let mut lock = state.container_state.write().await;
-    lock.entry(hostname)
-        .or_default()
-        .insert(project_name, payload.payload);
+
+    let req = AddContainerStateRequest {
+        hostname,
+        project_name,
+        container_inspect_responses: payload.payload,
+    };
+    state.container_state_service.add_container_state(req).await;
+
     StatusCode::OK.into_response()
 }
 
@@ -181,55 +183,57 @@ struct ContainerStateResponse {
 #[ts(export)]
 struct ContainerStateResponses(Vec<ContainerStateResponse>);
 
-async fn get_container_state_by_service_name<DS: DeploymentsService>(
-    State(state): State<AppState<DS>>,
+impl From<ContainerStateData> for ContainerStateResponses {
+    fn from(value: ContainerStateData) -> Self {
+        let mut responses = Vec::new();
+        for (hostname, projects) in value.iter() {
+            for (project_name, services) in projects.iter() {
+                for (service_name, container_inspect_responses) in services.iter() {
+                    let r = ContainerStateResponse {
+                        hostname: hostname.clone(),
+                        project_name: project_name.clone(),
+                        service_name: service_name.clone(),
+                        container_inspections: container_inspect_responses.clone(),
+                    };
+                    responses.push(r);
+                }
+            }
+        }
+        responses.sort_by(|a, b| a.hostname.cmp(&b.hostname));
+        Self(responses)
+    }
+}
+
+async fn get_container_state_by_service_name<DS: DeploymentsService, CS: ContainerStateService>(
+    State(state): State<AppState<DS, CS>>,
     Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
 ) -> Result<Json<ApiResponse<ContainerStateResponse>>, StatusCode> {
     debug!("Received request for container state by id");
-    let container_state = state.container_state.read().await;
-    let response = container_state
-        .get(&hostname)
-        .and_then(|h| h.get(&project_name))
-        .and_then(|p| p.get(&service_name))
+    let container_state = state
+        .container_state_service
+        .get_container_state(&hostname, &project_name, &service_name)
+        .await
         .ok_or(StatusCode::NOT_FOUND)?;
+
     Ok(Json::from(ApiResponse::success(ContainerStateResponse {
-        hostname: hostname.clone(),
-        project_name: project_name.clone(),
-        service_name: service_name.clone(),
-        container_inspections: response.clone(),
+        hostname,
+        project_name,
+        service_name,
+        container_inspections: container_state,
     })))
 }
 
-async fn get_container_states<DS: DeploymentsService>(
-    State(state): State<AppState<DS>>,
+async fn get_container_states<DS: DeploymentsService, CS: ContainerStateService>(
+    State(state): State<AppState<DS, CS>>,
 ) -> impl IntoResponse {
     debug!("Received request for container state");
-    let container_state = state.container_state.read().await;
-    debug!("Sending container state: {:?}", container_state);
-    let mut states: Vec<ContainerStateResponse> = Vec::new();
-    for (hostname, projects) in container_state.iter() {
-        for (project_name, services) in projects.iter() {
-            for (service_name, container_inspection) in services.iter() {
-                debug!(
-                    "Sending container state for host: {} project: {} service: {}",
-                    hostname.as_str(),
-                    project_name.as_str(),
-                    service_name.as_str()
-                );
-                states.push(ContainerStateResponse {
-                    hostname: hostname.clone(),
-                    project_name: project_name.clone(),
-                    service_name: service_name.clone(),
-                    container_inspections: container_inspection.clone(),
-                });
-            }
-        }
-    }
-
-    Json(ContainerStateResponses(states)).into_response()
+    let states = state.container_state_service.get_container_states().await;
+    Json(ContainerStateResponses::from(states)).into_response()
 }
 
-pub async fn create_app<DR: DeploymentsRepository>(state: AppState<Service<DR>>) -> Router {
+pub async fn create_app<DS: DeploymentsService, CS: ContainerStateService>(
+    state: AppState<DS, CS>,
+) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/sse", get(sse_handler))
