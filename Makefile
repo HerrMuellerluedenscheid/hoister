@@ -23,7 +23,9 @@ dev-frontend: bindings
 	export $$(cat .env.template | xargs) && cd frontend && npm run dev
 
 dev-controller:
-	export $$(cat .env.template | xargs) &&	export HOISTER_CONTROLLER_DATABASE_PATH=/tmp/hoister-dev.sqlite && RUST_LOG=debug && cargo run --bin controller
+	export $$(cat .env.template | xargs) &&	\
+	export HOISTER_CONTROLLER_DATABASE_PATH=/tmp/hoister-dev.sqlite && \
+	export RUST_LOG=debug && cargo run --bin controller
 
 dev-hoister:
 	export $$(cat .env.template | xargs) && export $$(cat .env | xargs) && \
@@ -34,4 +36,6 @@ dev-hoister:
  	HOISTER_CONTROLLER_URL="http://localhost:3033" RUST_LOG=debug,bollard=info,hyper_util=info cargo run --bin hoister
 
 test-message:
-	export $$(cat .env.template | xargs) && export $$(cat .env | xargs) &&	RUST_LOG=debug,bollard=info,hyper_util=info cargo run --bin hoister -- --test-message
+	export $$(cat .env.template | xargs) && \
+	export $$(cat .env | xargs) && \
+	RUST_LOG=debug,bollard=info,hyper_util=info cargo run --bin hoister -- --test-message
