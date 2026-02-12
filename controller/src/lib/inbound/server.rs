@@ -104,7 +104,7 @@ async fn get_deployments_by_service<DS: DeploymentsService, CS: ContainerStateSe
     State(state): State<AppState<DS, CS>>,
     Path((project_name, service_name)): Path<(ProjectName, ServiceName)>,
 ) -> Result<Json<ApiResponse<Vec<Deployment>>>, StatusCode> {
-    debug!("get service by name: {:?}", service_name);
+    debug!("get service by name: {service_name:?}");
 
     match state
         .deployments_service

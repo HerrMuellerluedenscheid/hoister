@@ -62,7 +62,7 @@ async fn fetch_container_info(
                     redact_credentials(&mut inspect);
                     states.insert(service_identifier.clone(), inspect);
                 }
-                Err(e) => error!("Error inspecting container {}: {}", container_id, e),
+                Err(e) => error!("Error inspecting container {container_id}: {e}"),
             }
         }
     }
@@ -108,7 +108,7 @@ fn redact_credentials(inspect: &mut ContainerInspectResponse) {
                         .any(|keyword| key_lower.contains(keyword));
 
                     if is_sensitive {
-                        format!("{}=***REDACTED***", key)
+                        format!("{key}=***REDACTED***")
                     } else {
                         env_var.clone()
                     }
@@ -121,6 +121,7 @@ fn redact_credentials(inspect: &mut ContainerInspectResponse) {
 }
 
 async fn send_to_backend(
+    client: &reqwest::Client,
     controller_url: &Url,
     project_name: ProjectName,
     hostname: HostName,
@@ -135,7 +136,6 @@ async fn send_to_backend(
         payload: states.clone(),
     };
 
-    let client = reqwest::Client::new();
     let response = client.post(url).json(&request).send().await?;
     response.error_for_status()?;
     Ok(())
@@ -145,6 +145,7 @@ pub(crate) async fn start(
     controller_url: &Url,
     project_name: ProjectName,
     hostname: HostName,
+    client: reqwest::Client,
 ) -> Result<(), Box<dyn std::error::Error + 'static>> {
     info!("Starting monitor");
     let docker = Docker::connect_with_socket_defaults()?;
@@ -156,6 +157,7 @@ pub(crate) async fn start(
         match fetch_container_info(&project_name, &docker).await {
             Ok(current_states) => {
                 if let Err(e) = send_to_backend(
+                    &client,
                     controller_url,
                     project_name.clone(),
                     hostname.clone(),
@@ -163,7 +165,7 @@ pub(crate) async fn start(
                 )
                 .await
                 {
-                    error!("Failed to send to backend: {}", e);
+                    error!("Failed to send to backend: {e}");
                 } else {
                     debug!(
                         "Successfully sent {} containers to backend",
@@ -171,7 +173,7 @@ pub(crate) async fn start(
                     );
                 }
             }
-            Err(e) => error!("Error fetching container info: {}", e),
+            Err(e) => error!("Error fetching container info: {e}"),
         }
     }
 }

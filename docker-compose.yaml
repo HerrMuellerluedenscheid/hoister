@@ -6,9 +6,12 @@ services:
       dockerfile: agent/Dockerfile
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      # - ./certs/ca.pem:/certs/ca.pem:ro  # TLS: mount CA cert
     security_opt:
       - no-new-privileges:true
     env_file: ".env"
+    # environment:
+    #   HOISTER_CONTROLLER_CA_CERT_PATH: /certs/ca.pem  # TLS: trust custom CA
 
   hoister-controller:
     image: emrius11/hoister-controller:latest
@@ -17,6 +20,10 @@ services:
       dockerfile: controller/Dockerfile
     volumes:
       - controller-data:/data
+#      - ./certs:/certs:ro  # TLS: mount certs directory
+#    environment:
+#       HOISTER_CONTROLLER_TLS_CERT_PATH: /certs/server.pem  # TLS: server certificate
+#       HOISTER_CONTROLLER_TLS_KEY_PATH: /certs/server-key.pem  # TLS: server private key
 
   hoister-frontend:
     image: emrius11/hoister-frontend:latest

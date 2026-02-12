@@ -56,6 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     let config_path = "/hoister.toml";
     let config = Arc::new(config::load_config(config_path.as_ref()).await);
+    let http_client = config::build_http_client(&config.controller);
 
     let (tx_notification, rx_notification) = mpsc::channel(32);
     let (tx_sse, rx_sse) = mpsc::channel(32);
@@ -64,8 +65,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     let _ = setup_dispatcher(&config).map(|d| {
         let c = Arc::clone(&config);
+        let client = http_client.clone();
         tokio::spawn(async move {
-            start_notification_handler(&c, rx_notification, d).await;
+            start_notification_handler(&c, rx_notification, d, client).await;
         });
     });
 
@@ -105,9 +107,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         url_sse.set_path("sse");
         let pn = project_name.clone();
         let hn = config.hostname.clone();
-        tokio::spawn(async move { sse::consume_sse(url_sse.as_str(), tx_sse).await });
+        let sse_client = http_client.clone();
+        let monitor_client = http_client.clone();
+        tokio::spawn(async move { sse::consume_sse(url_sse.as_str(), tx_sse, sse_client).await });
         tokio::spawn(async move {
-            monitor::start(&url_state, pn, hn)
+            monitor::start(&url_state, pn, hn, monitor_client)
                 .await
                 .expect("Failed to start monitor");
         });
@@ -133,7 +137,7 @@ async fn run_update_check(
         debug!("Checking container {:?}", container.id);
         let container_id: ContainerID = container.id.expect("container ID missing");
         let result = docker.update_container(project_name, &container_id).await;
-        debug!("result: {:?}", result);
+        debug!("result: {result:?}");
     }
     Ok(())
 }

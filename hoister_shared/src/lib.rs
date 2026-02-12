@@ -133,7 +133,7 @@ impl Display for CreateDeployment {
             self.hostname.as_str()
         );
 
-        write!(f, "{}", body)
+        write!(f, "{body}")
     }
 }
 

@@ -42,15 +42,14 @@ pub(super) enum SSEError {
 pub(crate) async fn consume_sse(
     url: &str,
     tx_sse: Sender<ControllerEvent>,
+    client: Client,
 ) -> Result<(), SSEError> {
-    let client = Client::new();
-
     loop {
         info!("Connecting to SSE...");
 
         match try_consume_stream(&client, url, &tx_sse).await {
             Ok(_) => info!("Stream ended normally"),
-            Err(e) => warn!("Stream error: {}", e),
+            Err(e) => warn!("Stream error: {e}"),
         }
 
         println!("Reconnecting in 5 seconds...");
@@ -81,7 +80,7 @@ async fn try_consume_stream(
             for line in message.lines() {
                 if let Some(data) = line.strip_prefix("data: ") {
                     let event: ControllerEvent = serde_json::from_str(data).unwrap();
-                    println!("Received: {:?}", event);
+                    println!("Received: {event:?}");
                     tx_sse.send(event).await.unwrap();
                 }
             }

@@ -77,7 +77,7 @@ impl DockerHandler {
             };
 
             let backup_name = format!("{}-backup-{}", volume_name, chrono::Utc::now().timestamp());
-            info!("Creating volume backup: {} -> {}", volume_name, backup_name);
+            info!("Creating volume backup: {volume_name} -> {backup_name}");
 
             // Create backup volume
             let create_options = VolumeCreateOptions {
@@ -98,7 +98,7 @@ impl DockerHandler {
                 backup_name: backup_name.clone(),
             });
 
-            info!("Volume backup created: {}", backup_name);
+            info!("Volume backup created: {backup_name}");
         }
 
         Ok(backups)
@@ -222,14 +222,11 @@ impl DockerHandler {
         source_volume: &str,
         dest_volume: &str,
     ) -> Result<(), HoisterError> {
-        debug!("Copying volume data: {} -> {}", source_volume, dest_volume);
+        debug!("Copying volume data: {source_volume} -> {dest_volume}");
 
         // Check if we're running in a container
         if let Some(self_container_id) = self.get_self_container_id().await {
-            debug!(
-                "Running in container {}, using self to copy volumes",
-                self_container_id
-            );
+            debug!("Running in container {self_container_id}, using self to copy volumes");
             self.copy_volume_data_using_self(&self_container_id, source_volume, dest_volume)
                 .await
         } else {
@@ -256,7 +253,7 @@ impl DockerHandler {
             .and_then(|c| c.image)
             .unwrap_or_else(|| "alpine:latest".to_string());
 
-        debug!("Using our image for volume copy: {}", our_image);
+        debug!("Using our image for volume copy: {our_image}");
 
         let config = ContainerCreateBody {
             image: Some(our_image),
@@ -310,7 +307,7 @@ impl DockerHandler {
                 debug!("Volume copy completed successfully");
             }
             Err(e) => {
-                warn!("Error waiting for temporary container: {}", e);
+                warn!("Error waiting for temporary container: {e}");
                 // Try to remove the container anyway
                 let _ = self
                     .docker
@@ -388,8 +385,7 @@ impl DockerHandler {
             Ok(_) => {}
             Err(e) => {
                 debug!(
-                    "Error waiting for temporary container: {:?}. If this says not found, copy was already done. ignore",
-                    e
+                    "Error waiting for temporary container: {e:?}. If this says not found, copy was already done. ignore"
                 );
             }
         }
@@ -529,7 +525,7 @@ impl DockerHandler {
             self.docker
                 .remove_container(&backup_name, Some(REMOVE_OPTIONS))
                 .await?;
-            info!("Old container removed: {}", backup_name);
+            info!("Old container removed: {backup_name}");
 
             // Remove volume backups if update was successful
             if !volume_backups.is_empty() {
@@ -539,10 +535,9 @@ impl DockerHandler {
 
             // Remove old image
             match self.remove_old_image(&old_image_id).await {
-                Ok(_) => info!("Old image removed: {}", old_image_id),
+                Ok(_) => info!("Old image removed: {old_image_id}"),
                 Err(e) => warn!(
-                    "Failed to remove old image {}: {}. It may still be in use by other containers.",
-                    old_image_id, e
+                    "Failed to remove old image {old_image_id}: {e}. It may still be in use by other containers."
                 ),
             }
 
@@ -572,7 +567,7 @@ impl DockerHandler {
 
     /// Remove an old Docker image
     async fn remove_old_image(&self, image_id: &str) -> Result<(), HoisterError> {
-        debug!("Attempting to remove old image: {}", image_id);
+        debug!("Attempting to remove old image: {image_id}");
 
         let options = RemoveImageOptions {
             force: false,
@@ -582,7 +577,7 @@ impl DockerHandler {
         self.docker
             .remove_image(image_id, Some(options), None)
             .await
-            .map_err(|e| HoisterError::Docker(format!("Failed to remove image: {}", e)))?;
+            .map_err(|e| HoisterError::Docker(format!("Failed to remove image: {e}")))?;
 
         Ok(())
     }
@@ -667,8 +662,7 @@ pub(crate) async fn get_service_identifier(
             let name = container_details.name.unwrap_or_default();
             let name = name.trim_start_matches('/');
             warn!(
-                "Could not find service identifier labels after {} retries, falling back to container name: {}",
-                MAX_RETRIES, name
+                "Could not find service identifier labels after {MAX_RETRIES} retries, falling back to container name: {name}"
             );
             return Ok(ServiceName::new(name));
         }
@@ -680,7 +674,7 @@ pub(crate) async fn get_service_identifier(
 pub(crate) async fn get_project_name(docker: &Docker) -> Result<ProjectName, Box<dyn Error>> {
     debug!("Detecting project name...");
     if let Ok(project_name) = env::var("HOISTER_PROJECT") {
-        info!("Using project name from HOISTER_PROJECT: {}", project_name);
+        info!("Using project name from HOISTER_PROJECT: {project_name}");
         return Ok(ProjectName::new(project_name));
     }
 
@@ -703,13 +697,10 @@ pub(crate) async fn get_project_name(docker: &Docker) -> Result<ProjectName, Box
     if let Some(container) = containers.first()
         && let Some(labels) = &container.labels
     {
-        debug!("Agent container labels: {:?}", labels);
+        debug!("Agent container labels: {labels:?}");
 
         if let Some(project) = labels.get("com.docker.compose.project") {
-            info!(
-                "Detected project name from hoister agent container: {}",
-                project
-            );
+            info!("Detected project name from hoister agent container: {project}");
             return Ok(ProjectName::new(project));
         } else {
             warn!("Agent container found but missing com.docker.compose.project label");
@@ -798,8 +789,8 @@ async fn download_image(
     let image_info = docker
         .inspect_image(&full_image_name)
         .await
-        .map_err(|e| HoisterError::Docker(format!("Failed to inspect image: {}", e)))?;
-    info!("Image info: {:?}", image_info);
+        .map_err(|e| HoisterError::Docker(format!("Failed to inspect image: {e}")))?;
+    info!("Image info: {image_info:?}");
     let new_image_digest = image_info.id.ok_or(HoisterError::Docker(
         "The pulled image id is empty".to_string(),
     ))?;

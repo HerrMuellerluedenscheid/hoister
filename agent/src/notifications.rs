@@ -92,7 +92,7 @@ impl DeploymentResultHandler {
             Ok(_) => {}
             Err(e) => {
                 error!("Failed to send notification");
-                error!("Error: {:?}", e);
+                error!("Error: {e:?}");
             }
         };
     }
@@ -106,17 +106,18 @@ pub(super) async fn start_notification_handler(
     config: &Config,
     mut rx: Receiver<CreateDeployment>,
     dispatcher: Dispatcher,
+    client: reqwest::Client,
 ) {
     while let Some(deployment_message) = rx.recv().await {
-        send(config, &deployment_message, &dispatcher).await;
+        send(config, &deployment_message, &dispatcher, &client).await;
     }
 }
 
 async fn send_to_controller(
     deployment_message: &CreateDeployment,
     config: &Config,
+    client: &reqwest::Client,
 ) -> Result<(), NotificationError> {
-    let client = reqwest::Client::new();
     let (url, token) = match config.controller {
         Some(ref controller) => {
             debug!(
@@ -140,7 +141,7 @@ async fn send_to_controller(
         .json(&deployment_message)
         .send()
         .await;
-    debug!("response: {:?}", res);
+    debug!("response: {res:?}");
     Ok(())
 }
 
@@ -162,18 +163,19 @@ pub(crate) async fn send(
     config: &Config,
     deployment_message: &CreateDeployment,
     dispatcher: &Dispatcher,
+    client: &reqwest::Client,
 ) {
     debug!("sending deployment request");
     let (result1, result2) = tokio::join!(
-        send_to_controller(deployment_message, config),
+        send_to_controller(deployment_message, config, client),
         send_to_chatterbox(deployment_message, dispatcher)
     );
 
     if let Err(e) = result1 {
-        error!("Failed to send to controller: {:?}", e);
+        error!("Failed to send to controller: {e:?}");
     }
     if let Err(e) = result2 {
-        error!("Failed to send to chatterbox: {:?}", e);
+        error!("Failed to send to chatterbox: {e:?}");
     }
 }
 

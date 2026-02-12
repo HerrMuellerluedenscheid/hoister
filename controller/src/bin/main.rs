@@ -35,19 +35,90 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = create_app(state).await;
     let listener = TcpListener::bind(format!("0.0.0.0:{}", config.port)).await?;
 
-    info!("Server running on http://0.0.0.0:{}", config.port);
-    info!(
-        "Health check: http://0.0.0.0:{}/health (no auth required)",
-        config.port
-    );
+    if let Some((cert_path, key_path)) = config.tls_config() {
+        use hyper_util::rt::{TokioExecutor, TokioIo};
+        use hyper_util::server::conn::auto::Builder;
+        use rustls::ServerConfig;
+        use rustls::crypto::aws_lc_rs;
+        use std::io::BufReader;
+        use tokio_rustls::TlsAcceptor;
+
+        aws_lc_rs::default_provider()
+            .install_default()
+            .expect("Failed to install default CryptoProvider");
+
+        let cert_file = std::fs::File::open(cert_path)
+            .unwrap_or_else(|e| panic!("Failed to open TLS cert file {cert_path:?}: {e}"));
+        let key_file = std::fs::File::open(key_path)
+            .unwrap_or_else(|e| panic!("Failed to open TLS key file {key_path:?}: {e}"));
+
+        let certs: Vec<_> =
+            rustls_pemfile::certs(&mut BufReader::new(cert_file)).collect::<Result<_, _>>()?;
+        let key = rustls_pemfile::private_key(&mut BufReader::new(key_file))?
+            .expect("No private key found in key file");
+
+        let tls_config = ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(certs, key)?;
+
+        let tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
+
+        info!("Server running on https://0.0.0.0:{}", config.port);
+        info!(
+            "Health check: https://0.0.0.0:{}/health (no auth required)",
+            config.port
+        );
+        log_endpoints();
+
+        loop {
+            let (tcp_stream, remote_addr) = listener.accept().await?;
+            let tls_acceptor = tls_acceptor.clone();
+            let app = app.clone();
+
+            tokio::spawn(async move {
+                let tls_stream = match tls_acceptor.accept(tcp_stream).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        log::debug!("TLS handshake failed from {remote_addr}: {e}");
+                        return;
+                    }
+                };
+
+                let service = hyper::service::service_fn(move |req| {
+                    let mut svc = app.clone();
+                    async move {
+                        // Poll readiness before calling
+                        <_ as tower::Service<_>>::call(&mut svc, req).await
+                    }
+                });
+
+                if let Err(e) = Builder::new(TokioExecutor::new())
+                    .serve_connection(TokioIo::new(tls_stream), service)
+                    .await
+                {
+                    log::debug!("Connection error from {remote_addr}: {e}");
+                }
+            });
+        }
+    } else {
+        info!("Server running on http://0.0.0.0:{}", config.port);
+        info!(
+            "Health check: http://0.0.0.0:{}/health (no auth required)",
+            config.port
+        );
+        log_endpoints();
+
+        axum::serve(listener, app).await?;
+    }
+
+    Ok(())
+}
+
+fn log_endpoints() {
     info!("Protected API endpoints (require Authorization: Bearer <secret>):");
     info!("  GET    /sse                   - server side events");
     info!("  GET    /deployments           - Get all deployments");
     info!("  POST   /deployments           - Create deployment");
     info!("  GET    /deployments/:id       - Get deployment by ID");
     info!("  PUT    /deployments/:id       - Update deployment");
-
-    axum::serve(listener, app).await?;
-
-    Ok(())
 }
