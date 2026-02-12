@@ -13,7 +13,7 @@ export type ContainerPageData = {
 export const load: PageServerLoad = async ({ params }) => {
   try {
     const inspectionsResponse = await getContainerInspection(
-        params.hostname,
+      params.hostname,
       params.project_name,
       params.service_name
     );

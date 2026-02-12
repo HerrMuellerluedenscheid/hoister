@@ -5,6 +5,7 @@
   let { data }: { data: ContainerPageData } = $props();
   const container = data.inspections.container_inspections;
   const deployments = data.deployments.slice(0, 8);
+  const hostname = data.inspections.hostname;
   const service_name = data.inspections.service_name;
   const project_name = data.inspections.project_name;
 
@@ -29,6 +30,7 @@
     <!-- Header -->
     <div class="mb-8">
       <h1 class="mb-2 text-3xl font-bold text-gray-900">{project_name} | {service_name}</h1>
+      <p class="text-sm text-gray-500">Host: {hostname}</p>
       <p class="font-mono text-sm text-gray-500">{container.Id}</p>
     </div>
 

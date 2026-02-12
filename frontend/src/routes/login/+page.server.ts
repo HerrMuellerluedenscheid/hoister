@@ -1,6 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions } from './$types';
-import { config } from "$lib/server/config";
+import { config } from '$lib/server/config';
 import bcrypt from 'bcryptjs';
 
 const USERNAME = process.env.HOISTER_AUTH_USERNAME;
@@ -18,7 +18,9 @@ async function verifyPassword(inputPassword: string, storedPassword: string): Pr
   } else {
     console.warn('⚠️  WARNING: HOISTER_AUTH_PASSWORD is stored in plain text!');
     console.warn('⚠️  For better security, use a bcrypt hashed password instead.');
-    console.warn('⚠️  Generate one e.g. with: node -e "console.log(require(\'bcryptjs\').hashSync(\'your-password\', 10))"');
+    console.warn(
+      "⚠️  Generate one e.g. with: node -e \"console.log(require('bcryptjs').hashSync('your-password', 10))\""
+    );
     return inputPassword === storedPassword;
   }
 }
@@ -38,7 +40,7 @@ export const actions = {
     }
 
     // Check username and password
-    if (username === USERNAME && await verifyPassword(password, PASSWORD)) {
+    if (username === USERNAME && (await verifyPassword(password, PASSWORD))) {
       cookies.set('session', 'authenticated', {
         path: '/',
         httpOnly: true,

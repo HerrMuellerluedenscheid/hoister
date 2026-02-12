@@ -13,12 +13,13 @@ export async function getContainerInspection(
   project_name: ProjectName,
   service_name: ServiceName
 ): Promise<ApiResponse<ContainerStateResponse>> {
-
   if (!BACKEND_URL) {
     throw error(500, 'Backend URL not configured');
   }
 
-  const response = await fetch(`${BACKEND_URL}/container/state/${hostname}/${project_name}/${service_name}`);
+  const response = await fetch(
+    `${BACKEND_URL}/container/state/${hostname}/${project_name}/${service_name}`
+  );
   if (!response.ok) {
     throw error(response.status, 'Failed to load container state from backend');
   }

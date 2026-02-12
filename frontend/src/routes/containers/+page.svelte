@@ -5,7 +5,9 @@
 
   let { data }: { data: Inspection } = $props();
 
-  function groupByHostname(inspections: ContainerStateResponse[]): Map<string, ContainerStateResponse[]> {
+  function groupByHostname(
+    inspections: ContainerStateResponse[]
+  ): Map<string, ContainerStateResponse[]> {
     const grouped = new Map<string, ContainerStateResponse[]>();
     for (const inspection of inspections) {
       const host = inspection.hostname;
@@ -21,7 +23,6 @@
 </script>
 
 <div class="mx-auto max-w-7xl p-6">
-
   {#if data.error}
     <div class="mb-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-red-700">
       <p class="font-bold">Error</p>
@@ -30,7 +31,7 @@
   {/if}
 
   {#if data.inspections.length === 0}
-    <div class="mb-4 rounded border border-blue-200 bg-blue-50 px-4 py-3 test-blue-600">
+    <div class="test-blue-600 mb-4 rounded border border-blue-200 bg-blue-50 px-4 py-3">
       <p class="font-bold">Error</p>
       <p>Waiting for running containers...</p>
     </div>

@@ -44,7 +44,10 @@
   }
 </script>
 
-<a href="/containers/{inspection_data.hostname}/{inspection_data.project_name}/{inspection_data.service_name}" class="block">
+<a
+  href="/containers/{inspection_data.hostname}/{inspection_data.project_name}/{inspection_data.service_name}"
+  class="block"
+>
   <Card.Root class="min-h-50 shadow-sm transition-shadow hover:shadow-md">
     <Card.Header>
       <Card.Title class="flex items-center justify-between"
