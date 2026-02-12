@@ -121,14 +121,14 @@ pub(crate) struct Config {
 pub(crate) fn build_http_client(controller: &Option<Controller>) -> reqwest::Client {
     let mut builder = reqwest::Client::builder();
 
-    if let Some(controller) = controller {
-        if let Some(ca_path) = &controller.ca_cert_path {
-            let pem = std::fs::read(ca_path)
-                .unwrap_or_else(|e| panic!("Failed to read CA cert at {ca_path}: {e}"));
-            let cert = reqwest::Certificate::from_pem(&pem)
-                .unwrap_or_else(|e| panic!("Failed to parse CA cert at {ca_path}: {e}"));
-            builder = builder.add_root_certificate(cert);
-        }
+    if let Some(controller) = controller
+        && let Some(ca_path) = &controller.ca_cert_path
+    {
+        let pem = std::fs::read(ca_path)
+            .unwrap_or_else(|e| panic!("Failed to read CA cert at {ca_path}: {e}"));
+        let cert = reqwest::Certificate::from_pem(&pem)
+            .unwrap_or_else(|e| panic!("Failed to parse CA cert at {ca_path}: {e}"));
+        builder = builder.add_root_certificate(cert);
     }
 
     builder.build().expect("Failed to build HTTP client")
@@ -143,10 +143,10 @@ pub(crate) async fn load_config(config_path: &Path) -> Config {
 
     // Workaround: figment's split("_") splits HOISTER_CONTROLLER_CA_CERT_PATH into
     // controller.ca.cert.path instead of controller.ca_cert_path.
-    if let Some(ref mut controller) = config.controller {
-        if controller.ca_cert_path.is_none() {
-            controller.ca_cert_path = std::env::var("HOISTER_CONTROLLER_CA_CERT_PATH").ok();
-        }
+    if let Some(ref mut controller) = config.controller
+        && controller.ca_cert_path.is_none()
+    {
+        controller.ca_cert_path = std::env::var("HOISTER_CONTROLLER_CA_CERT_PATH").ok();
     }
 
     config

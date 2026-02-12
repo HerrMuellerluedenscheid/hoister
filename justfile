@@ -79,6 +79,12 @@ dev-hoister:
     export RUST_LOG=debug,bollard=info,hyper_util=info
     cargo run --bin hoister
 
+dev-documentation:
+    #!/usr/bin/env bash
+    set -a
+    source .env.template
+    cd documentation && npm run dev
+
 test-message:
     #!/usr/bin/env bash
     set -a
