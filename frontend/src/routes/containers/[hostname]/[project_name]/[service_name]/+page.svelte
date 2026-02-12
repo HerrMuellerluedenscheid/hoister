@@ -1,13 +1,35 @@
 <script lang="ts">
   import type { ContainerPageData } from './+page.server';
   import Deployments from '$lib/components/Deployments.svelte';
+  import { invalidateAll } from '$app/navigation';
+  import { onDestroy, onMount } from 'svelte';
 
   let { data }: { data: ContainerPageData } = $props();
-  const container = data.inspections.container_inspections;
-  const deployments = data.deployments.slice(0, 8);
-  const hostname = data.inspections.hostname;
-  const service_name = data.inspections.service_name;
-  const project_name = data.inspections.project_name;
+  const container = $derived(data.inspections.container_inspections);
+  const deployments = $derived(data.deployments.slice(0, 8));
+  const hostname = $derived(data.inspections.hostname);
+  const service_name = $derived(data.inspections.service_name);
+  const project_name = $derived(data.inspections.project_name);
+  const last_updated = $derived(data.inspections.last_updated);
+
+  let stale = $state(false);
+  let refreshInterval: ReturnType<typeof setInterval>;
+
+  function checkStale() {
+    stale = new Date().getTime() - new Date(last_updated).getTime() > 60_000;
+  }
+
+  onMount(() => {
+    checkStale();
+    refreshInterval = setInterval(() => {
+      checkStale();
+      invalidateAll();
+    }, 10_000);
+  });
+
+  onDestroy(() => {
+    clearInterval(refreshInterval);
+  });
 
   function formatDate(dateString: string) {
     return new Date(dateString).toLocaleString();
@@ -32,7 +54,15 @@
       <h1 class="mb-2 text-3xl font-bold text-gray-900">{project_name} | {service_name}</h1>
       <p class="text-sm text-gray-500">Host: {hostname}</p>
       <p class="font-mono text-sm text-gray-500">{container.Id}</p>
+      <p class="text-sm text-gray-400">Last updated: {formatDate(last_updated)}</p>
     </div>
+
+    {#if stale}
+      <div class="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-800">
+        <p class="font-semibold">Stale data</p>
+        <p class="text-sm">This container has not reported in over a minute. The information below may be outdated.</p>
+      </div>
+    {/if}
 
     <!-- Status Card -->
     <div class="mb-6 rounded-lg bg-white p-6 shadow">

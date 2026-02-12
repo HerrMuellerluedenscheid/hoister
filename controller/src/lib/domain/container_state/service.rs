@@ -1,6 +1,7 @@
-use crate::domain::container_state::models::state::{AddContainerStateRequest, ContainerStateData};
+use crate::domain::container_state::models::state::{
+    AddContainerStateRequest, ContainerStateData, HostProjectState,
+};
 use crate::domain::container_state::port::{ContainerStateRepository, ContainerStateService};
-use bollard::models::ContainerInspectResponse;
 use hoister_shared::{HostName, ProjectName, ServiceName};
 
 #[derive(Clone)]
@@ -22,7 +23,7 @@ impl<CR: ContainerStateRepository> ContainerStateService for Service<CR> {
         hostname: &HostName,
         project_name: &ProjectName,
         service_name: &ServiceName,
-    ) -> Option<ContainerInspectResponse> {
+    ) -> Option<HostProjectState> {
         self.container_state_repository
             .get_container_state(hostname, project_name, service_name)
             .await

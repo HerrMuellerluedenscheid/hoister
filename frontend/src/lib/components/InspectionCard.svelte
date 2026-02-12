@@ -5,16 +5,20 @@
 
   const { inspection_data }: { inspection_data: ContainerStateResponse } = $props();
 
-  const inspection = inspection_data.container_inspections;
-  let hoisterEnabled = inspection.Config.Labels?.['hoister.enable'] === 'true';
-  let hoisterBackupVolumes = inspection.Config.Labels?.['hoister.backup-volumes'] === 'true';
+  const inspection = $derived(inspection_data.container_inspections);
+  const hoisterEnabled = $derived(inspection.Config.Labels?.['hoister.enable'] === 'true');
+  const hoisterBackupVolumes = $derived(inspection.Config.Labels?.['hoister.backup-volumes'] === 'true');
 
-  let uptime = $state(getUptime(inspection.State.StartedAt));
-  let interval: number;
+  let uptime = $state(getUptime(inspection_data.container_inspections.State.StartedAt));
+  let lastUpdatedAgo = $state(getTimeAgo(inspection_data.last_updated));
+  let stale = $state(isStale(inspection_data.last_updated));
+  let interval: ReturnType<typeof setInterval>;
 
   onMount(() => {
     interval = setInterval(() => {
       uptime = getUptime(inspection.State.StartedAt);
+      lastUpdatedAgo = getTimeAgo(inspection_data.last_updated);
+      stale = isStale(inspection_data.last_updated);
     }, 1000);
   });
 
@@ -42,13 +46,36 @@
       return `${seconds}s`;
     }
   }
+
+  function isStale(dateString: string): boolean {
+    const date = new Date(dateString);
+    const now = new Date();
+    return now.getTime() - date.getTime() > 60_000;
+  }
+
+  function getTimeAgo(dateString: string): string {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const seconds = Math.floor(diffMs / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+
+    if (hours > 0) {
+      return `${hours}h ${minutes % 60}m ago`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${seconds % 60}s ago`;
+    } else {
+      return `${seconds}s ago`;
+    }
+  }
 </script>
 
 <a
   href="/containers/{inspection_data.hostname}/{inspection_data.project_name}/{inspection_data.service_name}"
   class="block"
 >
-  <Card.Root class="min-h-50 shadow-sm transition-shadow hover:shadow-md">
+  <Card.Root class="min-h-50 shadow-sm transition-shadow hover:shadow-md {stale ? 'opacity-50 grayscale' : ''}">
     <Card.Header>
       <Card.Title class="flex items-center justify-between"
         >{inspection_data.service_name}
@@ -64,6 +91,9 @@
       <Card.Description>
         <p class="text-xs text-gray-600">
           Uptime: {uptime}
+        </p>
+        <p class="text-xs {stale ? 'font-medium text-amber-600' : 'text-gray-400'}">
+          {stale ? 'Stale — last update: ' : 'Updated: '}{lastUpdatedAgo}
         </p>
       </Card.Description>
     </Card.Header>
