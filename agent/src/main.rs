@@ -8,7 +8,10 @@ mod sse;
 use bollard::Docker;
 
 use bollard::query_parameters::EventsOptions;
-use log::{debug, error, info};
+use log::{debug, info};
+
+#[cfg(target_os = "linux")]
+use log::error;
 
 use bollard::errors::Error as BollardError;
 

@@ -18,6 +18,7 @@ export default defineConfig({
 						{ label: 'Notifications', slug: 'guides/notifications' },
 						{ label: 'Registries', slug: 'guides/registries' },
 						{ label: 'Dashboard', slug: 'guides/frontend' },
+						{ label: 'TLS encryption', slug: 'guides/tls' },
 					],
 				},
 				{
