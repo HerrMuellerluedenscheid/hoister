@@ -1,6 +1,8 @@
-use crate::domain::container_state::models::state::{AddContainerStateRequest, ContainerStateData};
+use crate::domain::container_state::models::state::{
+    AddContainerStateRequest, ContainerStateData, HostProjectState,
+};
 use crate::domain::container_state::port::ContainerStateRepository;
-use bollard::models::ContainerInspectResponse;
+use chrono::Utc;
 use hoister_shared::{HostName, ProjectName, ServiceName};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -24,16 +26,21 @@ impl ContainerStateRepository for StateMemory {
         hostname: &HostName,
         project_name: &ProjectName,
         service_name: &ServiceName,
-    ) -> Option<ContainerInspectResponse> {
+    ) -> Option<HostProjectState> {
         let state = self.state.read().await;
         state
             .get(hostname)
-            .and_then(|projects| {
-                projects
-                    .get(project_name)
-                    .and_then(|services| services.get(service_name))
+            .and_then(|projects| projects.get(project_name))
+            .filter(|host_project| host_project.services.contains_key(service_name))
+            .map(|host_project| HostProjectState {
+                services: host_project
+                    .services
+                    .iter()
+                    .filter(|(k, _)| *k == service_name)
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
+                last_updated: host_project.last_updated,
             })
-            .cloned()
     }
 
     async fn get_container_states(&self) -> ContainerStateData {
@@ -47,10 +54,15 @@ impl ContainerStateRepository for StateMemory {
         let container_inspect_responses = request.container_inspect_responses;
 
         let mut state = self.state.write().await;
-        *state
+        let entry = state
             .entry(hostname)
             .or_default()
             .entry(project_name)
-            .or_default() = container_inspect_responses;
+            .or_insert_with(|| HostProjectState {
+                services: Default::default(),
+                last_updated: Utc::now(),
+            });
+        entry.services = container_inspect_responses;
+        entry.last_updated = Utc::now();
     }
 }

@@ -8,6 +8,7 @@ use axum::{
     routing::{get, post},
 };
 use bollard::models::ContainerInspectResponse;
+use chrono::{DateTime, Utc};
 use log::{debug, error};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -177,6 +178,7 @@ struct ContainerStateResponse {
     service_name: ServiceName,
     #[ts(type = "any")]
     container_inspections: ContainerInspectResponse,
+    last_updated: DateTime<Utc>,
 }
 
 #[derive(TS, Serialize)]
@@ -187,13 +189,16 @@ impl From<ContainerStateData> for ContainerStateResponses {
     fn from(value: ContainerStateData) -> Self {
         let mut responses = Vec::new();
         for (hostname, projects) in value.iter() {
-            for (project_name, services) in projects.iter() {
-                for (service_name, container_inspect_responses) in services.iter() {
+            for (project_name, host_project_state) in projects.iter() {
+                for (service_name, container_inspect_responses) in
+                    host_project_state.services.iter()
+                {
                     let r = ContainerStateResponse {
                         hostname: hostname.clone(),
                         project_name: project_name.clone(),
                         service_name: service_name.clone(),
                         container_inspections: container_inspect_responses.clone(),
+                        last_updated: host_project_state.last_updated,
                     };
                     responses.push(r);
                 }
@@ -209,17 +214,24 @@ async fn get_container_state_by_service_name<DS: DeploymentsService, CS: Contain
     Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
 ) -> Result<Json<ApiResponse<ContainerStateResponse>>, StatusCode> {
     debug!("Received request for container state by id");
-    let container_state = state
+    let host_project_state = state
         .container_state_service
         .get_container_state(&hostname, &project_name, &service_name)
         .await
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let container_inspections = host_project_state
+        .services
+        .into_values()
+        .next()
         .ok_or(StatusCode::NOT_FOUND)?;
 
     Ok(Json::from(ApiResponse::success(ContainerStateResponse {
         hostname,
         project_name,
         service_name,
-        container_inspections: container_state,
+        container_inspections,
+        last_updated: host_project_state.last_updated,
     })))
 }
 

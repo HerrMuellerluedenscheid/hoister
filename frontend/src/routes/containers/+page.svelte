@@ -2,8 +2,22 @@
   import InspectionCard from '$lib/components/InspectionCard.svelte';
   import type { Inspection } from '$lib/api/inspect';
   import type { ContainerStateResponse } from '../../bindings/ContainerStateResponse';
+  import { invalidateAll } from '$app/navigation';
+  import { onDestroy, onMount } from 'svelte';
 
   let { data }: { data: Inspection } = $props();
+
+  let refreshInterval: ReturnType<typeof setInterval>;
+
+  onMount(() => {
+    refreshInterval = setInterval(() => {
+      invalidateAll();
+    }, 10_000);
+  });
+
+  onDestroy(() => {
+    clearInterval(refreshInterval);
+  });
 
   function groupByHostname(
     inspections: ContainerStateResponse[]
