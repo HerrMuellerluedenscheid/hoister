@@ -46,6 +46,8 @@ mod tests {
             api_secret: Some("tests-secret".to_string()),
             port: 3034,
             database_path: unique_db_path(),
+            tls_cert_path: None,
+            tls_key_path: None,
         };
         let (event_tx, _) = broadcast::channel::<ControllerEvent>(100);
 

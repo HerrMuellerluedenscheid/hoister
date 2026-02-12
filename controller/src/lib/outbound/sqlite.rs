@@ -316,14 +316,14 @@ impl DeploymentsRepository for Sqlite {
         )
         .await
         .map_err(|e| {
-            error!("Failed to create deployment: {:?}", e);
+            error!("Failed to create deployment: {e:?}");
             CreateDeploymentError::UnknownError
         })
     }
 
     async fn get_all_deployments(&self) -> Result<Vec<Deployment>, GetDeploymentError> {
         self.get_all_deployments().await.map_err(|e| {
-            error!("Failed to get all deployments: {:?}", e);
+            error!("Failed to get all deployments: {e:?}");
             GetDeploymentError::UnknownError
         })
     }
@@ -333,7 +333,7 @@ impl DeploymentsRepository for Sqlite {
         deployment_id: DeploymentId,
     ) -> Result<Deployment, GetDeploymentError> {
         self.get_deployment(deployment_id).await.map_err(|e| {
-            error!("Failed to get all deployments: {:?}", e);
+            error!("Failed to get all deployments: {e:?}");
             match e {
                 sqlx::error::Error::RowNotFound => GetDeploymentError::DeploymentNotFound,
                 _ => GetDeploymentError::UnknownError,
@@ -352,8 +352,7 @@ impl DeploymentsRepository for Sqlite {
                 sqlx::error::Error::RowNotFound => GetDeploymentError::DeploymentNotFound,
                 _ => {
                     error!(
-                        "Failed to get deployments of service: {:?} {:?} | {:?}",
-                        project_name, service_name, e
+                        "Failed to get deployments of service: {project_name:?} {service_name:?} | {e:?}"
                     );
                     GetDeploymentError::UnknownError
                 }
@@ -362,7 +361,7 @@ impl DeploymentsRepository for Sqlite {
 
     async fn get_project(&self, project_name: &ProjectName) -> Result<Project, GetProjectError> {
         self.get_project(project_name).await.map_err(|e| {
-            error!("Failed to get project: {:?}", e);
+            error!("Failed to get project: {e:?}");
             GetProjectError::UnknownError
         })
     }

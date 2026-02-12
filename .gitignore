@@ -6,3 +6,4 @@
 .env
 frontend/src/bindings
 media-content
+certs/

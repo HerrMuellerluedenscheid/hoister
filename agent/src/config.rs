@@ -102,6 +102,7 @@ impl Schedule {
 pub(crate) struct Controller {
     pub(crate) url: Url,
     pub(crate) token: Option<String>,
+    pub(crate) ca_cert_path: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -117,12 +118,37 @@ pub(crate) struct Config {
     pub(crate) dispatcher: Option<Dispatcher>,
 }
 
+pub(crate) fn build_http_client(controller: &Option<Controller>) -> reqwest::Client {
+    let mut builder = reqwest::Client::builder();
+
+    if let Some(controller) = controller {
+        if let Some(ca_path) = &controller.ca_cert_path {
+            let pem = std::fs::read(ca_path)
+                .unwrap_or_else(|e| panic!("Failed to read CA cert at {ca_path}: {e}"));
+            let cert = reqwest::Certificate::from_pem(&pem)
+                .unwrap_or_else(|e| panic!("Failed to parse CA cert at {ca_path}: {e}"));
+            builder = builder.add_root_certificate(cert);
+        }
+    }
+
+    builder.build().expect("Failed to build HTTP client")
+}
+
 pub(crate) async fn load_config(config_path: &Path) -> Config {
-    let config: Config = Figment::new()
+    let mut config: Config = Figment::new()
         .merge(Toml::file(config_path))
         .merge(Env::prefixed("HOISTER_").split("_"))
         .extract()
         .expect("Failed to load config");
+
+    // Workaround: figment's split("_") splits HOISTER_CONTROLLER_CA_CERT_PATH into
+    // controller.ca.cert.path instead of controller.ca_cert_path.
+    if let Some(ref mut controller) = config.controller {
+        if controller.ca_cert_path.is_none() {
+            controller.ca_cert_path = std::env::var("HOISTER_CONTROLLER_CA_CERT_PATH").ok();
+        }
+    }
+
     config
 }
 
@@ -175,7 +201,7 @@ mod tests {
             assert_eq!(config.registry.unwrap().ghcr.unwrap().username, "xxx");
             assert_eq!(
                 config.controller.unwrap().url,
-                Url::from("http://foobar:3033".parse().unwrap())
+                "http://foobar:3033".parse().unwrap()
             );
             assert_eq!(
                 dispatcher.discord.as_ref().unwrap().token,
@@ -198,6 +224,6 @@ mod tests {
             interval: Some(10),
             cron: Some(CronSchedule::from_str(expression).unwrap()),
         };
-        assert_eq!(schedule.sleep().as_secs() < 60, true); // any schedule should be less than 60 seconds
+        assert!(schedule.sleep().as_secs() < 60); // any schedule should be less than 60 seconds
     }
 }

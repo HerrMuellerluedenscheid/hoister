@@ -15,5 +15,4 @@ pub struct HostProjectState {
     pub last_updated: DateTime<Utc>,
 }
 
-pub(crate) type ContainerStateData =
-    HashMap<HostName, HashMap<ProjectName, HostProjectState>>;
+pub(crate) type ContainerStateData = HashMap<HostName, HashMap<ProjectName, HostProjectState>>;
