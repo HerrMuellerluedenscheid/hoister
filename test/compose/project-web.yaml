@@ -1,0 +1,36 @@
+# Project "project-web" on host-alpha
+# Agent monitors nginx and redis in this compose project.
+
+services:
+  hoister-agent:
+    image: emrius11/hoister:latest
+    build:
+      context: ../..
+      dockerfile: agent/Dockerfile
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../../certs/ca.pem:/certs/ca.pem:ro
+    labels:
+      - "hoister.hide=true"
+    networks:
+      - hoister-test-net
+    environment:
+      HOISTER_HOSTNAME: host-alpha
+      HOISTER_PROJECT: project-web
+      HOISTER_CONTROLLER_URL: "https://hoister-controller:3033"
+      HOISTER_CONTROLLER_CA_CERT_PATH: /certs/ca.pem
+      HOISTER_SCHEDULE_INTERVAL: "30"
+
+  nginx:
+    image: nginx:latest
+    labels:
+      - "hoister.enable=true"
+
+  redis:
+    image: redis:alpine
+    labels:
+      - "hoister.enable=true"
+
+networks:
+  hoister-test-net:
+    external: true

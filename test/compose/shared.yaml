@@ -1,0 +1,40 @@
+# Shared infrastructure: controller + frontend
+# Started first by run-multi-project.sh
+
+services:
+  hoister-controller:
+    image: emrius11/hoister-controller:latest
+    build:
+      context: ../..
+      dockerfile: controller/Dockerfile
+    volumes:
+      - controller-data:/data
+      - ../../certs:/certs:ro
+    networks:
+      - hoister-test-net
+    environment:
+      HOISTER_CONTROLLER_TLS_CERT_PATH: /certs/server.pem
+      HOISTER_CONTROLLER_TLS_KEY_PATH: /certs/server-key.pem
+
+  hoister-frontend:
+    image: emrius11/hoister-frontend:latest
+    build:
+      context: ../../frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../../certs/ca.pem:/certs/ca.pem:ro
+    networks:
+      - hoister-test-net
+    environment:
+      HOISTER_CONTROLLER_URL: "https://hoister-controller:3033"
+      HOISTER_AUTH_USERNAME: admin
+      HOISTER_AUTH_PASSWORD: password
+      NODE_EXTRA_CA_CERTS: /certs/ca.pem
+
+volumes:
+  controller-data:
+
+networks:
+  hoister-test-net:
+    external: true

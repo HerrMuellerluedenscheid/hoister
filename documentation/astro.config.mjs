@@ -18,6 +18,7 @@ export default defineConfig({
 						{ label: 'Notifications', slug: 'guides/notifications' },
 						{ label: 'Registries', slug: 'guides/registries' },
 						{ label: 'Dashboard', slug: 'guides/frontend' },
+						{ label: 'Multi-host setup', slug: 'guides/multi-host' },
 						{ label: 'TLS encryption', slug: 'guides/tls' },
 					],
 				},

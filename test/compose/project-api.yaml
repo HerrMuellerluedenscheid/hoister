@@ -1,0 +1,28 @@
+# Project "project-api" on host-beta
+# Agent monitors httpbin in this compose project.
+
+services:
+  hoister-agent:
+    image: emrius11/hoister:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../../certs/ca.pem:/certs/ca.pem:ro
+    labels:
+      - "hoister.hide=true"
+    networks:
+      - hoister-test-net
+    environment:
+      HOISTER_HOSTNAME: host-beta
+      HOISTER_PROJECT: project-api
+      HOISTER_CONTROLLER_URL: "https://hoister-controller:3033"
+      HOISTER_CONTROLLER_CA_CERT_PATH: /certs/ca.pem
+      HOISTER_SCHEDULE_INTERVAL: "30"
+
+  httpbin:
+    image: kennethreitz/httpbin:latest
+    labels:
+      - "hoister.enable=true"
+
+networks:
+  hoister-test-net:
+    external: true
