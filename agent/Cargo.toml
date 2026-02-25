@@ -29,6 +29,9 @@ chrono = "0.4.41"
 serde = {workspace = true}
 cron = { version = "0.15.0" , features = ["serde"]}
 url = "2.5.7"
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
 
 [dev-dependencies]
 figment2 = { workspace = true, features = ["toml", "test"] }

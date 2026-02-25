@@ -36,6 +36,7 @@ pub(crate) struct DockerHandler {
     pub(crate) docker: Docker,
     deployment_handler: DeploymentResultHandler,
     registries: Option<Registry>,
+    http_client: reqwest::Client,
 }
 
 struct VolumeBackup {
@@ -47,12 +48,14 @@ impl DockerHandler {
     pub(crate) fn new(
         deployment_handler: DeploymentResultHandler,
         registries: Option<Registry>,
+        http_client: reqwest::Client,
     ) -> Self {
         let docker = Docker::connect_with_local_defaults().unwrap();
         Self {
             docker,
             deployment_handler,
             registries,
+            http_client,
         }
     }
 
@@ -447,6 +450,7 @@ impl DockerHandler {
             ImageName::new(repo_name),
             image_tag,
             self.registries.as_ref(),
+            &self.http_client,
         )
         .await?;
         debug!("Image pulled successfully ({new_image_digest:?})");
@@ -771,6 +775,7 @@ async fn download_image(
     image_name: ImageName,
     image_tag: &str,
     registries: Option<&Registry>,
+    http_client: &reqwest::Client,
 ) -> Result<ImageDigest, HoisterError> {
     let mut update_available = false;
     let options = CreateImageOptions {
@@ -779,7 +784,7 @@ async fn download_image(
         ..Default::default()
     };
 
-    let credentials = get_credentials(registries, &image_name);
+    let credentials = get_credentials(http_client, registries, &image_name).await?;
 
     let mut pull_stream = docker.create_image(Some(options), None, credentials);
     while let Some(result) = pull_stream.next().await {
@@ -814,20 +819,84 @@ async fn download_image(
     Ok(ImageDigest::new(new_image_digest))
 }
 
-fn get_credentials(
+async fn get_credentials(
+    http_client: &reqwest::Client,
     registries: Option<&Registry>,
     image_name: &ImageName,
-) -> Option<DockerCredentials> {
-    debug!("Getting credentials for image: {}", image_name.as_str());
-    if image_name.as_str().starts_with("ghcr.io/") {
-        let ghcr = registries?.ghcr.as_ref()?;
-        return Some(DockerCredentials {
-            username: Some(ghcr.username.to_string()),
-            password: Some(ghcr.token.to_string()),
-            ..Default::default()
-        });
-    }
-    None
+) -> Result<Option<DockerCredentials>, HoisterError> {
+    let image = image_name.as_str();
+    debug!("Getting credentials for image: {image}");
+
+    let Some(registries) = registries else {
+        return Ok(None);
+    };
+
+    // GitHub Container Registry
+    if image.starts_with("ghcr.io/")
+        && let Some(ghcr) = &registries.ghcr {
+            return Ok(Some(DockerCredentials {
+                username: Some(ghcr.username.clone()),
+                password: Some(ghcr.token.clone()),
+                ..Default::default()
+            }));
+        }
+
+    // AWS Elastic Container Registry (e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/image)
+    if image.contains(".dkr.ecr.") && image.contains(".amazonaws.com/")
+        && let Some(ecr) = &registries.ecr {
+            let (username, password) = crate::ecr::get_ecr_token(http_client, ecr)
+                .await
+                .map_err(|e| HoisterError::EcrAuth(e.to_string()))?;
+            let server = image.split('/').next().unwrap_or("").to_string();
+            return Ok(Some(DockerCredentials {
+                username: Some(username),
+                password: Some(password),
+                serveraddress: Some(format!("https://{server}")),
+                ..Default::default()
+            }));
+        }
+
+    // Azure Container Registry (e.g. myregistry.azurecr.io/image)
+    if image.contains(".azurecr.io/")
+        && let Some(acr) = &registries.acr {
+            let server = image.split('/').next().unwrap_or("").to_string();
+            return Ok(Some(DockerCredentials {
+                username: Some(acr.username.clone()),
+                password: Some(acr.password.clone()),
+                serveraddress: Some(format!("https://{server}")),
+                ..Default::default()
+            }));
+        }
+
+    // Google Container Registry / Artifact Registry
+    // Matches gcr.io, {region}.gcr.io, and {region}-docker.pkg.dev
+    if (image.starts_with("gcr.io/")
+        || image.starts_with("us.gcr.io/")
+        || image.starts_with("eu.gcr.io/")
+        || image.starts_with("asia.gcr.io/")
+        || image.contains(".pkg.dev/"))
+        && let Some(gcr) = &registries.gcr {
+            return Ok(Some(DockerCredentials {
+                username: Some(gcr.username.clone()),
+                password: Some(gcr.password.clone()),
+                ..Default::default()
+            }));
+        }
+
+    // Docker Hub: explicit docker.io prefix, or no registry host in the image name
+    // (no dot in the part before the first slash, e.g. "nginx" or "user/app")
+    let registry_host = image.split('/').next().unwrap_or("");
+    if (image.starts_with("docker.io/") || !registry_host.contains('.'))
+        && let Some(dockerhub) = &registries.dockerhub {
+            return Ok(Some(DockerCredentials {
+                username: Some(dockerhub.username.clone()),
+                password: Some(dockerhub.password.clone()),
+                serveraddress: Some("https://index.docker.io/v1/".to_string()),
+                ..Default::default()
+            }));
+        }
+
+    Ok(None)
 }
 
 async fn check_container_health(docker: &Docker, container_name: &str) -> Result<(), HoisterError> {
@@ -858,12 +927,17 @@ async fn check_container_health(docker: &Docker, container_name: &str) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn test_load_credentials() {
+
+    #[tokio::test]
+    async fn test_no_credentials_without_config() {
+        let client = reqwest::Client::new();
         let credentials = get_credentials(
+            &client,
             None,
             &ImageName::new("ghcr.io/herrmuellerluedenscheid/educk-rs:main".to_string()),
-        );
+        )
+        .await
+        .unwrap();
         assert!(credentials.is_none());
     }
 }

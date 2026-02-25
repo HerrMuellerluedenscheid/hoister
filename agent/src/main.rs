@@ -1,6 +1,7 @@
 //! Fetch info of all running containers concurrently
 mod config;
 mod docker;
+mod ecr;
 mod monitor;
 mod notifications;
 mod sse;
@@ -49,6 +50,8 @@ enum HoisterError {
     Docker(String),
     #[error("Failed to get the project name")]
     ProjectNameDetectionFailed,
+    #[error("ECR authentication failed: {0}")]
+    EcrAuth(String),
 }
 
 #[tokio::main]
@@ -92,7 +95,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    let docker = Arc::new(DockerHandler::new(result_handler, config.registry.clone()));
+    let docker = Arc::new(DockerHandler::new(
+        result_handler,
+        config.registry.clone(),
+        http_client.clone(),
+    ));
 
     let mut sse_handler = SSEHandler::new(docker.clone(), rx_sse);
     tokio::spawn(async move {
