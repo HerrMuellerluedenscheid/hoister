@@ -341,7 +341,26 @@ impl DockerHandler {
     ) -> Result<(), HoisterError> {
         debug!("Using temporary Alpine container for volume copy");
 
-        // TODO: replace with hoister container to avoid having to pull image
+        const ALPINE_IMAGE: &str = "alpine:latest";
+
+        // Pull alpine if it isn't already present locally.
+        if self.docker.inspect_image(ALPINE_IMAGE).await.is_err() {
+            info!("alpine:latest not found locally — pulling...");
+            let pull_options = CreateImageOptions {
+                from_image: Some("alpine".to_string()),
+                tag: Some("latest".to_string()),
+                ..Default::default()
+            };
+            let mut pull_stream = self.docker.create_image(Some(pull_options), None, None);
+            while let Some(result) = pull_stream.next().await {
+                match result {
+                    Ok(output) => debug!("{output:?}"),
+                    Err(e) => error!("Error pulling alpine: {e:?}"),
+                }
+            }
+            info!("alpine:latest pulled successfully");
+        }
+
         let config = ContainerCreateBody {
             image: Some("alpine:latest".to_string()),
             cmd: Some(vec![
@@ -363,9 +382,7 @@ impl DockerHandler {
         let temp_container = self
             .docker
             .create_container(None::<CreateContainerOptions>, config)
-            .await.inspect_err(|_| {
-            warn!("Failed to create temporary container for volume copy. This requires the alpine:latest image to be pulled manually.");
-        })?;
+            .await?;
 
         info!("Created temporary container: {}", temp_container.id);
         self.docker
