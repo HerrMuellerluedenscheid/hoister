@@ -398,6 +398,25 @@ impl DockerHandler {
         project: &ProjectName,
         container_id: &ContainerID,
     ) -> Result<(), HoisterError> {
+        self.do_update_container(project, container_id, false).await
+    }
+
+    /// Like `update_container` but proceeds even when the image is already
+    /// up-to-date locally (i.e. was pre-pulled during a check-only pass).
+    pub(crate) async fn apply_update_container(
+        &self,
+        project: &ProjectName,
+        container_id: &ContainerID,
+    ) -> Result<(), HoisterError> {
+        self.do_update_container(project, container_id, true).await
+    }
+
+    async fn do_update_container(
+        &self,
+        project: &ProjectName,
+        container_id: &ContainerID,
+        force: bool,
+    ) -> Result<(), HoisterError> {
         let service_identifier = get_service_identifier(&self.docker, container_id).await?;
 
         let container_details = self
@@ -425,13 +444,30 @@ impl DockerHandler {
             serde_json::to_string_pretty(&container_details).unwrap()
         );
 
-        let new_image_digest = download_image(
+        let new_image_digest = match download_image(
             &self.docker,
             ImageName::new(repo_name),
             image_tag,
             self.registries.as_ref(),
         )
-        .await?;
+        .await
+        {
+            Ok(digest) => digest,
+            Err(HoisterError::NoUpdateAvailable) if force => {
+                // Image was already pulled during the check-only pass; read the
+                // local digest and proceed with the recreate.
+                let full = format!("{}:{}", repo_name, image_tag);
+                let info =
+                    self.docker.inspect_image(&full).await.map_err(|e| {
+                        HoisterError::Docker(format!("Failed to inspect image: {e}"))
+                    })?;
+                ImageDigest::new(
+                    info.id
+                        .ok_or(HoisterError::Docker("image id empty".to_string()))?,
+                )
+            }
+            Err(e) => return Err(e),
+        };
         debug!("Image pulled successfully ({new_image_digest:?})");
 
         // Check if volume backup is enabled via label
@@ -580,6 +616,59 @@ impl DockerHandler {
             .map_err(|e| HoisterError::Docker(format!("Failed to remove image: {e}")))?;
 
         Ok(())
+    }
+
+    /// Check if an update is available for a container without applying it.
+    /// Returns `(service_name, image_name, digest)` if a newer image exists.
+    pub(crate) async fn check_update_available(
+        &self,
+        project: &ProjectName,
+        container_id: &ContainerID,
+    ) -> Result<(ServiceName, ImageName, ImageDigest), HoisterError> {
+        let service_name = get_service_identifier(&self.docker, container_id).await?;
+
+        let container_details = self
+            .docker
+            .inspect_container(container_id, None::<InspectContainerOptions>)
+            .await?;
+
+        let image_name = ImageName::new(
+            container_details
+                .config
+                .as_ref()
+                .and_then(|c| c.image.as_deref())
+                .ok_or_else(|| HoisterError::Docker("image name empty".to_string()))?
+                .to_string(),
+        );
+
+        let (repo, tag) = image_name.split();
+        let digest = download_image(
+            &self.docker,
+            ImageName::new(repo),
+            tag,
+            self.registries.as_ref(),
+        )
+        .await?;
+
+        let _ = project; // used for context only
+        Ok((service_name, image_name, digest))
+    }
+
+    /// Find a container ID whose service identifier matches `service_name`.
+    pub(crate) async fn find_container_by_service(
+        &self,
+        project: &ProjectName,
+        service_name: &ServiceName,
+    ) -> Option<ContainerID> {
+        let containers = self.get_containers(project).await.ok()?;
+        for container in containers {
+            let id = container.id?;
+            if let Ok(svc) = get_service_identifier(&self.docker, &id).await
+                && &svc == service_name {
+                    return Some(id);
+                }
+        }
+        None
     }
 
     pub(crate) async fn get_containers(

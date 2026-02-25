@@ -1,5 +1,6 @@
 use crate::docker::DockerHandler;
 use controller::sse::ControllerEvent;
+use hoister_shared::HostName;
 use log::{info, warn};
 use reqwest::Client;
 use std::sync::Arc;
@@ -12,11 +13,20 @@ use tokio_stream::StreamExt;
 pub struct SSEHandler {
     docker: Arc<DockerHandler>,
     rx: mpsc::Receiver<ControllerEvent>,
+    hostname: HostName,
 }
 
 impl SSEHandler {
-    pub(crate) fn new(docker: Arc<DockerHandler>, rx: mpsc::Receiver<ControllerEvent>) -> Self {
-        Self { docker, rx }
+    pub(crate) fn new(
+        docker: Arc<DockerHandler>,
+        rx: mpsc::Receiver<ControllerEvent>,
+        hostname: HostName,
+    ) -> Self {
+        Self {
+            docker,
+            rx,
+            hostname,
+        }
     }
 
     pub(crate) async fn start(&mut self) {
@@ -27,6 +37,29 @@ impl SSEHandler {
                         .update_container(&project_name, &container_id)
                         .await
                         .expect("TODO: panic message");
+                }
+                ControllerEvent::ApplyUpdate((target_host, project_name, service_name)) => {
+                    if target_host == self.hostname {
+                        if let Some(container_id) = self
+                            .docker
+                            .find_container_by_service(&project_name, &service_name)
+                            .await
+                        {
+                            if let Err(e) = self
+                                .docker
+                                .apply_update_container(&project_name, &container_id)
+                                .await
+                            {
+                                warn!("Failed to apply update for {}: {e}", service_name.as_str());
+                            }
+                        } else {
+                            warn!(
+                                "ApplyUpdate: no container found for service {} in project {}",
+                                service_name.as_str(),
+                                project_name.as_str()
+                            );
+                        }
+                    }
                 }
             }
         }

@@ -8,7 +8,7 @@ mod sse;
 use bollard::Docker;
 
 use bollard::query_parameters::EventsOptions;
-use log::{debug, info};
+use log::{debug, info, warn};
 
 #[cfg(target_os = "linux")]
 use log::error;
@@ -28,7 +28,10 @@ use std::time::Duration;
 use thiserror::Error;
 use tokio::time::sleep;
 
-use crate::notifications::{DeploymentResultHandler, setup_dispatcher, start_notification_handler};
+use crate::notifications::{
+    DeploymentResultHandler, send_pending_update_to_controller, setup_dispatcher,
+    start_notification_handler,
+};
 
 use crate::sse::SSEHandler;
 use hoister_shared::ProjectName;
@@ -94,7 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     let docker = Arc::new(DockerHandler::new(result_handler, config.registry.clone()));
 
-    let mut sse_handler = SSEHandler::new(docker.clone(), rx_sse);
+    let mut sse_handler = SSEHandler::new(docker.clone(), rx_sse, config.hostname.clone());
     tokio::spawn(async move {
         sse_handler.start().await;
     });
@@ -122,7 +125,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     loop {
         debug!("---------- start checking containers ----------");
-        run_update_check(&docker, &project_name).await?;
+        if config.auto_update {
+            run_update_check(&docker, &project_name).await?;
+        } else {
+            run_update_check_only(&docker, &project_name, &config, &http_client).await?;
+        }
         let sleep = config.schedule.sleep();
         debug!("---------- end checking containers ----------");
         debug!("sleeping for {} seconds...", sleep.as_secs_f64());
@@ -141,6 +148,51 @@ async fn run_update_check(
         let container_id: ContainerID = container.id.expect("container ID missing");
         let result = docker.update_container(project_name, &container_id).await;
         debug!("result: {result:?}");
+    }
+    Ok(())
+}
+
+async fn run_update_check_only(
+    docker: &DockerHandler,
+    project_name: &ProjectName,
+    config: &config::Config,
+    client: &reqwest::Client,
+) -> Result<(), Box<dyn Error>> {
+    let containers = docker.get_containers(project_name).await?;
+    for container in containers {
+        debug!("Checking (no-apply) container {:?}", container.id);
+        let container_id: ContainerID = container.id.expect("container ID missing");
+        match docker
+            .check_update_available(project_name, &container_id)
+            .await
+        {
+            Ok((service, image, digest)) => {
+                info!(
+                    "Update available for {}: {}",
+                    service.as_str(),
+                    image.as_str()
+                );
+                if let Err(e) = send_pending_update_to_controller(
+                    config,
+                    client,
+                    &config.hostname,
+                    project_name,
+                    &service,
+                    &image,
+                    &digest,
+                )
+                .await
+                {
+                    warn!("Failed to report pending update: {e}");
+                }
+            }
+            Err(HoisterError::NoUpdateAvailable) => {
+                debug!("No update available for container {container_id}");
+            }
+            Err(e) => {
+                warn!("Error checking update for container {container_id}: {e}");
+            }
+        }
     }
     Ok(())
 }

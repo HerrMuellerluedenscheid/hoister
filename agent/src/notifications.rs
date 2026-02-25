@@ -102,6 +102,54 @@ impl DeploymentResultHandler {
     }
 }
 
+pub(crate) async fn send_pending_update_to_controller(
+    config: &Config,
+    client: &reqwest::Client,
+    hostname: &HostName,
+    project: &ProjectName,
+    service: &ServiceName,
+    image: &ImageName,
+    digest: &ImageDigest,
+) -> Result<(), NotificationError> {
+    let controller = match &config.controller {
+        Some(c) => c,
+        None => {
+            info!("No controller configured, skipping pending update notification");
+            return Ok(());
+        }
+    };
+
+    let url = controller.url.join("/pending-updates")?;
+    let token = controller.token.as_deref().unwrap_or_default();
+
+    #[derive(serde::Serialize)]
+    struct PendingUpdateRequest<'a> {
+        hostname: &'a HostName,
+        project_name: &'a ProjectName,
+        service_name: &'a ServiceName,
+        image_name: &'a ImageName,
+        new_digest: &'a ImageDigest,
+    }
+
+    let body = PendingUpdateRequest {
+        hostname,
+        project_name: project,
+        service_name: service,
+        image_name: image,
+        new_digest: digest,
+    };
+
+    let res = client
+        .post(url)
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {token})"))
+        .json(&body)
+        .send()
+        .await;
+    debug!("pending update response: {res:?}");
+    Ok(())
+}
+
 pub(super) async fn start_notification_handler(
     config: &Config,
     mut rx: Receiver<CreateDeployment>,
