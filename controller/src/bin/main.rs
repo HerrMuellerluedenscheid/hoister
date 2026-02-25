@@ -2,6 +2,7 @@ use controller::config::get_config;
 use controller::domain::container_state::service::Service as ContainerStateService;
 use controller::domain::deployments::service::Service as DeploymentsService;
 use controller::inbound::server::{AppState, create_app};
+use controller::outbound::pending_updates_memory::PendingUpdatesMemory;
 use controller::outbound::sqlite::Sqlite;
 use controller::outbound::state_memory::StateMemory;
 use controller::sse::ControllerEvent;
@@ -25,11 +26,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let container_state_repo = StateMemory::default();
     let container_state_service = ContainerStateService::new(container_state_repo);
+    let pending_updates = PendingUpdatesMemory::default();
     let state = AppState {
         deployments_service: Arc::new(deployments_service),
         container_state_service: Arc::new(container_state_service),
         api_secret: config.api_secret.clone(),
         event_tx,
+        pending_updates,
     };
 
     let app = create_app(state).await;

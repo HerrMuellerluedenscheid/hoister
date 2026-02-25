@@ -58,6 +58,7 @@ mod tests {
             container_state_service: Arc::new(container_state_service),
             api_secret: config.api_secret.clone(),
             event_tx,
+            pending_updates: Default::default(),
         };
 
         let app = create_app(state).await;

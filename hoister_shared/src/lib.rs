@@ -95,6 +95,7 @@ pub enum DeploymentStatus {
     NoUpdate = 4,
     Failed = 5,
     TestMessage = 6,
+    UpdateAvailable = 7,
 }
 
 impl Display for DeploymentStatus {
@@ -107,6 +108,7 @@ impl Display for DeploymentStatus {
             &DeploymentStatus::NoUpdate => write!(f, "NoUpdate"),
             &DeploymentStatus::Failed => write!(f, "Deployment Failed ❌"),
             &DeploymentStatus::TestMessage => write!(f, "Test Message"),
+            &DeploymentStatus::UpdateAvailable => write!(f, "Update Available"),
         }
     }
 }

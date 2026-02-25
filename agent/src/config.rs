@@ -140,6 +140,10 @@ pub(crate) struct Controller {
     pub(crate) ca_cert_path: Option<String>,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Deserialize, Debug, Clone)]
 pub(crate) struct Config {
     pub(crate) project: Option<ProjectName>,
@@ -147,6 +151,8 @@ pub(crate) struct Config {
     pub(crate) hostname: HostName,
     #[serde(default)]
     pub(crate) send_test_message: bool,
+    #[serde(default = "default_true")]
+    pub(crate) auto_update: bool,
     pub(crate) schedule: Schedule,
     pub(crate) registry: Option<Registry>,
     pub(crate) controller: Option<Controller>,

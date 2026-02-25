@@ -4,7 +4,7 @@ use crate::inbound::server::AppState;
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures_util::stream::Stream;
-use hoister_shared::ProjectName;
+use hoister_shared::{HostName, ProjectName, ServiceName};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 
@@ -13,6 +13,7 @@ pub type ContainerID = String;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum ControllerEvent {
     Retry((ProjectName, ContainerID)),
+    ApplyUpdate((HostName, ProjectName, ServiceName)),
 }
 
 pub(crate) async fn sse_handler<DS: DeploymentsService, CS: ContainerStateService>(

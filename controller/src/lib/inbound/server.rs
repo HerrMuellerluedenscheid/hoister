@@ -20,6 +20,7 @@ use crate::domain::deployments::models::deployment::{
     CreateDeploymentRequest, Deployment, GetDeploymentError,
 };
 use crate::domain::deployments::ports::DeploymentsService;
+use crate::outbound::pending_updates_memory::{PendingUpdate, PendingUpdatesMemory};
 use crate::sse::{ControllerEvent, sse_handler};
 use hoister_shared::{CreateDeployment, HostName, ProjectName, ServiceName};
 use tokio::sync::broadcast;
@@ -31,6 +32,7 @@ pub struct AppState<DS: DeploymentsService, CS: ContainerStateService> {
     pub container_state_service: Arc<CS>,
     pub api_secret: Option<String>,
     pub event_tx: broadcast::Sender<ControllerEvent>,
+    pub pending_updates: PendingUpdatesMemory,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -243,6 +245,51 @@ async fn get_container_states<DS: DeploymentsService, CS: ContainerStateService>
     Json(ContainerStateResponses::from(states)).into_response()
 }
 
+#[derive(Deserialize)]
+struct PendingUpdateRequest {
+    hostname: HostName,
+    project_name: ProjectName,
+    service_name: ServiceName,
+    image_name: String,
+    new_digest: String,
+}
+
+async fn post_pending_update<DS: DeploymentsService, CS: ContainerStateService>(
+    State(state): State<AppState<DS, CS>>,
+    Json(payload): Json<PendingUpdateRequest>,
+) -> impl IntoResponse {
+    let update = PendingUpdate {
+        hostname: payload.hostname,
+        project_name: payload.project_name,
+        service_name: payload.service_name,
+        image_name: payload.image_name,
+        new_digest: payload.new_digest,
+        detected_at: Utc::now(),
+    };
+    state.pending_updates.add(update).await;
+    StatusCode::OK.into_response()
+}
+
+async fn get_pending_updates<DS: DeploymentsService, CS: ContainerStateService>(
+    State(state): State<AppState<DS, CS>>,
+) -> impl IntoResponse {
+    let updates = state.pending_updates.get_all().await;
+    Json(updates).into_response()
+}
+
+async fn apply_pending_update<DS: DeploymentsService, CS: ContainerStateService>(
+    State(state): State<AppState<DS, CS>>,
+    Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
+) -> impl IntoResponse {
+    state
+        .pending_updates
+        .remove(&hostname, &project_name, &service_name)
+        .await;
+    let event = ControllerEvent::ApplyUpdate((hostname, project_name, service_name));
+    let _ = state.event_tx.send(event);
+    StatusCode::OK.into_response()
+}
+
 pub async fn create_app<DS: DeploymentsService, CS: ContainerStateService>(
     state: AppState<DS, CS>,
 ) -> Router {
@@ -263,6 +310,12 @@ pub async fn create_app<DS: DeploymentsService, CS: ContainerStateService>(
         .route(
             "/container/state/{hostname}/{project_name}/{service_name}",
             get(get_container_state_by_service_name),
+        )
+        .route("/pending-updates", post(post_pending_update))
+        .route("/pending-updates", get(get_pending_updates))
+        .route(
+            "/pending-updates/{hostname}/{project_name}/{service_name}/apply",
+            post(apply_pending_update),
         )
         .layer(middleware::from_fn_with_state(
             state.clone(),
