@@ -17,12 +17,47 @@ type BotToken = String;
 #[derive(Deserialize, Debug, Clone)]
 pub(crate) struct Registry {
     pub(crate) ghcr: Option<GithubRegistry>,
+    pub(crate) dockerhub: Option<DockerHubRegistry>,
+    pub(crate) ecr: Option<EcrRegistry>,
+    pub(crate) acr: Option<AcrRegistry>,
+    pub(crate) gcr: Option<GcrRegistry>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub(crate) struct GithubRegistry {
     pub(crate) username: String,
     pub(crate) token: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct DockerHubRegistry {
+    pub(crate) username: String,
+    pub(crate) password: String,
+}
+
+/// AWS Elastic Container Registry. Credentials are used to dynamically fetch
+/// a short-lived auth token from the ECR API via AWS Signature V4.
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct EcrRegistry {
+    pub(crate) access_key_id: String,
+    pub(crate) secret_access_key: String,
+    pub(crate) region: String,
+}
+
+/// Azure Container Registry.
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct AcrRegistry {
+    pub(crate) username: String,
+    pub(crate) password: String,
+}
+
+/// Google Container Registry / Google Artifact Registry.
+/// Use `_json_key` as username and the service account JSON as password,
+/// or `oauth2accesstoken` as username with a short-lived access token.
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct GcrRegistry {
+    pub(crate) username: String,
+    pub(crate) password: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]
