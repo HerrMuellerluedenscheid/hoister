@@ -668,6 +668,7 @@ impl DockerHandler {
             ImageName::new(repo),
             tag,
             self.registries.as_ref(),
+            &self.http_client,
         )
         .await?;
 
@@ -685,9 +686,10 @@ impl DockerHandler {
         for container in containers {
             let id = container.id?;
             if let Ok(svc) = get_service_identifier(&self.docker, &id).await
-                && &svc == service_name {
-                    return Some(id);
-                }
+                && &svc == service_name
+            {
+                return Some(id);
+            }
         }
         None
     }
@@ -922,40 +924,44 @@ async fn get_credentials(
 
     // GitHub Container Registry
     if image.starts_with("ghcr.io/")
-        && let Some(ghcr) = &registries.ghcr {
-            return Ok(Some(DockerCredentials {
-                username: Some(ghcr.username.clone()),
-                password: Some(ghcr.token.clone()),
-                ..Default::default()
-            }));
-        }
+        && let Some(ghcr) = &registries.ghcr
+    {
+        return Ok(Some(DockerCredentials {
+            username: Some(ghcr.username.clone()),
+            password: Some(ghcr.token.clone()),
+            ..Default::default()
+        }));
+    }
 
     // AWS Elastic Container Registry (e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/image)
-    if image.contains(".dkr.ecr.") && image.contains(".amazonaws.com/")
-        && let Some(ecr) = &registries.ecr {
-            let (username, password) = crate::ecr::get_ecr_token(http_client, ecr)
-                .await
-                .map_err(|e| HoisterError::EcrAuth(e.to_string()))?;
-            let server = image.split('/').next().unwrap_or("").to_string();
-            return Ok(Some(DockerCredentials {
-                username: Some(username),
-                password: Some(password),
-                serveraddress: Some(format!("https://{server}")),
-                ..Default::default()
-            }));
-        }
+    if image.contains(".dkr.ecr.")
+        && image.contains(".amazonaws.com/")
+        && let Some(ecr) = &registries.ecr
+    {
+        let (username, password) = crate::ecr::get_ecr_token(http_client, ecr)
+            .await
+            .map_err(|e| HoisterError::EcrAuth(e.to_string()))?;
+        let server = image.split('/').next().unwrap_or("").to_string();
+        return Ok(Some(DockerCredentials {
+            username: Some(username),
+            password: Some(password),
+            serveraddress: Some(format!("https://{server}")),
+            ..Default::default()
+        }));
+    }
 
     // Azure Container Registry (e.g. myregistry.azurecr.io/image)
     if image.contains(".azurecr.io/")
-        && let Some(acr) = &registries.acr {
-            let server = image.split('/').next().unwrap_or("").to_string();
-            return Ok(Some(DockerCredentials {
-                username: Some(acr.username.clone()),
-                password: Some(acr.password.clone()),
-                serveraddress: Some(format!("https://{server}")),
-                ..Default::default()
-            }));
-        }
+        && let Some(acr) = &registries.acr
+    {
+        let server = image.split('/').next().unwrap_or("").to_string();
+        return Ok(Some(DockerCredentials {
+            username: Some(acr.username.clone()),
+            password: Some(acr.password.clone()),
+            serveraddress: Some(format!("https://{server}")),
+            ..Default::default()
+        }));
+    }
 
     // Google Container Registry / Artifact Registry
     // Matches gcr.io, {region}.gcr.io, and {region}-docker.pkg.dev
@@ -964,26 +970,28 @@ async fn get_credentials(
         || image.starts_with("eu.gcr.io/")
         || image.starts_with("asia.gcr.io/")
         || image.contains(".pkg.dev/"))
-        && let Some(gcr) = &registries.gcr {
-            return Ok(Some(DockerCredentials {
-                username: Some(gcr.username.clone()),
-                password: Some(gcr.password.clone()),
-                ..Default::default()
-            }));
-        }
+        && let Some(gcr) = &registries.gcr
+    {
+        return Ok(Some(DockerCredentials {
+            username: Some(gcr.username.clone()),
+            password: Some(gcr.password.clone()),
+            ..Default::default()
+        }));
+    }
 
     // Docker Hub: explicit docker.io prefix, or no registry host in the image name
     // (no dot in the part before the first slash, e.g. "nginx" or "user/app")
     let registry_host = image.split('/').next().unwrap_or("");
     if (image.starts_with("docker.io/") || !registry_host.contains('.'))
-        && let Some(dockerhub) = &registries.dockerhub {
-            return Ok(Some(DockerCredentials {
-                username: Some(dockerhub.username.clone()),
-                password: Some(dockerhub.password.clone()),
-                serveraddress: Some("https://index.docker.io/v1/".to_string()),
-                ..Default::default()
-            }));
-        }
+        && let Some(dockerhub) = &registries.dockerhub
+    {
+        return Ok(Some(DockerCredentials {
+            username: Some(dockerhub.username.clone()),
+            password: Some(dockerhub.password.clone()),
+            serveraddress: Some("https://index.docker.io/v1/".to_string()),
+            ..Default::default()
+        }));
+    }
 
     Ok(None)
 }
