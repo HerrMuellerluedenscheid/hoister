@@ -206,7 +206,12 @@ impl From<ContainerStateData> for ContainerStateResponses {
                 }
             }
         }
-        responses.sort_by(|a, b| a.hostname.cmp(&b.hostname));
+        responses.sort_by(|a, b| {
+            a.hostname
+                .cmp(&b.hostname)
+                .then_with(|| a.project_name.0.cmp(&b.project_name.0))
+                .then_with(|| a.service_name.0.cmp(&b.service_name.0))
+        });
         Self(responses)
     }
 }

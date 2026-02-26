@@ -46,6 +46,15 @@ test-fails:
     docker build --no-cache -f test/fails.Dockerfile --push -t emrius11/example:latest .
     docker image rm emrius11/example:latest
 
+dev: bindings
+    #!/usr/bin/env bash
+    set -euo pipefail
+    trap 'kill 0' EXIT
+    just dev-controller &
+    just dev-hoister &
+    just dev-frontend &
+    wait
+
 dev-frontend: bindings
     #!/usr/bin/env bash
     set -a
