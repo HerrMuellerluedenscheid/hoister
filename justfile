@@ -85,6 +85,12 @@ dev-documentation:
     source .env.template
     cd documentation && npm run dev
 
+deploy-documentation:
+    #!/usr/bin/env bash
+    set -a
+    source .env.template
+    cd documentation && npm run deploy
+
 test-message:
     #!/usr/bin/env bash
     set -a

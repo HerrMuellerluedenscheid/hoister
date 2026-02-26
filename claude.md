@@ -5,6 +5,7 @@ directories:
 * agent: the client side application running as a container in a users docker compose stack. Can be used standalone without the controller
 * controller: backend that allows to aggregate infos on rolled out updates and their result as well as container stats. Maybe more in the future
 * frontend: connecting to the controller providing aggregated information for the user
+* documentation: documentation using astro
 
 
 This project uses:
