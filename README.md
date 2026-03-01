@@ -39,6 +39,7 @@ services:
       - no-new-privileges:true
     depends_on:
       - example
+    restart: unless-stopped
 ```
 
 Finally, push a new image to your registry using the same tag, and Hoister will automatically update the container.
