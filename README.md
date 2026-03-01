@@ -1,129 +1,47 @@
-Hoister 🏗
-==========
+Hoister
+=======
 
 [![Discord](https://img.shields.io/discord/1453411867224576105?color=7289da&label=Discord&logo=discord&logoColor=white)](https://discord.gg/D8kHFJXY7X)
 
 Deploy Docker images automatically with rollback support.
 
-Add the label `hoister.enable=true` to your Docker Compose service.
-Hoister checks if a new version of the image (under the same tag) is available.
-It will download and start the updated container with the same settings, volumes, and networks as before.
-In case of failure, it will automatically roll back to the last working state.
+> **Full documentation at [docs.hoister.io](https://docs.hoister.io)**
 
-⚙️ Setup
---------
+---
 
-Add the hoister.enable=true label to any service you want to manage:
+## Quick start
+
+Add the `hoister.enable=true` label to any service you want Hoister to manage, then add Hoister itself to the same Compose file:
 
 ```yaml
 services:
   example:
-    image: emrius11/example:latest
+    image: myorg/myapp:latest
     labels:
-      - "hoister.enable=true"         # <- Add this label to your service
-```
+      - "hoister.enable=true"
 
-If you want hoister to also manage a containers' **named volumes** add `hoister.backup-volumes=true` as a label. On each
-container update, the volumes will be backed up and restored if an update fails.
-
-Then, **either** download the [latest release](https://github.com/HerrMuellerluedenscheid/hoister/releases) that matches your OS or
-add the Hoister container alongside your services:
-
-```yaml
-services:
   hoister:
     image: emrius11/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
       - no-new-privileges:true
-    depends_on:
-      - example
     restart: unless-stopped
 ```
 
-Finally, push a new image to your registry using the same tag, and Hoister will automatically update the container.
+Push a new image under the same tag — Hoister will pull it and restart the container automatically. If the new container fails to start, it rolls back to the previous version.
 
-📬 Notifications and Configuration
-----------------------------------
+See the [Getting Started guide](https://docs.hoister.io/guides/getting-started/) for a full walkthrough including volume backups.
 
-Define the following environment variables to schedule checks and receive updates and rollback notifications via **Telegram**, **Slack**, **Discord** or **Email**:
+---
 
-```shell
-HOISTER_REGISTRY_SLACK_WEBHOOK="https://hooks.slack.com/services/XXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXX"  # Webhook URL
-HOISTER_REGISTRY_SLACK_CHANNEL="#my-update-channel"
-HOISTER_REGISTRY_TELEGRAM_TOKEN="12345656789:XXXXXXXXXX-XXXXXXXXX-XXXXXXXXX"  # Bot token
-HOISTER_REGISTRY_TELEGRAM_CHAT="9999999999"                        # Chat ID
-HOISTER_REGISTRY_DISCORD_TOKEN="soijf23JASDFOIJ@.Gj7gl8.sdfoij234sdf_sdfijoij23lijasdASDF"   # Bot token
-HOISTER_REGISTRY_DISCORD_CHANNEL="12334556898709812334"            # Channel ID
-HOISTER_DISPATCHER_GOTIFY_TOKEN="A2SlasiSDLJ1sd"
-HOISTER_DISPATCHER_GOTIFY_SERVER="http://localhost:8090"
-HOISTER_DISPATCHER_EMAIL_SMTP_PASSWORD="My_secret-email-password"  # SMTP password
-HOISTER_DISPATCHER_EMAIL_SMTP_SERVER="smtp.foomail.com"            # SMTP server
-HOISTER_DISPATCHER_EMAIL_SMTP_USER="my-email-user@somedomain.com"  # SMTP user
-HOISTER_DISPATCHER_EMAIL_RECIPIENT="foo.bar@gmail.com"             # Email address to send deployments to
-HOISTER_REGISTRY_CONTROLLER_URL="http://hoister-controller:3033"   # if you want to use the front end
-HOISTER_REGISTRY_SCHEDULE_INTERVAL=60                              # sleep in seconds between checks
-HOISTER_REGISTRY_SCHEDULE_CRON="0 * * * * * *"                     # cron expression to schedule the checks (precedence over interval)
-```
+## Learn more
 
-Check the [docker-compose.yaml](./docker-compose.yaml) example.
-
-## Private Registries
-
-### [github registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-to-the-container-registry) using a classic PAT
-
-```
-HOISTER_REGISTRY_GHCR_USERNAME="your-github-username"
-HOISTER_REGISTRY_GHCR_TOKEN="ghp_DW1.............."
-```
-
-### Global configuration
-
-As a fallback you can use these environment variables to authenticate against a private registry:
-
-```
-HOISTER_REGISTRY_USERNAME
-HOISTER_REGISTRY_PASSWORD
-HOISTER_REGISTRY_AUTH
-HOISTER_REGISTRY_EMAIL
-HOISTER_REGISTRY_SERVERADDRESS
-HOISTER_REGISTRY_IDENTITYTOKEN
-HOISTER_REGISTRY_REGISTRYTOKEN
-```
-
-## Frontend (optional)
-
-While the Hoister can be used as a standalone container, you can also deploy the optional frontend to manage and monitor your container updates.
-Add the following service to your docker-compose.yaml:
-
-```yaml
-  hoister-controller:
-    image: emrius11/hoister-controller:latest
-
-  hoister-frontend:
-    image: emrius11/hoister-frontend:latest
-    ports:
-      - "3000:3000"
-    environment:
-      HOISTER_CONTROLLER_URL: "http://hoister-controller:3033"
-      HOISTER_AUTH_USERNAME: admin
-      HOISTER_AUTH_PASSWORD: !a-super-secure-password!   # This can be clear text (for simplicity) or hashed using bcrypt (better)
-```
-
-Also make sure to set the `HOISTER_CONTROLLER_URL` environment variable in the Hoister container to point to the controller service.
-
-## Troubleshooting
-
-### Permission denied on the socket
-
-```bash
-[...]
-dial unix /var/run/docker.sock: connect: permission denied
-```
-
-This error usually indicates that the calling user isn't a member of the `docker` user group. You can add a user `foo` to that group with:
-
-```bash
-sudo usermod -aG docker foo
-```
+| Topic | Link |
+|---|---|
+| Notifications (Slack, Discord, Email, …) | [docs.hoister.io/guides/notifications](https://docs.hoister.io/guides/notifications/) |
+| Private registries (GHCR, ECR, ACR, …) | [docs.hoister.io/guides/registries](https://docs.hoister.io/guides/registries/) |
+| Dashboard (frontend + controller) | [docs.hoister.io/guides/frontend](https://docs.hoister.io/guides/frontend/) |
+| Multi-host setup | [docs.hoister.io/guides/multi-host](https://docs.hoister.io/guides/multi-host/) |
+| All environment variables | [docs.hoister.io/reference/environment-variables](https://docs.hoister.io/reference/environment-variables/) |
+| Troubleshooting | [docs.hoister.io/guides/troubleshooting](https://docs.hoister.io/guides/troubleshooting/) |

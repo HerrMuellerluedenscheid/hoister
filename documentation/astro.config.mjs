@@ -20,6 +20,7 @@ export default defineConfig({
 						{ label: 'Dashboard', slug: 'guides/frontend' },
 						{ label: 'Multi-host setup', slug: 'guides/multi-host' },
 						{ label: 'TLS encryption', slug: 'guides/tls' },
+					{ label: 'Troubleshooting', slug: 'guides/troubleshooting' },
 					],
 				},
 				{
