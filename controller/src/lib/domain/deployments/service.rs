@@ -24,8 +24,13 @@ impl<DR: DeploymentsRepository> DeploymentsService for Service<DR> {
         self.deployments_repository.create_deployment(req).await
     }
 
-    async fn get_all_deployments(&self) -> Result<Vec<Deployment>, GetDeploymentError> {
-        self.deployments_repository.get_all_deployments().await
+    async fn get_all_deployments(
+        &self,
+        user_id: Option<&str>,
+    ) -> Result<Vec<Deployment>, GetDeploymentError> {
+        self.deployments_repository
+            .get_all_deployments(user_id)
+            .await
     }
 
     async fn get_deployment(&self, id: DeploymentId) -> Result<Deployment, GetDeploymentError> {
@@ -36,9 +41,10 @@ impl<DR: DeploymentsRepository> DeploymentsService for Service<DR> {
         &self,
         project_name: &ProjectName,
         service_name: &ServiceName,
+        user_id: Option<&str>,
     ) -> Result<Vec<Deployment>, GetDeploymentError> {
         self.deployments_repository
-            .get_deployments_of_service(project_name, service_name)
+            .get_deployments_of_service(project_name, service_name, user_id)
             .await
     }
 }

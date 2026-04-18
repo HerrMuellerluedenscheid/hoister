@@ -3,7 +3,7 @@ FROM rust:alpine AS builder
 WORKDIR /app
 COPY . .
 RUN apk add --no-cache musl-dev
-RUN cargo build --bin controller --release
+RUN cargo build --bin controller --release --features controller/self-hosted
 
 FROM alpine AS runner
 

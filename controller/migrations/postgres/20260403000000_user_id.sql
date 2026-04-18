@@ -1,0 +1,2 @@
+ALTER TABLE project ADD COLUMN user_id TEXT;
+ALTER TABLE host ADD COLUMN user_id TEXT;

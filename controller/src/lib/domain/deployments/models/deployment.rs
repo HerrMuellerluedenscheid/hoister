@@ -19,6 +19,9 @@ pub struct CreateDeploymentRequest {
     pub image_digest: ImageDigest,
     pub deployment_status: DeploymentStatus,
     pub hostname: HostName,
+    /// Clerk user ID of the owner. None for agent-initiated deployments
+    /// until per-user tokens are implemented.
+    pub user_id: Option<String>,
 }
 
 impl From<CreateDeployment> for CreateDeploymentRequest {
@@ -30,6 +33,7 @@ impl From<CreateDeployment> for CreateDeploymentRequest {
             project_name: val.project,
             deployment_status: val.status,
             hostname: val.hostname,
+            user_id: None,
         }
     }
 }

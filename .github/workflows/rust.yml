@@ -17,6 +17,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Run clippy
-      run: cargo clippy -- --deny warnings
+      run: cargo clippy --features controller/self-hosted -- --deny warnings
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --features controller/self-hosted --verbose

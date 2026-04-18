@@ -13,6 +13,7 @@ pub trait DeploymentsRepository: Send + Sync + 'static + Clone {
 
     fn get_all_deployments(
         &self,
+        user_id: Option<&str>,
     ) -> impl Future<Output = Result<Vec<Deployment>, GetDeploymentError>> + Send;
 
     fn get_deployment(
@@ -24,6 +25,7 @@ pub trait DeploymentsRepository: Send + Sync + 'static + Clone {
         &self,
         project_name: &ProjectName,
         service_name: &ServiceName,
+        user_id: Option<&str>,
     ) -> impl Future<Output = Result<Vec<Deployment>, GetDeploymentError>> + Send;
     fn get_project(
         &self,
@@ -40,6 +42,7 @@ pub trait DeploymentsService: Send + Sync + 'static + Clone {
 
     fn get_all_deployments(
         &self,
+        user_id: Option<&str>,
     ) -> impl Future<Output = Result<Vec<Deployment>, GetDeploymentError>> + Send;
 
     fn get_deployment(
@@ -51,5 +54,6 @@ pub trait DeploymentsService: Send + Sync + 'static + Clone {
         &self,
         project_name: &ProjectName,
         service_name: &ServiceName,
+        user_id: Option<&str>,
     ) -> impl Future<Output = Result<Vec<Deployment>, GetDeploymentError>> + Send;
 }

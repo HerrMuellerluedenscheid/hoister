@@ -4,10 +4,13 @@ use std::path::PathBuf;
 
 #[derive(Debug, PartialEq, Deserialize)]
 pub struct Config {
+    #[cfg(feature = "self-hosted")]
     #[serde(default)]
     pub api_secret: Option<String>,
     #[serde(default = "default_port")]
     pub port: u16,
+    #[serde(default = "default_internal_port")]
+    pub internal_port: u16,
     pub database_path: String,
     #[serde(default)]
     pub tls_cert_path: Option<PathBuf>,
@@ -31,6 +34,10 @@ impl Config {
 
 fn default_port() -> u16 {
     3033
+}
+
+fn default_internal_port() -> u16 {
+    3034
 }
 
 pub fn get_config() -> Config {

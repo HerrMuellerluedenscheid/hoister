@@ -1,5 +1,6 @@
 use crate::domain::container_state::port::ContainerStateService;
 use crate::domain::deployments::ports::DeploymentsService;
+use crate::domain::tokens::ports::TokenService;
 use crate::inbound::server::AppState;
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
@@ -16,8 +17,12 @@ pub enum ControllerEvent {
     ApplyUpdate((HostName, ProjectName, ServiceName)),
 }
 
-pub(crate) async fn sse_handler<DS: DeploymentsService, CS: ContainerStateService>(
-    State(state): State<AppState<DS, CS>>,
+pub(crate) async fn sse_handler<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+>(
+    State(state): State<AppState<DS, CS, TS>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let mut rx = state.event_tx.subscribe();
 

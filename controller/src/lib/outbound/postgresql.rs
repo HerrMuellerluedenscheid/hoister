@@ -10,31 +10,38 @@ use hoister_shared::{
     DeploymentStatus, HostName, ImageDigest, ImageName, ProjectName, ServiceName,
 };
 use log::error;
-use sqlx::migrate::MigrateDatabase;
-use sqlx::{Error as SqlxError, Row, SqlitePool};
+use sqlx::{Error as SqlxError, PgPool, Row};
 use tracing::{debug, info};
 
 #[derive(Debug, Clone)]
-pub struct Sqlite {
-    pool: SqlitePool,
+pub struct Postgresql {
+    pool: PgPool,
 }
 
-impl Sqlite {
+fn status_from_i16(val: i16) -> DeploymentStatus {
+    match val {
+        0 => DeploymentStatus::Pending,
+        1 => DeploymentStatus::Started,
+        2 => DeploymentStatus::Success,
+        3 => DeploymentStatus::RollbackFinished,
+        4 => DeploymentStatus::NoUpdate,
+        5 => DeploymentStatus::Failed,
+        6 => DeploymentStatus::TestMessage,
+        _ => DeploymentStatus::Pending,
+    }
+}
+
+impl Postgresql {
     pub async fn new(database_url: &str) -> Result<Self, SqlxError> {
         info!("Connecting to database: {database_url}");
-        if !sqlx::Sqlite::database_exists(database_url).await? {
-            sqlx::Sqlite::create_database(database_url).await?;
-        }
-
-        let pool = SqlitePool::connect(database_url).await?;
-
+        let pool = PgPool::connect(database_url).await?;
         Ok(Self { pool })
     }
 
     /// Run embedded database migrations.
     pub async fn migrate(&self) -> Result<(), SqlxError> {
         info!("Running database migrations");
-        sqlx::migrate!()
+        sqlx::migrate!("migrations/postgres")
             .run(&self.pool)
             .await
             .map_err(|e| SqlxError::Migrate(Box::new(e)))?;
@@ -52,7 +59,7 @@ impl Sqlite {
                     d.digest,
                     d.status,
                     d.service_id,
-                    d.created_at,
+                    d.created_at::text as created_at,
                     s.name as service_name,
                     p.name as project_name,
                     COALESCE(h.hostname, 'unknown') as hostname
@@ -60,11 +67,10 @@ impl Sqlite {
                 JOIN service s ON d.service_id = s.id
                 JOIN project p ON s.project_id = p.id
                 LEFT JOIN host h ON d.host_id = h.id
-                WHERE (? IS NULL OR p.user_id = ?)
+                WHERE ($1 IS NULL OR p.user_id = $1)
                 ORDER BY d.created_at DESC
                 LIMIT 50",
         )
-        .bind(user_id)
         .bind(user_id)
         .fetch_all(&self.pool)
         .await?;
@@ -74,7 +80,7 @@ impl Sqlite {
             .map(|row| Deployment {
                 id: DeploymentId(row.get("id")),
                 digest: row.get("digest"),
-                status: row.get("status"),
+                status: status_from_i16(row.get("status")),
                 service_id: row.get("service_id"),
                 created_at: row.get("created_at"),
                 service_name: ServiceName(row.get("service_name")),
@@ -95,8 +101,8 @@ impl Sqlite {
     ) -> Result<i64, SqlxError> {
         let result = sqlx::query(
             r#"
-            INSERT INTO project (name, user_id) VALUES (?, ?)
-            ON CONFLICT(name) DO UPDATE SET name = name
+            INSERT INTO project (name, user_id) VALUES ($1, $2)
+            ON CONFLICT(name) DO UPDATE SET name = EXCLUDED.name
             RETURNING id
             "#,
         )
@@ -117,8 +123,8 @@ impl Sqlite {
     ) -> Result<i64, SqlxError> {
         let result = sqlx::query(
             r#"
-            INSERT INTO service (project_id, name, image) VALUES (?, ?, ?)
-            ON CONFLICT(project_id, name) DO UPDATE SET image = excluded.image
+            INSERT INTO service (project_id, name, image) VALUES ($1, $2, $3)
+            ON CONFLICT(project_id, name) DO UPDATE SET image = EXCLUDED.image
             RETURNING id
             "#,
         )
@@ -131,7 +137,7 @@ impl Sqlite {
         Ok(result.get("id"))
     }
 
-    /// Upsert a host by hostname, returning its UUID.
+    /// Upsert a host by hostname, returning its UUID bytes.
     /// Sets user_id only on insert; existing hosts keep their user_id.
     pub async fn upsert_host(
         &self,
@@ -141,8 +147,8 @@ impl Sqlite {
         let id = uuid::Uuid::new_v4().as_bytes().to_vec();
         let result = sqlx::query(
             r#"
-            INSERT INTO host (id, hostname, user_id) VALUES (?, ?, ?)
-            ON CONFLICT(hostname) DO UPDATE SET hostname = hostname
+            INSERT INTO host (id, hostname, user_id) VALUES ($1, $2, $3)
+            ON CONFLICT(hostname) DO UPDATE SET hostname = EXCLUDED.hostname
             RETURNING id
             "#,
         )
@@ -159,7 +165,7 @@ impl Sqlite {
     pub async fn get_project(&self, project_name: &ProjectName) -> Result<Project, SqlxError> {
         let row = sqlx::query(
             r#"
-            SELECT * FROM project WHERE project.name = ?
+            SELECT id, name, created_at::text as created_at FROM project WHERE project.name = $1
             "#,
         )
         .bind(project_name.as_str())
@@ -181,7 +187,8 @@ impl Sqlite {
     ) -> Result<Service, SqlxError> {
         let row = sqlx::query(
             r#"
-            SELECT * FROM service WHERE service.name = ? AND service.project_id = ?
+            SELECT id, name, project_id, created_at::text as created_at
+            FROM service WHERE service.name = $1 AND service.project_id = $2
             "#,
         )
         .bind(service_name.as_str())
@@ -199,8 +206,8 @@ impl Sqlite {
     }
 
     async fn clear_last_no_update_deployment(&self, service_id: i64) -> Result<(), SqlxError> {
-        sqlx::query("DELETE FROM deployment WHERE status = ? AND service_id = ?")
-            .bind(DeploymentStatus::NoUpdate as u8)
+        sqlx::query("DELETE FROM deployment WHERE status = $1 AND service_id = $2")
+            .bind(DeploymentStatus::NoUpdate as i16)
             .bind(service_id)
             .execute(&self.pool)
             .await?;
@@ -215,7 +222,7 @@ impl Sqlite {
                     d.digest,
                     d.status,
                     d.service_id,
-                    d.created_at,
+                    d.created_at::text as created_at,
                     s.name as service_name,
                     p.name as project_name,
                     COALESCE(h.hostname, 'unknown') as hostname
@@ -223,7 +230,7 @@ impl Sqlite {
                 JOIN service s ON d.service_id = s.id
                 JOIN project p ON s.project_id = p.id
                 LEFT JOIN host h ON d.host_id = h.id
-                WHERE d.id = ?",
+                WHERE d.id = $1",
         )
         .bind(id.0)
         .fetch_one(&self.pool)
@@ -232,7 +239,7 @@ impl Sqlite {
         let deployment = Deployment {
             id: DeploymentId(row.get("id")),
             digest: row.get("digest"),
-            status: row.get("status"),
+            status: status_from_i16(row.get("status")),
             service_id: row.get("service_id"),
             created_at: row.get("created_at"),
             service_name: ServiceName(row.get("service_name")),
@@ -258,7 +265,7 @@ impl Sqlite {
                     d.digest,
                     d.status,
                     d.service_id,
-                    d.created_at,
+                    d.created_at::text as created_at,
                     s.name as service_name,
                     p.name as project_name,
                     COALESCE(h.hostname, 'unknown') as hostname
@@ -266,20 +273,20 @@ impl Sqlite {
                     JOIN service s ON d.service_id = s.id
                     JOIN project p ON s.project_id = p.id
                     LEFT JOIN host h ON d.host_id = h.id
-                WHERE d.service_id = ? AND (? IS NULL OR p.user_id = ?)
+                WHERE d.service_id = $1 AND ($2 IS NULL OR p.user_id = $2)
                 ORDER BY d.created_at DESC LIMIT 50",
         )
         .bind(service.id.0)
         .bind(user_id)
-        .bind(user_id)
         .fetch_all(&self.pool)
         .await?;
+
         let deployments = rows
             .iter()
             .map(|row| Deployment {
                 id: DeploymentId(row.get("id")),
                 digest: row.get("digest"),
-                status: row.get("status"),
+                status: status_from_i16(row.get("status")),
                 service_id: row.get("service_id"),
                 created_at: row.get("created_at"),
                 service_name: ServiceName(row.get("service_name")),
@@ -311,24 +318,23 @@ impl Sqlite {
         }
 
         let result = sqlx::query(
-            "INSERT INTO deployment (digest, status, service_id, host_id) VALUES (?, ?, ?, ?)",
+            "INSERT INTO deployment (digest, status, service_id, host_id) VALUES ($1, $2, $3, $4) RETURNING id",
         )
         .bind(digest.as_str())
-        .bind(status)
+        .bind(status.clone() as i16)
         .bind(service_id)
         .bind(&host_id)
-        .execute(&self.pool)
-        .await
-        .expect("Failed to insert deployment");
+        .fetch_one(&self.pool)
+        .await?;
 
-        Ok(DeploymentId(result.last_insert_rowid()))
+        Ok(DeploymentId(result.get("id")))
     }
 }
 
-impl TokenRepository for Sqlite {
+impl TokenRepository for Postgresql {
     async fn get_or_create_token(&self, user_id: &str) -> Result<ApiToken, TokenError> {
         let existing: Option<String> =
-            sqlx::query_scalar("SELECT token FROM api_token WHERE user_id = ?")
+            sqlx::query_scalar("SELECT token FROM api_token WHERE user_id = $1")
                 .bind(user_id)
                 .fetch_optional(&self.pool)
                 .await
@@ -343,7 +349,7 @@ impl TokenRepository for Sqlite {
         }
 
         let token = format!("hst_{}", uuid::Uuid::new_v4().simple());
-        sqlx::query("INSERT INTO api_token (token, user_id) VALUES (?, ?)")
+        sqlx::query("INSERT INTO api_token (token, user_id) VALUES ($1, $2)")
             .bind(&token)
             .bind(user_id)
             .execute(&self.pool)
@@ -358,7 +364,7 @@ impl TokenRepository for Sqlite {
     }
 
     async fn find_user_by_token(&self, token: &str) -> Option<String> {
-        sqlx::query_scalar::<_, String>("SELECT user_id FROM api_token WHERE token = ?")
+        sqlx::query_scalar::<_, String>("SELECT user_id FROM api_token WHERE token = $1")
             .bind(token)
             .fetch_optional(&self.pool)
             .await
@@ -367,7 +373,7 @@ impl TokenRepository for Sqlite {
     }
 }
 
-impl DeploymentsRepository for Sqlite {
+impl DeploymentsRepository for Postgresql {
     async fn create_deployment(
         &self,
         req: &CreateDeploymentRequest,
@@ -403,7 +409,7 @@ impl DeploymentsRepository for Sqlite {
         deployment_id: DeploymentId,
     ) -> Result<Deployment, GetDeploymentError> {
         self.get_deployment(deployment_id).await.map_err(|e| {
-            error!("Failed to get all deployments: {e:?}");
+            error!("Failed to get deployment: {e:?}");
             match e {
                 sqlx::error::Error::RowNotFound => GetDeploymentError::DeploymentNotFound,
                 _ => GetDeploymentError::UnknownError,

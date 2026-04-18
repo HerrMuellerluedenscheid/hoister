@@ -64,15 +64,17 @@ dev-frontend: bindings
     export NODE_EXTRA_CA_CERTS=../certs/ca.pem
     cd frontend && npm run dev
 
-dev-controller:
+dev-controller-cloud:
     #!/usr/bin/env bash
     set -a
     source .env.template
+    source controller/.env
     set +a
     export HOISTER_CONTROLLER_TLS_KEY_PATH=certs/server-key.pem
     export HOISTER_CONTROLLER_TLS_CERT_PATH=certs/server.pem
-    export HOISTER_CONTROLLER_DATABASE_PATH=/tmp/hoister-dev.sqlite
+    export HOISTER_CONTROLLER_DATABASE_PATH="${DATABASE_URL:-/tmp/hoister-dev.sqlite}"
     export RUST_LOG=debug
+    docker compose -f docker-compose.cloud.yaml up -d
     cargo run --bin controller
 
 dev-hoister:
@@ -87,6 +89,15 @@ dev-hoister:
     export HOISTER_PROJECT=hoister
     export RUST_LOG=debug,bollard=info,hyper_util=info
     cargo run --bin hoister
+
+dev-frontend-cloud:
+    #!/usr/bin/env bash
+    cd frontend-cloud
+    set -a
+    source .env
+    set +a
+    export NODE_EXTRA_CA_CERTS=../certs/ca.pem
+    npm run dev
 
 dev-documentation:
     #!/usr/bin/env bash
@@ -108,3 +119,14 @@ test-message:
     set +a
     export RUST_LOG=debug,bollard=info,hyper_util=info
     cargo run --bin hoister -- --test-message
+
+migrate-postgresql:
+    #!/usr/bin/env bash
+    docker compose -f docker-compose.cloud.yaml up -d
+
+    cd controller
+    set -a
+    source .env
+    set +a
+
+    sqlx migrate run --source migrations/postgres

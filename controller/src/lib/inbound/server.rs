@@ -1,6 +1,6 @@
 use axum::response::IntoResponse;
 use axum::{
-    Router,
+    Extension, Router,
     extract::{Path, Request, State},
     http::StatusCode,
     middleware::{self, Next},
@@ -20,16 +20,27 @@ use crate::domain::deployments::models::deployment::{
     CreateDeploymentRequest, Deployment, GetDeploymentError,
 };
 use crate::domain::deployments::ports::DeploymentsService;
+use crate::domain::tokens::models::ApiToken;
+use crate::domain::tokens::ports::TokenService;
 use crate::outbound::pending_updates_memory::{PendingUpdate, PendingUpdatesMemory};
 use crate::sse::{ControllerEvent, sse_handler};
 use hoister_shared::{CreateDeployment, HostName, ProjectName, ServiceName};
 use tokio::sync::broadcast;
 use ts_rs::TS;
 
+/// user ID extracted from a verified request, injected as a request extension.
+/// For internal (BFF) requests this comes from the `X-User-Id` header (trusted because
+/// the internal router is VPC-isolated, not publicly reachable).
+/// For agent requests this comes from the per-user token DB lookup.
+#[derive(Debug, Clone)]
+pub struct UserId(pub String);
+
 #[derive(Clone)]
-pub struct AppState<DS: DeploymentsService, CS: ContainerStateService> {
+pub struct AppState<DS: DeploymentsService, CS: ContainerStateService, TS: TokenService> {
     pub deployments_service: Arc<DS>,
     pub container_state_service: Arc<CS>,
+    pub token_service: Arc<TS>,
+    #[cfg(feature = "self-hosted")]
     pub api_secret: Option<String>,
     pub event_tx: broadcast::Sender<ControllerEvent>,
     pub pending_updates: PendingUpdatesMemory,
@@ -53,47 +64,134 @@ impl<T> ApiResponse<T> {
     }
 }
 
-// Authentication middleware
-async fn auth_middleware<DS: DeploymentsService, CS: ContainerStateService>(
-    State(state): State<AppState<DS, CS>>,
-    request: Request,
+/// Authentication middleware for the agent-facing router (public, TLS).
+///
+/// **Cloud build** (no `self-hosted` feature):
+///   - `hst_<token>` — per-user agent token, looked up in DB.
+///
+/// **Self-hosted build** (`self-hosted` feature):
+///   - Static API secret — accepted from agents.
+///   - `hst_<token>` — per-user agent token.
+///   - If no secret is configured at all, auth is skipped (open dev mode).
+async fn agent_auth_middleware<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+>(
+    State(state): State<AppState<DS, CS, TS>>,
+    mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    // Skip auth for health check
-    let api_secret = match state.api_secret {
-        Some(secret) => secret,
-        None => return Ok(next.run(request).await),
-    };
+    // Self-hosted: if no secret is configured, skip auth entirely (open dev mode).
+    #[cfg(feature = "self-hosted")]
+    if state.api_secret.is_none() {
+        return Ok(next.run(request).await);
+    }
+
     if request.uri().path() == "/health" {
         return Ok(next.run(request).await);
-    };
-    let auth_header = request
+    }
+
+    let bearer = request
         .headers()
         .get("Authorization")
-        .and_then(|header| header.to_str().ok());
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "))
+        .map(str::to_owned);
 
-    match auth_header {
-        Some(header) if header.starts_with("Bearer ") => {
-            let token = &header[7..]; // Remove "Bearer " prefix
-            if token == api_secret {
-                Ok(next.run(request).await)
-            } else {
-                Err(StatusCode::UNAUTHORIZED)
+    let Some(token) = bearer else {
+        return Err(StatusCode::UNAUTHORIZED);
+    };
+
+    // 1. Static API secret (self-hosted only).
+    #[cfg(feature = "self-hosted")]
+    if let Some(ref secret) = state.api_secret {
+        if token == *secret {
+            if let Some(user_id) = request
+                .headers()
+                .get("X-User-Id")
+                .and_then(|h| h.to_str().ok())
+                .map(str::to_owned)
+            {
+                request.extensions_mut().insert(UserId(user_id));
             }
+            return Ok(next.run(request).await);
         }
-        _ => Err(StatusCode::UNAUTHORIZED),
     }
+
+    // 2. Per-user agent token (hst_ prefix) — look up user ID from DB.
+    if token.starts_with("hst_") {
+        match state.token_service.find_user_by_token(&token).await {
+            Some(user_id) => {
+                request.extensions_mut().insert(UserId(user_id));
+                return Ok(next.run(request).await);
+            }
+            None => return Err(StatusCode::UNAUTHORIZED),
+        }
+    }
+
+    Err(StatusCode::UNAUTHORIZED)
+}
+
+/// Middleware for the internal (BFF-facing) router.
+///
+/// This router is VPC-isolated — not publicly reachable — so no cryptographic
+/// auth is required. We simply trust the `X-User-Id` header set by the BFF
+/// (which has already authenticated the user via Clerk).
+async fn internal_user_middleware(
+    mut request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    if request.uri().path() == "/health" {
+        return Ok(next.run(request).await);
+    }
+
+    if let Some(user_id) = request
+        .headers()
+        .get("X-User-Id")
+        .and_then(|h| h.to_str().ok())
+        .map(str::to_owned)
+    {
+        request.extensions_mut().insert(UserId(user_id));
+    }
+
+    Ok(next.run(request).await)
 }
 
 // Web handlers
+
 async fn health() -> &'static str {
     "OK"
 }
 
-async fn get_deployments<DS: DeploymentsService, CS: ContainerStateService>(
-    State(state): State<AppState<DS, CS>>,
+async fn get_or_create_token<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+>(
+    State(state): State<AppState<DS, CS, TS>>,
+    user: Extension<UserId>,
+) -> Result<Json<ApiResponse<ApiToken>>, StatusCode> {
+    let Extension(UserId(user_id)) = user;
+    match state.token_service.get_or_create_token(&user_id).await {
+        Ok(token) => Ok(Json(ApiResponse::success(token))),
+        Err(e) => {
+            error!("Error getting/creating token for {user_id}: {e:?}");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn get_deployments<DS: DeploymentsService, CS: ContainerStateService, TS: TokenService>(
+    State(state): State<AppState<DS, CS, TS>>,
+    user: Option<Extension<UserId>>,
 ) -> Result<Json<ApiResponse<Vec<Deployment>>>, StatusCode> {
-    match state.deployments_service.get_all_deployments().await {
+    let user_id = user.map(|Extension(UserId(id))| id);
+    match state
+        .deployments_service
+        .get_all_deployments(user_id.as_deref())
+        .await
+    {
         Ok(deployments) => Ok(Json(ApiResponse::success(deployments))),
         Err(e) => {
             error!("Error getting deployments: {e:?}");
@@ -102,15 +200,20 @@ async fn get_deployments<DS: DeploymentsService, CS: ContainerStateService>(
     }
 }
 
-async fn get_deployments_by_service<DS: DeploymentsService, CS: ContainerStateService>(
-    State(state): State<AppState<DS, CS>>,
+async fn get_deployments_by_service<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+>(
+    State(state): State<AppState<DS, CS, TS>>,
     Path((project_name, service_name)): Path<(ProjectName, ServiceName)>,
+    user: Option<Extension<UserId>>,
 ) -> Result<Json<ApiResponse<Vec<Deployment>>>, StatusCode> {
     debug!("get service by name: {service_name:?}");
-
+    let user_id = user.map(|Extension(UserId(id))| id);
     match state
         .deployments_service
-        .get_deployments_of_service(&project_name, &service_name)
+        .get_deployments_of_service(&project_name, &service_name, user_id.as_deref())
         .await
     {
         Ok(deployments) => Ok(Json(ApiResponse::success(deployments))),
@@ -122,15 +225,16 @@ async fn get_deployments_by_service<DS: DeploymentsService, CS: ContainerStateSe
     }
 }
 
-async fn create_deployment<DS: DeploymentsService, CS: ContainerStateService>(
-    State(state): State<AppState<DS, CS>>,
+async fn create_deployment<DS: DeploymentsService, CS: ContainerStateService, TS: TokenService>(
+    State(state): State<AppState<DS, CS, TS>>,
+    user: Option<Extension<UserId>>,
     Json(payload): Json<CreateDeployment>,
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
-    match state
-        .deployments_service
-        .create_deployment(&CreateDeploymentRequest::from(payload))
-        .await
-    {
+    let user_id = user.map(|Extension(UserId(id))| id);
+    let mut req = CreateDeploymentRequest::from(payload);
+    req.user_id = user_id;
+
+    match state.deployments_service.create_deployment(&req).await {
         Ok(id) => match state.deployments_service.get_deployment(id).await {
             Ok(deployment) => Ok(Json(ApiResponse::success(deployment))),
             Err(e) => {
@@ -151,8 +255,12 @@ pub struct PostContainerStateRequest {
     pub payload: HashMap<ServiceName, ContainerInspectResponse>,
 }
 
-async fn post_container_state<DS: DeploymentsService, CS: ContainerStateService>(
-    State(state): State<AppState<DS, CS>>,
+async fn post_container_state<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+>(
+    State(state): State<AppState<DS, CS, TS>>,
     Path((hostname, project_name)): Path<(HostName, ProjectName)>,
     Json(payload): Json<PostContainerStateRequest>,
 ) -> impl IntoResponse {
@@ -216,8 +324,12 @@ impl From<ContainerStateData> for ContainerStateResponses {
     }
 }
 
-async fn get_container_state_by_service_name<DS: DeploymentsService, CS: ContainerStateService>(
-    State(state): State<AppState<DS, CS>>,
+async fn get_container_state_by_service_name<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+>(
+    State(state): State<AppState<DS, CS, TS>>,
     Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
 ) -> Result<Json<ApiResponse<ContainerStateResponse>>, StatusCode> {
     debug!("Received request for container state by id");
@@ -242,8 +354,12 @@ async fn get_container_state_by_service_name<DS: DeploymentsService, CS: Contain
     })))
 }
 
-async fn get_container_states<DS: DeploymentsService, CS: ContainerStateService>(
-    State(state): State<AppState<DS, CS>>,
+async fn get_container_states<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+>(
+    State(state): State<AppState<DS, CS, TS>>,
 ) -> impl IntoResponse {
     debug!("Received request for container state");
     let states = state.container_state_service.get_container_states().await;
@@ -259,8 +375,12 @@ struct PendingUpdateRequest {
     new_digest: String,
 }
 
-async fn post_pending_update<DS: DeploymentsService, CS: ContainerStateService>(
-    State(state): State<AppState<DS, CS>>,
+async fn post_pending_update<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+>(
+    State(state): State<AppState<DS, CS, TS>>,
     Json(payload): Json<PendingUpdateRequest>,
 ) -> impl IntoResponse {
     let update = PendingUpdate {
@@ -275,15 +395,23 @@ async fn post_pending_update<DS: DeploymentsService, CS: ContainerStateService>(
     StatusCode::OK.into_response()
 }
 
-async fn get_pending_updates<DS: DeploymentsService, CS: ContainerStateService>(
-    State(state): State<AppState<DS, CS>>,
+async fn get_pending_updates<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+>(
+    State(state): State<AppState<DS, CS, TS>>,
 ) -> impl IntoResponse {
     let updates = state.pending_updates.get_all().await;
     Json(updates).into_response()
 }
 
-async fn apply_pending_update<DS: DeploymentsService, CS: ContainerStateService>(
-    State(state): State<AppState<DS, CS>>,
+async fn apply_pending_update<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+>(
+    State(state): State<AppState<DS, CS, TS>>,
     Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
 ) -> impl IntoResponse {
     state
@@ -295,36 +423,58 @@ async fn apply_pending_update<DS: DeploymentsService, CS: ContainerStateService>
     StatusCode::OK.into_response()
 }
 
-pub async fn create_app<DS: DeploymentsService, CS: ContainerStateService>(
-    state: AppState<DS, CS>,
+/// Agent-facing router: publicly reachable (behind TLS), authenticated via `hst_` tokens.
+/// Handles writes from agents and SSE.
+pub async fn create_agent_router<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+>(
+    state: AppState<DS, CS, TS>,
 ) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/sse", get(sse_handler))
-        .route("/deployments", get(get_deployments))
-        .route("/deployments", post(create_deployment))
-        .route(
-            "/deployments/{project_name}/{service_name}",
-            get(get_deployments_by_service),
-        )
+        .route("/deployments", post(create_deployment::<DS, CS, TS>))
         .route(
             "/container/state/{hostname}/{project_name}",
-            post(post_container_state),
+            post(post_container_state::<DS, CS, TS>),
         )
-        .route("/container/state", get(get_container_states))
-        .route(
-            "/container/state/{hostname}/{project_name}/{service_name}",
-            get(get_container_state_by_service_name),
-        )
-        .route("/pending-updates", post(post_pending_update))
-        .route("/pending-updates", get(get_pending_updates))
+        .route("/pending-updates", post(post_pending_update::<DS, CS, TS>))
+        .route("/pending-updates", get(get_pending_updates::<DS, CS, TS>))
         .route(
             "/pending-updates/{hostname}/{project_name}/{service_name}/apply",
-            post(apply_pending_update),
+            post(apply_pending_update::<DS, CS, TS>),
         )
         .layer(middleware::from_fn_with_state(
             state.clone(),
-            auth_middleware,
+            agent_auth_middleware::<DS, CS, TS>,
         ))
+        .with_state(state)
+}
+
+/// Internal router: VPC-isolated (not publicly reachable), no cryptographic auth.
+/// Serves the BFF (SvelteKit frontend-cloud). Trusts `X-User-Id` header.
+pub async fn create_internal_router<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+>(
+    state: AppState<DS, CS, TS>,
+) -> Router {
+    Router::new()
+        .route("/health", get(health))
+        .route("/token", get(get_or_create_token::<DS, CS, TS>))
+        .route("/deployments", get(get_deployments::<DS, CS, TS>))
+        .route(
+            "/deployments/{project_name}/{service_name}",
+            get(get_deployments_by_service::<DS, CS, TS>),
+        )
+        .route("/container/state", get(get_container_states::<DS, CS, TS>))
+        .route(
+            "/container/state/{hostname}/{project_name}/{service_name}",
+            get(get_container_state_by_service_name::<DS, CS, TS>),
+        )
+        .layer(middleware::from_fn(internal_user_middleware))
         .with_state(state)
 }
