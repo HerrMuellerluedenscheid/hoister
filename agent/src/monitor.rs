@@ -42,6 +42,7 @@ const LOG_TAIL_LINES: &str = "50";
 async fn fetch_container_info(
     #[allow(unused_variables)] project_name: &ProjectName,
     docker: &Docker,
+    report_logs: bool,
 ) -> Result<HashMap<ServiceName, ServiceState>, HoisterError> {
     #[allow(unused_mut, unused_variables)]
     let mut filters = HashMap::new();
@@ -89,7 +90,10 @@ async fn fetch_container_info(
                 Ok(mut inspect) => {
                     // Fetch logs BEFORE redacting env vars so we can use the
                     // original sensitive values to scrub them from log output.
-                    let last_logs = if should_fetch_logs(&inspect) {
+                    // Disabled unless the operator explicitly opted in:
+                    // logs can contain secrets that keyword-based redaction
+                    // doesn't catch.
+                    let last_logs = if report_logs && should_fetch_logs(&inspect) {
                         match fetch_log_tail(docker, container_id, &inspect).await {
                             Ok(logs) => logs,
                             Err(e) => {
@@ -277,15 +281,19 @@ pub(crate) async fn start(
     project_name: ProjectName,
     hostname: HostName,
     client: reqwest::Client,
+    report_logs: bool,
 ) -> Result<(), Box<dyn std::error::Error + 'static>> {
-    info!("Starting monitor");
+    info!(
+        "Starting monitor (log forwarding: {})",
+        if report_logs { "enabled" } else { "disabled" }
+    );
     let docker = Docker::connect_with_socket_defaults()?;
     let mut interval = time::interval(Duration::from_secs(5));
 
     loop {
         interval.tick().await;
 
-        match fetch_container_info(&project_name, &docker).await {
+        match fetch_container_info(&project_name, &docker, report_logs).await {
             Ok(current_states) => {
                 if let Err(e) = send_to_backend(
                     &client,

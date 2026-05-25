@@ -163,6 +163,12 @@ pub(crate) struct Config {
     pub(crate) send_test_message: bool,
     #[serde(default = "default_true")]
     pub(crate) auto_update: bool,
+    /// Forward container log tails to the controller when a container is
+    /// in a non-running state. Disabled by default — logs can contain
+    /// secrets the keyword-based env redaction doesn't catch. Opt in by
+    /// setting `HOISTER_REPORT_LOGS=true`.
+    #[serde(default)]
+    pub(crate) report_logs: bool,
     pub(crate) schedule: Schedule,
     pub(crate) registry: Option<Registry>,
     pub(crate) controller: Option<Controller>,
