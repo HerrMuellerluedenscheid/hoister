@@ -24,6 +24,7 @@ use crate::domain::deployments::models::deployment::{
 use crate::domain::deployments::ports::DeploymentsService;
 use crate::domain::tokens::models::ApiToken;
 use crate::domain::tokens::ports::TokenService;
+use crate::inbound::audit_log::audit_log_middleware;
 use crate::inbound::rate_limit::{RateLimiter, rate_limit_middleware};
 use crate::outbound::pending_updates_memory::{PendingUpdate, PendingUpdatesMemory};
 use crate::sse::{ControllerEvent, UserScopedEvent, sse_handler};
@@ -484,6 +485,9 @@ pub async fn create_agent_router<
             agent_auth_middleware::<DS, CS, TS>,
         ))
         .layer(DefaultBodyLimit::max(AGENT_BODY_LIMIT))
+        // Audit log is outermost so it sees the final response status,
+        // including 401/429 from the middleware layers above.
+        .layer(middleware::from_fn(audit_log_middleware))
         .with_state(state)
 }
 
@@ -510,5 +514,6 @@ pub async fn create_internal_router<
             get(get_container_state_by_service_name::<DS, CS, TS>),
         )
         .layer(middleware::from_fn(internal_user_middleware))
+        .layer(middleware::from_fn(audit_log_middleware))
         .with_state(state)
 }
