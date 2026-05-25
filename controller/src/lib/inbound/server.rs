@@ -193,6 +193,19 @@ async fn get_or_create_token<
     }
 }
 
+async fn rotate_token<DS: DeploymentsService, CS: ContainerStateService, TS: TokenService>(
+    State(state): State<AppState<DS, CS, TS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+) -> Result<Json<ApiResponse<ApiToken>>, StatusCode> {
+    match state.token_service.rotate_token(&user_id).await {
+        Ok(token) => Ok(Json(ApiResponse::success(token))),
+        Err(e) => {
+            error!("Error rotating token for {user_id}: {e:?}");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
 async fn get_deployments<DS: DeploymentsService, CS: ContainerStateService, TS: TokenService>(
     State(state): State<AppState<DS, CS, TS>>,
     Extension(UserId(user_id)): Extension<UserId>,
@@ -489,6 +502,7 @@ pub async fn create_internal_router<
     Router::new()
         .route("/health", get(health))
         .route("/token", get(get_or_create_token::<DS, CS, TS>))
+        .route("/token/rotate", post(rotate_token::<DS, CS, TS>))
         .route("/deployments", get(get_deployments::<DS, CS, TS>))
         .route(
             "/deployments/{project_name}/{service_name}",
