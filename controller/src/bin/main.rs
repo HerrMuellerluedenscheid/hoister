@@ -34,20 +34,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent_app = create_agent_router(state.clone()).await;
     let internal_app = create_internal_router(state).await;
     info!(
-        "starting internal listener on 0.0.0.0:{}",
-        config.internal_port
+        "starting internal listener on {}:{}",
+        config.internal_bind_addr, config.internal_port
     );
-    let internal_listener = TcpListener::bind(format!("0.0.0.0:{}", config.internal_port))
-        .await
-        .map_err(|e| {
-            warn!("Failed to bind internal listener: {}", e);
-            e
-        })?;
+    let internal_listener = TcpListener::bind(format!(
+        "{}:{}",
+        config.internal_bind_addr, config.internal_port
+    ))
+    .await
+    .map_err(|e| {
+        warn!("Failed to bind internal listener: {}", e);
+        e
+    })?;
 
-    info!(
-        "starting agent listener on 0.0.0.0:{}",
-        config.internal_port
-    );
+    info!("starting agent listener on 0.0.0.0:{}", config.port);
     let agent_listener = TcpListener::bind(format!("0.0.0.0:{}", config.port))
         .await
         .map_err(|e| {
@@ -56,8 +56,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })?;
 
     info!(
-        "Internal router on http://0.0.0.0:{} (VPC-only, no auth)",
-        config.internal_port
+        "Internal router on http://{}:{} (VPC-only, no auth)",
+        config.internal_bind_addr, config.internal_port
     );
 
     let internal_server = async {

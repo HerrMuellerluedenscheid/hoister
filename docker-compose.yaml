@@ -20,8 +20,11 @@ services:
       dockerfile: controller/Dockerfile
     volumes:
       - controller-data:/data
+    environment:
+      # Frontend runs in a sibling container, so the internal listener must
+      # accept connections from outside the controller's loopback.
+      HOISTER_CONTROLLER_INTERNAL_BIND_ADDR: "0.0.0.0"
 #      - ./certs:/certs:ro  # TLS: mount certs directory
-#    environment:
 #       HOISTER_CONTROLLER_TLS_CERT_PATH: /certs/server.pem  # TLS: server certificate
 #       HOISTER_CONTROLLER_TLS_KEY_PATH: /certs/server-key.pem  # TLS: server private key
 
