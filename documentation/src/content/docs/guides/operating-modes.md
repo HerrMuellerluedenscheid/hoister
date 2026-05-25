@@ -27,8 +27,26 @@ services:
 ```
 
 The controller URL defaults to `https://api.hoister.io` — you only need to
-set the token. Logs are **not** forwarded by default; set
-`HOISTER_REPORT_LOGS=true` to opt in.
+set the token.
+
+### Log forwarding (opt-in)
+
+By default the agent ships container inspect payloads to the controller but
+**not** the container logs. Container logs can contain secrets the agent's
+keyword-based env-var redaction does not catch (e.g. tokens passed on the
+command line, JSON-encoded credentials, third-party library output). When
+a container is in a non-running state (restarting / exited / dead) you can
+opt in to forwarding a tail of its logs to make debugging easier:
+
+```yaml
+environment:
+  HOISTER_CONTROLLER_TOKEN: "hst_your-personal-token"
+  HOISTER_REPORT_LOGS: "true"
+```
+
+The forwarded tail is capped at 16 KB and runs through the same env-var
+value redactor as the inspect payload, but you should still treat opting
+in as sharing log content with the hoister.io controller.
 
 ## Self-hosted
 
