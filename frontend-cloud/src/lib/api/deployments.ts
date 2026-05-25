@@ -20,7 +20,29 @@ export async function getDeployments(userId: string) {
 	if (!response.ok) throw error(response.status, 'Failed to load data from backend');
 
 	const result = (await response.json()) as DeploymentsResponse;
-	if (!result.success || result.error) throw error(500, result.error || 'Unknown error from backend');
+	if (!result.success || result.error)
+		throw error(500, result.error || 'Unknown error from backend');
+
+	return { deployments: result.data, error: null };
+}
+
+export async function getDeploymentsByServiceName(
+	userId: string,
+	project_name: string,
+	service_name: string
+) {
+	if (!BACKEND_URL) throw error(500, 'Backend URL not configured');
+
+	const response = await fetch(
+		`${BACKEND_URL}/deployments/${encodeURIComponent(project_name)}/${encodeURIComponent(service_name)}`,
+		{ headers: { 'X-User-Id': userId } }
+	);
+
+	if (!response.ok) throw error(response.status, 'Failed to load data from backend');
+
+	const result = (await response.json()) as DeploymentsResponse;
+	if (!result.success || result.error)
+		throw error(500, result.error || 'Unknown error from backend');
 
 	return { deployments: result.data, error: null };
 }
