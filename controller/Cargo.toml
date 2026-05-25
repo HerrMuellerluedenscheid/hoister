@@ -3,6 +3,7 @@
 name = "controller"
 version = "0.1.0"
 edition = "2024"
+license = "AGPL-3.0-only"
 
 [features]
 # Enables static API-secret auth for self-hosted deployments.
