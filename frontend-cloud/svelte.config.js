@@ -1,4 +1,4 @@
-import adapter from '@sveltejs/adapter-auto';
+import adapter from '@sveltejs/adapter-node';
 import { relative, sep } from 'node:path';
 
 /** @type {import('@sveltejs/kit').Config} */
