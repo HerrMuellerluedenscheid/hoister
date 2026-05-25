@@ -24,7 +24,7 @@ use crate::domain::deployments::ports::DeploymentsService;
 use crate::domain::tokens::models::ApiToken;
 use crate::domain::tokens::ports::TokenService;
 use crate::outbound::pending_updates_memory::{PendingUpdate, PendingUpdatesMemory};
-use crate::sse::{ControllerEvent, sse_handler};
+use crate::sse::{ControllerEvent, UserScopedEvent, sse_handler};
 use hoister_shared::{CreateDeployment, HostName, ProjectName, ServiceName};
 use tokio::sync::broadcast;
 use ts_rs::TS;
@@ -43,7 +43,7 @@ pub struct AppState<DS: DeploymentsService, CS: ContainerStateService, TS: Token
     pub token_service: Arc<TS>,
     #[cfg(feature = "self-hosted")]
     pub api_secret: Option<String>,
-    pub event_tx: broadcast::Sender<ControllerEvent>,
+    pub event_tx: broadcast::Sender<UserScopedEvent>,
     pub pending_updates: PendingUpdatesMemory,
 }
 
@@ -438,7 +438,7 @@ async fn apply_pending_update<
         .remove(&user_id, &hostname, &project_name, &service_name)
         .await;
     let event = ControllerEvent::ApplyUpdate((hostname, project_name, service_name));
-    let _ = state.event_tx.send(event);
+    let _ = state.event_tx.send((user_id, event));
     StatusCode::OK.into_response()
 }
 

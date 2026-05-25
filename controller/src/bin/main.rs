@@ -6,7 +6,7 @@ use controller::inbound::server::{AppState, create_agent_router, create_internal
 use controller::outbound::Database;
 use controller::outbound::pending_updates_memory::PendingUpdatesMemory;
 use controller::outbound::state_memory::StateMemory;
-use controller::sse::ControllerEvent;
+use controller::sse::UserScopedEvent;
 use env_logger::Env;
 use log::{info, warn};
 use std::sync::Arc;
@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let config = get_config();
 
-    let (event_tx, _) = broadcast::channel::<ControllerEvent>(100);
+    let (event_tx, _) = broadcast::channel::<UserScopedEvent>(100);
     let db = Database::connect(&config.database_path).await?;
 
     let pending_updates = PendingUpdatesMemory::default();
