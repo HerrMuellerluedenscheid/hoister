@@ -113,18 +113,15 @@ async fn agent_auth_middleware<
         return Err(StatusCode::UNAUTHORIZED);
     };
 
-    // 1. Static API secret (self-hosted only). The X-User-Id header is
-    // optional; absent it we scope to the synthetic "local" tenant.
+    // 1. Static API secret (self-hosted only). We DELIBERATELY ignore any
+    // X-User-Id header here: the agent router is reachable over the public
+    // network, so honouring caller-supplied tenant identifiers would let
+    // anyone with the secret impersonate any user. Only the internal router
+    // (VPC-private) trusts X-User-Id.
     #[cfg(feature = "self-hosted")]
     if let Some(ref secret) = state.api_secret {
         if token == *secret {
-            let user_id = request
-                .headers()
-                .get("X-User-Id")
-                .and_then(|h| h.to_str().ok())
-                .map(str::to_owned)
-                .unwrap_or_else(|| "local".to_string());
-            request.extensions_mut().insert(UserId(user_id));
+            request.extensions_mut().insert(UserId("local".to_string()));
             return Ok(next.run(request).await);
         }
     }
