@@ -56,7 +56,7 @@ impl DeploymentsRepository for Database {
 
     async fn get_all_deployments(
         &self,
-        user_id: Option<&str>,
+        user_id: &str,
     ) -> Result<Vec<Deployment>, GetDeploymentError> {
         match self {
             Self::Sqlite(db) => {
@@ -71,13 +71,15 @@ impl DeploymentsRepository for Database {
     async fn get_deployment(
         &self,
         deployment_id: DeploymentId,
+        user_id: &str,
     ) -> Result<Deployment, GetDeploymentError> {
         match self {
             Self::Sqlite(db) => {
-                <Sqlite as DeploymentsRepository>::get_deployment(db, deployment_id).await
+                <Sqlite as DeploymentsRepository>::get_deployment(db, deployment_id, user_id).await
             }
             Self::Postgresql(db) => {
-                <Postgresql as DeploymentsRepository>::get_deployment(db, deployment_id).await
+                <Postgresql as DeploymentsRepository>::get_deployment(db, deployment_id, user_id)
+                    .await
             }
         }
     }
@@ -86,7 +88,7 @@ impl DeploymentsRepository for Database {
         &self,
         project_name: &ProjectName,
         service_name: &ServiceName,
-        user_id: Option<&str>,
+        user_id: &str,
     ) -> Result<Vec<Deployment>, GetDeploymentError> {
         match self {
             Self::Sqlite(db) => {

@@ -200,12 +200,11 @@ async fn get_or_create_token<
 
 async fn get_deployments<DS: DeploymentsService, CS: ContainerStateService, TS: TokenService>(
     State(state): State<AppState<DS, CS, TS>>,
-    user: Option<Extension<UserId>>,
+    Extension(UserId(user_id)): Extension<UserId>,
 ) -> Result<Json<ApiResponse<Vec<Deployment>>>, StatusCode> {
-    let user_id = user.map(|Extension(UserId(id))| id);
     match state
         .deployments_service
-        .get_all_deployments(user_id.as_deref())
+        .get_all_deployments(&user_id)
         .await
     {
         Ok(deployments) => Ok(Json(ApiResponse::success(deployments))),
@@ -222,14 +221,13 @@ async fn get_deployments_by_service<
     TS: TokenService,
 >(
     State(state): State<AppState<DS, CS, TS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
     Path((project_name, service_name)): Path<(ProjectName, ServiceName)>,
-    user: Option<Extension<UserId>>,
 ) -> Result<Json<ApiResponse<Vec<Deployment>>>, StatusCode> {
     debug!("get service by name: {service_name:?}");
-    let user_id = user.map(|Extension(UserId(id))| id);
     match state
         .deployments_service
-        .get_deployments_of_service(&project_name, &service_name, user_id.as_deref())
+        .get_deployments_of_service(&project_name, &service_name, &user_id)
         .await
     {
         Ok(deployments) => Ok(Json(ApiResponse::success(deployments))),
@@ -243,15 +241,13 @@ async fn get_deployments_by_service<
 
 async fn create_deployment<DS: DeploymentsService, CS: ContainerStateService, TS: TokenService>(
     State(state): State<AppState<DS, CS, TS>>,
-    user: Option<Extension<UserId>>,
+    Extension(UserId(user_id)): Extension<UserId>,
     Json(payload): Json<CreateDeployment>,
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
-    let user_id = user.map(|Extension(UserId(id))| id);
-    let mut req = CreateDeploymentRequest::from(payload);
-    req.user_id = user_id;
+    let req = CreateDeploymentRequest::from_payload(payload, user_id.clone());
 
     match state.deployments_service.create_deployment(&req).await {
-        Ok(id) => match state.deployments_service.get_deployment(id).await {
+        Ok(id) => match state.deployments_service.get_deployment(id, &user_id).await {
             Ok(deployment) => Ok(Json(ApiResponse::success(deployment))),
             Err(e) => {
                 eprintln!("Error retrieving created deployment: {e:?}");

@@ -4,7 +4,6 @@ use crate::domain::deployments::models::deployment::{
 };
 use hoister_shared::{ProjectName, ServiceName};
 
-// An deployments repository stores deployments
 pub trait DeploymentsRepository: Send + Sync + 'static + Clone {
     fn create_deployment(
         &self,
@@ -13,27 +12,28 @@ pub trait DeploymentsRepository: Send + Sync + 'static + Clone {
 
     fn get_all_deployments(
         &self,
-        user_id: Option<&str>,
+        user_id: &str,
     ) -> impl Future<Output = Result<Vec<Deployment>, GetDeploymentError>> + Send;
 
     fn get_deployment(
         &self,
         deployment_id: DeploymentId,
+        user_id: &str,
     ) -> impl Future<Output = Result<Deployment, GetDeploymentError>> + Send;
 
     fn get_deployments_of_service(
         &self,
         project_name: &ProjectName,
         service_name: &ServiceName,
-        user_id: Option<&str>,
+        user_id: &str,
     ) -> impl Future<Output = Result<Vec<Deployment>, GetDeploymentError>> + Send;
+
     fn get_project(
         &self,
         project_name: &ProjectName,
     ) -> impl Future<Output = Result<Project, GetProjectError>> + Send;
 }
 
-// An deployments services manages deployments
 pub trait DeploymentsService: Send + Sync + 'static + Clone {
     fn create_deployment(
         &self,
@@ -42,18 +42,19 @@ pub trait DeploymentsService: Send + Sync + 'static + Clone {
 
     fn get_all_deployments(
         &self,
-        user_id: Option<&str>,
+        user_id: &str,
     ) -> impl Future<Output = Result<Vec<Deployment>, GetDeploymentError>> + Send;
 
     fn get_deployment(
         &self,
         id: DeploymentId,
+        user_id: &str,
     ) -> impl Future<Output = Result<Deployment, GetDeploymentError>> + Send;
 
     fn get_deployments_of_service(
         &self,
         project_name: &ProjectName,
         service_name: &ServiceName,
-        user_id: Option<&str>,
+        user_id: &str,
     ) -> impl Future<Output = Result<Vec<Deployment>, GetDeploymentError>> + Send;
 }
