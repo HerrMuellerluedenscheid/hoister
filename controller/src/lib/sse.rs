@@ -6,17 +6,10 @@ use axum::Extension;
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures_util::stream::Stream;
-use hoister_shared::{HostName, ProjectName, ServiceName};
-use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 
-pub type ContainerID = String;
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub enum ControllerEvent {
-    Retry((ProjectName, ContainerID)),
-    ApplyUpdate((HostName, ProjectName, ServiceName)),
-}
+pub use hoister_shared::ContainerID;
+pub use hoister_shared::wire::ControllerEvent;
 
 /// Internal broadcast payload. The first element is the owning user_id —
 /// `sse_handler` uses it to deliver each event only to that user's
