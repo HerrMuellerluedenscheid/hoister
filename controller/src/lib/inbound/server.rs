@@ -1,3 +1,4 @@
+use axum::extract::DefaultBodyLimit;
 use axum::response::IntoResponse;
 use axum::{
     Extension, Router,
@@ -23,8 +24,15 @@ use crate::domain::deployments::models::deployment::{
 use crate::domain::deployments::ports::DeploymentsService;
 use crate::domain::tokens::models::ApiToken;
 use crate::domain::tokens::ports::TokenService;
+use crate::inbound::rate_limit::{RateLimiter, rate_limit_middleware};
 use crate::outbound::pending_updates_memory::{PendingUpdate, PendingUpdatesMemory};
 use crate::sse::{ControllerEvent, UserScopedEvent, sse_handler};
+
+/// Cap on the JSON payload an agent can POST to the controller. Inspect
+/// payloads with many containers and 16 KB log tails per container add up,
+/// so we leave generous headroom; this exists to shed abuse, not to enforce
+/// product limits.
+const AGENT_BODY_LIMIT: usize = 1024 * 1024;
 use hoister_shared::{CreateDeployment, HostName, ProjectName, ServiceName};
 use tokio::sync::broadcast;
 use ts_rs::TS;
@@ -452,6 +460,7 @@ pub async fn create_agent_router<
 >(
     state: AppState<DS, CS, TS>,
 ) -> Router {
+    let rate_limiter = RateLimiter::new();
     Router::new()
         .route("/health", get(health))
         .route("/sse", get(sse_handler))
@@ -466,10 +475,15 @@ pub async fn create_agent_router<
             "/pending-updates/{hostname}/{project_name}/{service_name}/apply",
             post(apply_pending_update::<DS, CS, TS>),
         )
+        // Rate limit runs AFTER auth so it can key on the resolved user_id.
+        // Auth runs first because `.layer` applies in reverse order.
+        .layer(middleware::from_fn(rate_limit_middleware))
+        .layer(Extension(rate_limiter))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             agent_auth_middleware::<DS, CS, TS>,
         ))
+        .layer(DefaultBodyLimit::max(AGENT_BODY_LIMIT))
         .with_state(state)
 }
 
