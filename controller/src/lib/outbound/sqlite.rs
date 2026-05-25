@@ -326,39 +326,43 @@ impl Sqlite {
 
 impl TokenRepository for Sqlite {
     async fn get_or_create_token(&self, user_id: &str) -> Result<ApiToken, TokenError> {
-        let existing: Option<String> =
-            sqlx::query_scalar("SELECT token FROM api_token WHERE user_id = ?")
+        let already_exists: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM api_token WHERE user_id = ?")
                 .bind(user_id)
                 .fetch_optional(&self.pool)
                 .await
                 .map_err(|_| TokenError::UnknownError)?;
 
-        if let Some(token) = existing {
+        if already_exists.is_some() {
+            // Token already issued. We only store its hash, so we cannot
+            // return the plaintext here — caller must rotate to get a new one.
             return Ok(ApiToken {
-                token,
+                token: None,
                 user_id: user_id.to_string(),
                 is_new: false,
             });
         }
 
         let token = format!("hst_{}", uuid::Uuid::new_v4().simple());
-        sqlx::query("INSERT INTO api_token (token, user_id) VALUES (?, ?)")
-            .bind(&token)
+        let token_hash = crate::domain::tokens::hash::hash_token(&token);
+        sqlx::query("INSERT INTO api_token (token_hash, user_id) VALUES (?, ?)")
+            .bind(&token_hash)
             .bind(user_id)
             .execute(&self.pool)
             .await
             .map_err(|_| TokenError::UnknownError)?;
 
         Ok(ApiToken {
-            token,
+            token: Some(token),
             user_id: user_id.to_string(),
             is_new: true,
         })
     }
 
     async fn find_user_by_token(&self, token: &str) -> Option<String> {
-        sqlx::query_scalar::<_, String>("SELECT user_id FROM api_token WHERE token = ?")
-            .bind(token)
+        let token_hash = crate::domain::tokens::hash::hash_token(token);
+        sqlx::query_scalar::<_, String>("SELECT user_id FROM api_token WHERE token_hash = ?")
+            .bind(token_hash)
             .fetch_optional(&self.pool)
             .await
             .ok()
