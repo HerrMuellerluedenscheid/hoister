@@ -4,6 +4,10 @@ use sqlx::Type;
 use std::fmt::{Display, Formatter};
 use ts_rs::TS;
 
+pub mod wire;
+
+pub type ContainerID = String;
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ImageDigest(pub String);
 

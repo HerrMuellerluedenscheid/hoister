@@ -15,7 +15,6 @@ bollard = {workspace = true}
 chatterbox = {workspace = true}
 figment2 = { workspace = true }
 
-controller = {path = "../controller"}
 hoister_shared = {path = "../hoister_shared"}
 
 futures-util = "0.3.31"

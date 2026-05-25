@@ -1,6 +1,6 @@
 use crate::docker::DockerHandler;
-use controller::sse::ControllerEvent;
 use hoister_shared::HostName;
+use hoister_shared::wire::ControllerEvent;
 use log::{info, warn};
 use reqwest::Client;
 use std::sync::Arc;

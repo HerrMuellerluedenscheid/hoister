@@ -10,3 +10,4 @@ serde = {workspace = true}
 ts-rs = "11.0.1"
 sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio"] }
 chatterbox = {workspace = true}
+bollard = { workspace = true }

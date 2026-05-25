@@ -1035,7 +1035,6 @@ dependencies = [
  "bollard",
  "chatterbox",
  "chrono",
- "controller",
  "cron",
  "ctrlc",
  "env_logger",
@@ -1059,6 +1058,7 @@ dependencies = [
 name = "hoister_shared"
 version = "0.1.0"
 dependencies = [
+ "bollard",
  "chatterbox",
  "serde",
  "sqlx",
