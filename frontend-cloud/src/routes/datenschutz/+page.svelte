@@ -20,11 +20,11 @@
 
 	<main class="mx-auto w-full max-w-2xl flex-1 px-8 py-12">
 		<h1 class="mb-2 text-3xl font-bold tracking-tight">Datenschutzerklärung</h1>
-		<p class="mb-10 text-sm text-zinc-500">Stand: April 2026</p>
+		<p class="mb-10 text-sm text-zinc-500">Stand: Mai 2026</p>
 
 		<!-- 1 -->
 		<section class="mb-8">
-			<h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-zinc-500">
+			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
 				1. Verantwortlicher
 			</h2>
 			<div class="space-y-1 text-zinc-300">
@@ -41,7 +41,7 @@
 
 		<!-- 2 -->
 		<section class="mb-8">
-			<h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-zinc-500">
+			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
 				2. Welche Daten wir verarbeiten
 			</h2>
 			<p class="mb-3 text-zinc-400">
@@ -66,7 +66,7 @@
 
 		<!-- 3 -->
 		<section class="mb-8">
-			<h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-zinc-500">
+			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
 				3. Zwecke und Rechtsgrundlagen der Verarbeitung
 			</h2>
 			<div class="space-y-4 text-zinc-400">
@@ -91,7 +91,7 @@
 
 		<!-- 4 -->
 		<section class="mb-8">
-			<h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-zinc-500">
+			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
 				4. Authentifizierungsdienst: Clerk
 			</h2>
 			<p class="mb-3 text-zinc-400">
@@ -118,9 +118,87 @@
 
 		<!-- 5 -->
 		<section class="mb-8">
-			<h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-zinc-500">
-				5. Cookies
+			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
+				5. Vom Hoister-Agent übermittelte Telemetrie
 			</h2>
+			<p class="mb-3 text-zinc-400">
+				Wenn Sie den Hoister-Agent (<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs"
+					>emrius11/hoister</code
+				>) so konfigurieren, dass er sich mit dieser gehosteten Controller-Instanz verbindet (<code
+					class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs"
+					>HOISTER_CONTROLLER_URL=https://api.hoister.io</code
+				>), überträgt der Agent in regelmäßigen Abständen folgende Daten zu Ihrem Konto:
+			</p>
+			<ul class="list-disc space-y-2 pl-5 text-zinc-400">
+				<li>
+					<span class="text-zinc-300">Container-Metadaten</span> – Image-Namen (inklusive privater Registry-Pfade),
+					Container-Labels, Mount-Pfade auf dem Host, IP-Adressen aus den von Docker verwalteten Netzwerken,
+					Befehlszeilen-Argumente sowie Konfigurations- und Statusfelder, die der Docker-Inspect-Endpunkt
+					liefert.
+				</li>
+				<li>
+					<span class="text-zinc-300">Umgebungsvariablen-Schlüssel</span> – Der Agent überträgt die
+					<em>Namen</em> Ihrer Umgebungsvariablen (z. B.
+					<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">INTERNAL_API_HOST</code>).
+					<span class="text-zinc-300">Werte</span> von Variablen, deren Schlüssel auf eine sensible
+					Bezeichnung schließen lassen (<code
+						class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">password</code
+					>, <code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">token</code>,
+					<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">secret</code>,
+					<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">key</code>,
+					<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">webhook</code> und
+					ähnliches) werden vor der Übermittlung im Agent durch
+					<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">***REDACTED***</code>
+					ersetzt.
+				</li>
+				<li>
+					<span class="text-zinc-300">Deployment-Ereignisse</span> – Erfolgreiche oder fehlgeschlagene
+					Container-Updates samt Image-Digest, Hostname, Projekt- und Service-Name.
+				</li>
+				<li>
+					<span class="text-zinc-300">Container-Log-Auszüge (nur opt-in)</span> – Standardmäßig
+					<strong>deaktiviert</strong>. Wird der Agent mit
+					<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs"
+						>HOISTER_REPORT_LOGS=true</code
+					>
+					gestartet und befindet sich ein Container im Zustand <em>restarting</em>,
+					<em>exited</em> oder <em>dead</em>, überträgt der Agent die letzten ~50 Zeilen
+					Container-Log (maximal 16 KB). Vor der Übermittlung werden Werte sensibler
+					Umgebungsvariablen aus dem Log entfernt. Trotz dieser Heuristik können Logs sensible Daten
+					enthalten — aktivieren Sie diese Option nur, wenn Sie das akzeptieren.
+				</li>
+			</ul>
+			<p class="mt-4 text-zinc-400">
+				<span class="text-zinc-300">Zweck:</span> Anzeige des Status Ihrer Container und
+				Deployment-Historie in Ihrem Dashboard.<br />
+				<span class="text-zinc-300">Rechtsgrundlage:</span> Art. 6 Abs. 1 lit. b DSGVO
+				(Vertragserfüllung).<br />
+				<span class="text-zinc-300">Speicherort:</span> EU (Server in Deutschland).<br />
+				<span class="text-zinc-300">Speicherdauer:</span> Container-Zustände werden im Speicher
+				gehalten und sind nach einem Neustart der Controller-Instanz verloren. Deployment-Datensätze
+				bleiben bis zur Löschung Ihres Kontos erhalten.<br />
+				<span class="text-zinc-300">Mandantentrennung:</span> Alle übermittelten Daten werden ausschließlich
+				unter Ihrer Nutzer-ID gespeichert und sind anderen Nutzern technisch nicht zugänglich.
+			</p>
+			<p class="mt-3 text-zinc-400">
+				Sie können dieser Verarbeitung jederzeit widersprechen, indem Sie den Agent ohne
+				<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs"
+					>HOISTER_CONTROLLER_TOKEN</code
+				>
+				betreiben (Standalone-Modus, keine Telemetrie) oder eine eigene Controller-Instanz aufsetzen (Self-hosted-Modus).
+				Details:
+				<a
+					href="https://docs.hoister.io/guides/operating-modes/"
+					class="text-indigo-400 hover:text-indigo-300"
+					target="_blank"
+					rel="noopener noreferrer">docs.hoister.io/guides/operating-modes</a
+				>.
+			</p>
+		</section>
+
+		<!-- 6 -->
+		<section class="mb-8">
+			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">6. Cookies</h2>
 			<p class="mb-3 text-zinc-400">
 				Diese Website setzt ausschließlich <span class="text-zinc-300"
 					>technisch notwendige Cookies</span
@@ -156,10 +234,10 @@
 			</div>
 		</section>
 
-		<!-- 6 -->
+		<!-- 7 -->
 		<section class="mb-8">
-			<h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-zinc-500">
-				6. Weitergabe von Daten
+			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
+				7. Weitergabe von Daten
 			</h2>
 			<p class="text-zinc-400">
 				Eine Weitergabe Ihrer personenbezogenen Daten an Dritte findet nicht statt, außer an Clerk
@@ -168,10 +246,10 @@
 			</p>
 		</section>
 
-		<!-- 7 -->
+		<!-- 8 -->
 		<section class="mb-8">
-			<h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-zinc-500">
-				7. Ihre Rechte
+			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
+				8. Ihre Rechte
 			</h2>
 			<p class="mb-3 text-zinc-400">
 				Sie haben gegenüber uns folgende Rechte hinsichtlich Ihrer personenbezogenen Daten:
@@ -192,15 +270,15 @@
 			</p>
 		</section>
 
-		<!-- 8 -->
+		<!-- 9 -->
 		<section class="mb-8">
-			<h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-zinc-500">
-				8. Beschwerderecht bei der Aufsichtsbehörde
+			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
+				9. Beschwerderecht bei der Aufsichtsbehörde
 			</h2>
 			<p class="mb-3 text-zinc-400">
-				Sie haben das Recht, sich bei einer Datenschutz-Aufsichtsbehörde über die Verarbeitung
-				Ihrer personenbezogenen Daten durch uns zu beschweren. Die zuständige Aufsichtsbehörde für
-				Berlin ist:
+				Sie haben das Recht, sich bei einer Datenschutz-Aufsichtsbehörde über die Verarbeitung Ihrer
+				personenbezogenen Daten durch uns zu beschweren. Die zuständige Aufsichtsbehörde für Berlin
+				ist:
 			</p>
 			<div class="space-y-1 text-zinc-300">
 				<p>Berliner Beauftragte für Datenschutz und Informationsfreiheit</p>
@@ -216,10 +294,10 @@
 			</div>
 		</section>
 
-		<!-- 9 -->
+		<!-- 10 -->
 		<section class="mb-8">
-			<h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-zinc-500">
-				9. Aktualität dieser Erklärung
+			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
+				10. Aktualität dieser Erklärung
 			</h2>
 			<p class="text-zinc-400">
 				Wir behalten uns vor, diese Datenschutzerklärung bei Änderungen des Dienstes oder der
