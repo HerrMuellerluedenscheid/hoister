@@ -332,39 +332,41 @@ impl Postgresql {
 
 impl TokenRepository for Postgresql {
     async fn get_or_create_token(&self, user_id: &str) -> Result<ApiToken, TokenError> {
-        let existing: Option<String> =
-            sqlx::query_scalar("SELECT token FROM api_token WHERE user_id = $1")
+        let already_exists: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM api_token WHERE user_id = $1")
                 .bind(user_id)
                 .fetch_optional(&self.pool)
                 .await
                 .map_err(|_| TokenError::UnknownError)?;
 
-        if let Some(token) = existing {
+        if already_exists.is_some() {
             return Ok(ApiToken {
-                token,
+                token: None,
                 user_id: user_id.to_string(),
                 is_new: false,
             });
         }
 
         let token = format!("hst_{}", uuid::Uuid::new_v4().simple());
-        sqlx::query("INSERT INTO api_token (token, user_id) VALUES ($1, $2)")
-            .bind(&token)
+        let token_hash = crate::domain::tokens::hash::hash_token(&token);
+        sqlx::query("INSERT INTO api_token (token_hash, user_id) VALUES ($1, $2)")
+            .bind(&token_hash)
             .bind(user_id)
             .execute(&self.pool)
             .await
             .map_err(|_| TokenError::UnknownError)?;
 
         Ok(ApiToken {
-            token,
+            token: Some(token),
             user_id: user_id.to_string(),
             is_new: true,
         })
     }
 
     async fn find_user_by_token(&self, token: &str) -> Option<String> {
-        sqlx::query_scalar::<_, String>("SELECT user_id FROM api_token WHERE token = $1")
-            .bind(token)
+        let token_hash = crate::domain::tokens::hash::hash_token(token);
+        sqlx::query_scalar::<_, String>("SELECT user_id FROM api_token WHERE token_hash = $1")
+            .bind(token_hash)
             .fetch_optional(&self.pool)
             .await
             .ok()
