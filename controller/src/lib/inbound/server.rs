@@ -11,12 +11,9 @@ use axum::{
 use chrono::{DateTime, Utc};
 use log::{debug, error};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::domain::container_state::models::state::{
-    AddContainerStateRequest, ContainerStateData, ServiceState,
-};
+use crate::domain::container_state::models::state::{AddContainerStateRequest, ContainerStateData};
 use crate::domain::container_state::port::ContainerStateService;
 use crate::domain::deployments::models::deployment::{
     CreateDeploymentRequest, Deployment, GetDeploymentError,
@@ -262,11 +259,7 @@ async fn create_deployment<DS: DeploymentsService, CS: ContainerStateService, TS
     }
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct PostContainerStateRequest {
-    pub project_name: ProjectName,
-    pub payload: HashMap<ServiceName, ServiceState>,
-}
+pub use hoister_shared::wire::PostContainerStateRequest;
 
 async fn post_container_state<
     DS: DeploymentsService,
