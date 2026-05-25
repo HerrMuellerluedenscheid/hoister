@@ -1,0 +1,26 @@
+# Gitleaks configuration. Inherits the bundled default ruleset and adds a
+# project-specific rule for hoister agent tokens (`hst_*`).
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "hoister-agent-token"
+description = "Hoister agent token (hst_*)"
+regex = '''hst_[A-Za-z0-9]{20,}'''
+keywords = ["hst_"]
+
+[allowlist]
+description = "Placeholder values and test fixtures"
+paths = [
+    '''\.env\.example$''',
+    '''\.env\.template$''',
+    # Frontend bcrypt example hash in the self-hosted docs.
+    '''docker-compose\.yaml$''',
+    '''documentation/src/content/docs/guides/frontend\.md$''',
+]
+regexes = [
+    # Common placeholder text used in examples.
+    '''replace[-_]me''',
+    '''your-[a-z-]+''',
+]
