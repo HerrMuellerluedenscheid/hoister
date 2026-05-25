@@ -4,32 +4,30 @@ use crate::domain::container_state::models::state::{
 use crate::domain::container_state::port::ContainerStateRepository;
 use chrono::Utc;
 use hoister_shared::{HostName, ProjectName, ServiceName};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-#[derive(Clone)]
+/// In-memory container state, partitioned by user. Every read and write goes
+/// through a user_id key so two users with the same project/service names
+/// cannot see each other's containers.
+#[derive(Clone, Default)]
 pub struct StateMemory {
-    state: Arc<RwLock<ContainerStateData>>,
-}
-
-impl Default for StateMemory {
-    fn default() -> Self {
-        Self {
-            state: Arc::new(RwLock::new(ContainerStateData::new())),
-        }
-    }
+    state: Arc<RwLock<HashMap<String, ContainerStateData>>>,
 }
 
 impl ContainerStateRepository for StateMemory {
     async fn get_container_state(
         &self,
+        user_id: &str,
         hostname: &HostName,
         project_name: &ProjectName,
         service_name: &ServiceName,
     ) -> Option<HostProjectState> {
         let state = self.state.read().await;
         state
-            .get(hostname)
+            .get(user_id)
+            .and_then(|data| data.get(hostname))
             .and_then(|projects| projects.get(project_name))
             .filter(|host_project| host_project.services.contains_key(service_name))
             .map(|host_project| HostProjectState {
@@ -43,18 +41,22 @@ impl ContainerStateRepository for StateMemory {
             })
     }
 
-    async fn get_container_states(&self) -> ContainerStateData {
+    async fn get_container_states(&self, user_id: &str) -> ContainerStateData {
         let state = self.state.read().await;
-        state.clone()
+        state.get(user_id).cloned().unwrap_or_default()
     }
 
     async fn add_container_state(&self, request: AddContainerStateRequest) {
-        let hostname = request.hostname;
-        let project_name = request.project_name;
-        let services = request.services;
+        let AddContainerStateRequest {
+            user_id,
+            hostname,
+            project_name,
+            services,
+        } = request;
 
         let mut state = self.state.write().await;
-        let entry = state
+        let user_data = state.entry(user_id).or_default();
+        let entry = user_data
             .entry(hostname)
             .or_default()
             .entry(project_name)

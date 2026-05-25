@@ -84,8 +84,11 @@ async fn agent_auth_middleware<
     next: Next,
 ) -> Result<Response, StatusCode> {
     // Self-hosted: if no secret is configured, skip auth entirely (open dev mode).
+    // Insert a synthetic "local" UserId so downstream handlers can rely on
+    // tenant scoping being non-optional.
     #[cfg(feature = "self-hosted")]
     if state.api_secret.is_none() {
+        request.extensions_mut().insert(UserId("local".to_string()));
         return Ok(next.run(request).await);
     }
 
@@ -104,18 +107,19 @@ async fn agent_auth_middleware<
         return Err(StatusCode::UNAUTHORIZED);
     };
 
-    // 1. Static API secret (self-hosted only).
+    // 1. Static API secret (self-hosted only). The X-User-Id header is
+    // optional; absent it we scope to the synthetic "local" tenant.
     #[cfg(feature = "self-hosted")]
-    if let Some(ref secret) = state.api_secret
-        && token == *secret
-    {
-        if let Some(user_id) = request
-            .headers()
-            .get("X-User-Id")
-            .and_then(|h| h.to_str().ok())
-            .map(str::to_owned)
-        {
+    if let Some(ref secret) = state.api_secret {
+        if token == *secret {
+            let user_id = request
+                .headers()
+                .get("X-User-Id")
+                .and_then(|h| h.to_str().ok())
+                .map(str::to_owned)
+                .unwrap_or_else(|| "local".to_string());
             request.extensions_mut().insert(UserId(user_id));
+            return Ok(next.run(request).await);
         }
         return Ok(next.run(request).await);
     }
@@ -147,14 +151,17 @@ async fn internal_user_middleware(
         return Ok(next.run(request).await);
     }
 
-    if let Some(user_id) = request
+    let Some(user_id) = request
         .headers()
         .get("X-User-Id")
         .and_then(|h| h.to_str().ok())
         .map(str::to_owned)
-    {
-        request.extensions_mut().insert(UserId(user_id));
-    }
+    else {
+        // The BFF must always set X-User-Id. Refuse the request rather than
+        // letting it through unscoped.
+        return Err(StatusCode::UNAUTHORIZED);
+    };
+    request.extensions_mut().insert(UserId(user_id));
 
     Ok(next.run(request).await)
 }
@@ -262,16 +269,19 @@ async fn post_container_state<
     TS: TokenService,
 >(
     State(state): State<AppState<DS, CS, TS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
     Path((hostname, project_name)): Path<(HostName, ProjectName)>,
     Json(payload): Json<PostContainerStateRequest>,
 ) -> impl IntoResponse {
     debug!(
-        "Received container state update for host: {} project: {}",
+        "Received container state update for user: {} host: {} project: {}",
+        user_id,
         hostname.as_str(),
         project_name.as_str()
     );
 
     let req = AddContainerStateRequest {
+        user_id,
         hostname,
         project_name,
         services: payload.payload,
@@ -331,12 +341,13 @@ async fn get_container_state_by_service_name<
     TS: TokenService,
 >(
     State(state): State<AppState<DS, CS, TS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
     Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
 ) -> Result<Json<ApiResponse<ContainerStateResponse>>, StatusCode> {
-    debug!("Received request for container state by id");
+    debug!("Received request for container state by id (user: {user_id})");
     let host_project_state = state
         .container_state_service
-        .get_container_state(&hostname, &project_name, &service_name)
+        .get_container_state(&user_id, &hostname, &project_name, &service_name)
         .await
         .ok_or(StatusCode::NOT_FOUND)?;
 
@@ -362,9 +373,13 @@ async fn get_container_states<
     TS: TokenService,
 >(
     State(state): State<AppState<DS, CS, TS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
 ) -> impl IntoResponse {
-    debug!("Received request for container state");
-    let states = state.container_state_service.get_container_states().await;
+    debug!("Received request for container states (user: {user_id})");
+    let states = state
+        .container_state_service
+        .get_container_states(&user_id)
+        .await;
     Json(ContainerStateResponses::from(states)).into_response()
 }
 
@@ -383,6 +398,7 @@ async fn post_pending_update<
     TS: TokenService,
 >(
     State(state): State<AppState<DS, CS, TS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
     Json(payload): Json<PendingUpdateRequest>,
 ) -> impl IntoResponse {
     let update = PendingUpdate {
@@ -393,7 +409,7 @@ async fn post_pending_update<
         new_digest: payload.new_digest,
         detected_at: Utc::now(),
     };
-    state.pending_updates.add(update).await;
+    state.pending_updates.add(&user_id, update).await;
     StatusCode::OK.into_response()
 }
 
@@ -403,8 +419,9 @@ async fn get_pending_updates<
     TS: TokenService,
 >(
     State(state): State<AppState<DS, CS, TS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
 ) -> impl IntoResponse {
-    let updates = state.pending_updates.get_all().await;
+    let updates = state.pending_updates.get_all(&user_id).await;
     Json(updates).into_response()
 }
 
@@ -414,11 +431,12 @@ async fn apply_pending_update<
     TS: TokenService,
 >(
     State(state): State<AppState<DS, CS, TS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
     Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
 ) -> impl IntoResponse {
     state
         .pending_updates
-        .remove(&hostname, &project_name, &service_name)
+        .remove(&user_id, &hostname, &project_name, &service_name)
         .await;
     let event = ControllerEvent::ApplyUpdate((hostname, project_name, service_name));
     let _ = state.event_tx.send(event);
