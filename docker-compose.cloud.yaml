@@ -7,14 +7,14 @@ services:
       - no-new-privileges:true
     environment:
       HOISTER_CONTROLLER_URL: "https://0.0.0.0:3033"
-      HOISTER_API_SECRET: "hst_efec3e248eae4b168c7acfd9d1895437"
+      HOISTER_API_SECRET: "${HOISTER_API_SECRET:?HOISTER_API_SECRET is required}"
 
   backend-db:
     image: postgres:18.3-alpine
     ports:
       - 6432:5432
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: happyhoistering43123
-      POSTGRES_DB: hoister
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+      POSTGRES_DB: ${POSTGRES_DB:-hoister}
     restart: unless-stopped
