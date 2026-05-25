@@ -15,6 +15,7 @@ export default defineConfig({
 					items: [
 						// Each item here is one entry in the navigation menu.
 						{ label: 'Getting Started', slug: 'guides/getting-started' },
+						{ label: 'Operating modes', slug: 'guides/operating-modes' },
 						{ label: 'Notifications', slug: 'guides/notifications' },
 						{ label: 'Registries', slug: 'guides/registries' },
 						{ label: 'Dashboard', slug: 'guides/frontend' },

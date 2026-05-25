@@ -135,10 +135,20 @@ impl Schedule {
 
 #[derive(Deserialize, Debug, Clone)]
 pub(crate) struct Controller {
+    /// Controller URL. Defaults to the hosted instance at hoister.io so
+    /// users only need to set `token` to enable the cloud dashboard. Override
+    /// when running the controller yourself.
+    #[serde(default = "default_controller_url")]
     pub(crate) url: Url,
     pub(crate) token: Option<String>,
     pub(crate) ca_cert_path: Option<String>,
 }
+
+fn default_controller_url() -> Url {
+    Url::parse(DEFAULT_CONTROLLER_URL).expect("default controller URL parses")
+}
+
+pub(crate) const DEFAULT_CONTROLLER_URL: &str = "https://api.hoister.io";
 
 fn default_true() -> bool {
     true
@@ -254,6 +264,57 @@ mod tests {
                 "channel-name".to_string()
             );
 
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn test_controller_token_alone_defaults_to_hosted_url() {
+        use figment2::Jail;
+        Jail::expect_with(|jail: &mut Jail| {
+            jail.create_file(
+                "config-test.toml",
+                r#"
+            [schedule]
+            interval=10
+            "#,
+            )?;
+
+            jail.set_env("HOISTER_CONTROLLER_TOKEN", "hst_test_token");
+
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let config = rt.block_on(load_config("config-test.toml".as_ref()));
+
+            let controller = config.controller.expect("controller should be populated");
+            assert_eq!(
+                controller.url.as_str(),
+                "https://api.hoister.io/",
+                "default URL should be the hosted instance"
+            );
+            assert_eq!(controller.token.as_deref(), Some("hst_test_token"));
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn test_no_controller_env_means_standalone() {
+        use figment2::Jail;
+        Jail::expect_with(|jail: &mut Jail| {
+            jail.create_file(
+                "config-test.toml",
+                r#"
+            [schedule]
+            interval=10
+            "#,
+            )?;
+
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let config = rt.block_on(load_config("config-test.toml".as_ref()));
+
+            assert!(
+                config.controller.is_none(),
+                "no controller env vars should leave controller=None (standalone mode)"
+            );
             Ok(())
         });
     }

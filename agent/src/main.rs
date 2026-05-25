@@ -115,6 +115,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     };
 
     if let Some(controller_config) = &config.controller {
+        let url_str = controller_config.url.as_str();
+        if url_str.starts_with(config::DEFAULT_CONTROLLER_URL) {
+            info!(
+                "Mode: hosted — reporting to the hoister.io cloud at {}. Set HOISTER_CONTROLLER_URL to use a self-hosted controller, or unset HOISTER_CONTROLLER_TOKEN for standalone (no telemetry).",
+                url_str
+            );
+        } else {
+            info!("Mode: self-hosted — reporting to {}", url_str);
+        }
         let mut url_sse = controller_config.url.clone();
         let url_state = controller_config.url.clone();
         url_sse.set_path("sse");
@@ -128,6 +137,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 .await
                 .expect("Failed to start monitor");
         });
+    } else {
+        info!(
+            "Mode: standalone — no controller configured, container state is not reported. Set HOISTER_CONTROLLER_TOKEN to enable the hosted dashboard."
+        );
     }
 
     loop {
