@@ -11,6 +11,12 @@ pub struct Config {
     pub port: u16,
     #[serde(default = "default_internal_port")]
     pub internal_port: u16,
+    /// Bind address for the internal (BFF-facing) listener. Defaults to
+    /// loopback so the internal router cannot be reached from anywhere other
+    /// than the same host. For docker-compose deployments where the frontend
+    /// runs in a sibling container, set this to `0.0.0.0`.
+    #[serde(default = "default_internal_bind_addr")]
+    pub internal_bind_addr: String,
     pub database_path: String,
     #[serde(default)]
     pub tls_cert_path: Option<PathBuf>,
@@ -38,6 +44,10 @@ fn default_port() -> u16 {
 
 fn default_internal_port() -> u16 {
     3034
+}
+
+fn default_internal_bind_addr() -> String {
+    "127.0.0.1".to_string()
 }
 
 pub fn get_config() -> Config {
