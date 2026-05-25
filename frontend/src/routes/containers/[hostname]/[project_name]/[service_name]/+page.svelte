@@ -85,8 +85,8 @@
           <p class="mt-1 font-mono text-gray-900">{container.State.ExitCode}</p>
         </div>
         <div>
-          <span class="text-sm text-gray-600">PID</span>
-          <p class="mt-1 font-mono text-gray-900">{container.State.Pid}</p>
+          <span class="text-sm text-gray-600">Restart Count</span>
+          <p class="mt-1 font-mono text-gray-900">{container.RestartCount ?? 0}</p>
         </div>
         <div>
           <span class="text-sm text-gray-600">OOM Killed</span>
@@ -106,8 +106,86 @@
           <span class="text-sm text-gray-600">Finished</span>
           <p class="mt-1 text-sm text-gray-900">{formatDate(container.State.FinishedAt)}</p>
         </div>
+        <div>
+          <span class="text-sm text-gray-600">PID</span>
+          <p class="mt-1 font-mono text-gray-900">{container.State.Pid}</p>
+        </div>
       </div>
     </div>
+
+    {#if container.State.Error || (container.State.Status && container.State.Status !== 'running' && container.State.Status !== 'created')}
+      <div class="mb-6 rounded-lg border border-red-300 bg-red-50 p-6 shadow">
+        <h2 class="mb-3 text-xl font-semibold text-red-900">Exit reason</h2>
+        {#if container.State.Error}
+          <div class="mb-3">
+            <span class="text-sm font-medium text-red-700">Docker error</span>
+            <p class="mt-1 font-mono text-sm break-all text-red-900">{container.State.Error}</p>
+          </div>
+        {/if}
+        <div class="grid grid-cols-1 gap-3 text-sm md:grid-cols-3">
+          <div>
+            <span class="text-red-700">Exit code</span>
+            <p class="font-mono text-red-900">{container.State.ExitCode}</p>
+          </div>
+          <div>
+            <span class="text-red-700">OOM killed</span>
+            <p class="text-red-900">{container.State.OOMKilled ? 'Yes' : 'No'}</p>
+          </div>
+          <div>
+            <span class="text-red-700">Finished at</span>
+            <p class="text-red-900">{formatDate(container.State.FinishedAt)}</p>
+          </div>
+        </div>
+        {#if !container.State.Error && container.State.ExitCode !== 0}
+          <p class="mt-3 text-sm text-red-700">
+            Docker did not report a startup error, so the container process exited on its own.
+            Check the container logs on the host for the cause.
+          </p>
+        {/if}
+      </div>
+    {/if}
+
+    {#if container.State.Health}
+      <div class="mb-6 rounded-lg bg-white p-6 shadow">
+        <h2 class="mb-1 text-xl font-semibold text-gray-900">Health check</h2>
+        <div class="mb-4 flex items-center gap-3 text-sm">
+          <span
+            class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium {container
+              .State.Health.Status === 'healthy'
+              ? 'bg-green-100 text-green-800'
+              : container.State.Health.Status === 'unhealthy'
+                ? 'bg-red-100 text-red-800'
+                : 'bg-gray-100 text-gray-800'}"
+          >
+            {container.State.Health.Status}
+          </span>
+          <span class="text-gray-600">
+            Failing streak: <span class="font-mono">{container.State.Health.FailingStreak ?? 0}</span>
+          </span>
+        </div>
+        {#if container.State.Health.Log && container.State.Health.Log.length > 0}
+          <h3 class="mb-2 text-sm font-medium text-gray-700">Recent probes</h3>
+          <div class="space-y-2">
+            {#each container.State.Health.Log.slice(-3).reverse() as probe}
+              <div
+                class="rounded border p-3 {probe.ExitCode === 0
+                  ? 'border-green-200 bg-green-50'
+                  : 'border-red-200 bg-red-50'}"
+              >
+                <div class="mb-1 flex justify-between text-xs text-gray-600">
+                  <span>{formatDate(probe.End)}</span>
+                  <span>exit {probe.ExitCode}</span>
+                </div>
+                {#if probe.Output}
+                  <pre
+                    class="overflow-x-auto rounded bg-white/60 p-2 font-mono text-xs whitespace-pre-wrap text-gray-900">{probe.Output}</pre>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
 
     <!-- Deployments -->
     <div class="mb-6 rounded-lg bg-white p-6 shadow">
