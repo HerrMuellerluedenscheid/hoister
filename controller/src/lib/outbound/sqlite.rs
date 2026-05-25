@@ -6,9 +6,7 @@ use crate::domain::deployments::models::service::{Service, ServiceId};
 use crate::domain::deployments::ports::DeploymentsRepository;
 use crate::domain::tokens::models::{ApiToken, TokenError};
 use crate::domain::tokens::ports::TokenRepository;
-use hoister_shared::{
-    DeploymentStatus, HostName, ImageDigest, ImageName, ProjectName, ServiceName,
-};
+use hoister_shared::{DeploymentStatus, HostName, ImageName, ProjectName, ServiceName};
 use log::error;
 use sqlx::migrate::MigrateDatabase;
 use sqlx::{Error as SqlxError, Row, SqlitePool};
@@ -293,28 +291,29 @@ impl Sqlite {
 
     async fn create_deployment(
         &self,
-        project_name: &ProjectName,
-        service_name: &ServiceName,
-        image: &ImageName,
-        digest: &ImageDigest,
-        status: &DeploymentStatus,
-        hostname: &HostName,
-        user_id: Option<&str>,
+        req: &CreateDeploymentRequest,
     ) -> Result<DeploymentId, SqlxError> {
-        let project_id = self.upsert_project(project_name, user_id).await?;
-        let service_id = self.upsert_service(project_id, service_name, image).await?;
-        let host_id = self.upsert_host(hostname, user_id).await?;
+        let user_id = req.user_id.as_deref();
+        let project_id = self.upsert_project(&req.project_name, user_id).await?;
+        let service_id = self
+            .upsert_service(project_id, &req.service_name, &req.image_name)
+            .await?;
+        let host_id = self.upsert_host(&req.hostname, user_id).await?;
 
-        if matches!(status, DeploymentStatus::NoUpdate) {
+        if matches!(req.deployment_status, DeploymentStatus::NoUpdate) {
             self.clear_last_no_update_deployment(service_id).await?;
-            debug!("deleted {} - {}", digest.as_str(), status)
+            debug!(
+                "deleted {} - {}",
+                req.image_digest.as_str(),
+                req.deployment_status
+            )
         }
 
         let result = sqlx::query(
             "INSERT INTO deployment (digest, status, service_id, host_id) VALUES (?, ?, ?, ?)",
         )
-        .bind(digest.as_str())
-        .bind(status)
+        .bind(req.image_digest.as_str())
+        .bind(&req.deployment_status)
         .bind(service_id)
         .bind(&host_id)
         .execute(&self.pool)
@@ -372,17 +371,7 @@ impl DeploymentsRepository for Sqlite {
         &self,
         req: &CreateDeploymentRequest,
     ) -> Result<DeploymentId, CreateDeploymentError> {
-        self.create_deployment(
-            &req.project_name,
-            &req.service_name,
-            &req.image_name,
-            &req.image_digest,
-            &req.deployment_status,
-            &req.hostname,
-            req.user_id.as_deref(),
-        )
-        .await
-        .map_err(|e| {
+        self.create_deployment(req).await.map_err(|e| {
             error!("Failed to create deployment: {e:?}");
             CreateDeploymentError::UnknownError
         })
