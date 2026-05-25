@@ -51,21 +51,27 @@
 
 <div class="min-h-screen bg-zinc-950 text-zinc-100">
 	<header class="flex items-center justify-between border-b border-zinc-800 px-8 py-5">
-		<div class="flex items-center gap-2">
-			<svg
-				class="h-6 w-6 text-indigo-400"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-			>
-				<path
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					d="M5 10l1.5-4.5h11L19 10M5 10h14M5 10l-2 7h18l-2-7M9 17v2m6-2v2m-3-9v4"
-				/>
-			</svg>
-			<span class="font-semibold tracking-tight">Hoister</span>
+		<div class="flex items-center gap-4">
+			<div class="flex items-center gap-2">
+				<svg
+					class="h-6 w-6 text-indigo-400"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+				>
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						d="M5 10l1.5-4.5h11L19 10M5 10h14M5 10l-2 7h18l-2-7M9 17v2m6-2v2m-3-9v4"
+					/>
+				</svg>
+				<span class="font-semibold tracking-tight">Hoister</span>
+			</div>
+			<nav class="flex gap-3 text-sm text-zinc-400">
+				<a href="/dashboard" class="text-zinc-100">Dashboard</a>
+				<a href="/containers" class="hover:text-zinc-100">Containers</a>
+			</nav>
 		</div>
 		<UserButton />
 	</header>
