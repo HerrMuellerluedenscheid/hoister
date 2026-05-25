@@ -1,7 +1,7 @@
-import { redirect } from '@sveltejs/kit';
-import type { PageServerLoad } from './$types';
+import { error, fail, redirect } from '@sveltejs/kit';
+import type { Actions, PageServerLoad } from './$types';
 import { getDeployments } from '$lib/api/deployments';
-import { getOrCreateToken } from '$lib/api/token';
+import { getOrCreateToken, rotateToken } from '$lib/api/token';
 import type { TokenResponse } from '$lib/api/token';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -21,7 +21,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 	}
 
 	return {
-		deployments: deploymentsResult.status === 'fulfilled' ? deploymentsResult.value.deployments : [],
+		deployments:
+			deploymentsResult.status === 'fulfilled' ? deploymentsResult.value.deployments : [],
 		error: deploymentsResult.status === 'rejected' ? 'Failed to connect to backend' : null,
 		agentToken: tokenResult.status === 'fulfilled' ? (tokenResult.value as TokenResponse) : null,
 		tokenError:
@@ -29,4 +30,19 @@ export const load: PageServerLoad = async ({ locals }) => {
 				? 'Could not retrieve agent token — check HOISTER_CONTROLLER_URL on the controller'
 				: null
 	};
+};
+
+export const actions: Actions = {
+	rotateToken: async ({ locals }) => {
+		const auth = locals.auth();
+		if (!auth.userId) throw error(401, 'Not authenticated');
+
+		try {
+			const token = await rotateToken(auth.userId);
+			return { rotatedToken: token };
+		} catch (e) {
+			console.error('[dashboard] token rotation failed:', e);
+			return fail(500, { rotateError: 'Failed to rotate agent token' });
+		}
+	}
 };
