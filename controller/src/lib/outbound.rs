@@ -134,6 +134,15 @@ impl TokenRepository for Database {
         }
     }
 
+    async fn rotate_token(&self, user_id: &str) -> Result<ApiToken, TokenError> {
+        match self {
+            Self::Sqlite(db) => <Sqlite as TokenRepository>::rotate_token(db, user_id).await,
+            Self::Postgresql(db) => {
+                <Postgresql as TokenRepository>::rotate_token(db, user_id).await
+            }
+        }
+    }
+
     async fn find_user_by_token(&self, token: &str) -> Option<String> {
         match self {
             Self::Sqlite(db) => <Sqlite as TokenRepository>::find_user_by_token(db, token).await,

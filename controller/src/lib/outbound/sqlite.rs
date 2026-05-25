@@ -369,6 +369,30 @@ impl TokenRepository for Sqlite {
             .ok()
             .flatten()
     }
+
+    async fn rotate_token(&self, user_id: &str) -> Result<ApiToken, TokenError> {
+        let token = format!("hst_{}", uuid::Uuid::new_v4().simple());
+        let token_hash = crate::domain::tokens::hash::hash_token(&token);
+        // Upsert: if the user already has a row, replace its hash; otherwise
+        // create one. Either way the previous plaintext is now unusable.
+        sqlx::query(
+            r#"
+            INSERT INTO api_token (token_hash, user_id) VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET token_hash = excluded.token_hash
+            "#,
+        )
+        .bind(&token_hash)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|_| TokenError::UnknownError)?;
+
+        Ok(ApiToken {
+            token: Some(token),
+            user_id: user_id.to_string(),
+            is_new: true,
+        })
+    }
 }
 
 impl DeploymentsRepository for Sqlite {

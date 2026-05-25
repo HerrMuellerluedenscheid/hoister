@@ -17,6 +17,10 @@ impl<TR: TokenRepository> TokenService for Service<TR> {
         self.repository.get_or_create_token(user_id).await
     }
 
+    async fn rotate_token(&self, user_id: &str) -> Result<ApiToken, TokenError> {
+        self.repository.rotate_token(user_id).await
+    }
+
     async fn find_user_by_token(&self, token: &str) -> Option<String> {
         self.repository.find_user_by_token(token).await
     }
