@@ -1,19 +1,35 @@
 <script lang="ts">
 	import { UserButton } from 'svelte-clerk';
+	import { enhance } from '$app/forms';
 	import Deployments from '$lib/components/Deployments.svelte';
+	import type { TokenResponse } from '$lib/api/token';
+	import type { PageProps } from './$types';
 
-	let { data } = $props();
+	let { data, form }: PageProps = $props();
 
 	let copied = $state(false);
 	let manuallyShown = $state(false);
 	let manuallyHidden = $state(false);
+	let rotating = $state(false);
+
+	// A freshly-rotated token (from a form action) takes priority over the
+	// load-time token — `data.agentToken.token` is null for returning users
+	// because the controller only stores the SHA-256 hash.
+	const currentToken = $derived<TokenResponse | null>(form?.rotatedToken ?? data.agentToken);
+
+	const hasPlaintext = $derived(currentToken != null && currentToken.token != null);
+
+	// Show the snippet when:
+	//  - the controller just minted the token (first call or after rotate), OR
+	//  - the user explicitly clicked "Show snippet" AND we have a plaintext
+	//    to fill in. We never reveal a stub `your-token` snippet for tokens
+	//    whose plaintext we can't recover.
 	const showSnippet = $derived(
-		(data.agentToken != null) &&
-		((data.agentToken.is_new && !manuallyHidden) || manuallyShown)
+		hasPlaintext && ((currentToken!.is_new && !manuallyHidden) || manuallyShown)
 	);
 
 	const snippet = $derived(
-		data.agentToken
+		hasPlaintext
 			? `services:
   hoister:
     image: emrius11/hoister:latest
@@ -22,8 +38,7 @@
     security_opt:
       - no-new-privileges:true
     environment:
-      HOISTER_CONTROLLER_URL: "https://your-controller:3033"
-      HOISTER_API_SECRET: "${data.agentToken.token}"`
+      HOISTER_CONTROLLER_TOKEN: "${currentToken!.token}"`
 			: ''
 	);
 
@@ -56,61 +71,87 @@
 	</header>
 
 	<main class="mx-auto max-w-4xl space-y-10 px-8 py-10">
-
-		{#if data.agentToken}
-			{#if data.agentToken.is_new || showSnippet}
-				<!-- First-time setup banner -->
+		{#if currentToken}
+			{#if showSnippet}
+				<!-- Snippet visible: first issue or after rotate -->
 				<section class="rounded-xl border border-indigo-500/40 bg-indigo-500/10 p-6">
 					<div class="mb-1 flex items-center justify-between">
 						<h2 class="text-lg font-semibold text-indigo-300">Connect your agent</h2>
-						{#if !data.agentToken.is_new}
-							<button
-								onclick={() => { manuallyHidden = true; manuallyShown = false; }}
-								class="text-xs text-zinc-500 hover:text-zinc-300"
-							>
-								Dismiss
-							</button>
-						{/if}
+						<button
+							onclick={() => {
+								manuallyHidden = true;
+								manuallyShown = false;
+							}}
+							class="text-xs text-zinc-500 hover:text-zinc-300"
+						>
+							Dismiss
+						</button>
 					</div>
 					<p class="mb-4 text-sm text-zinc-400">
-						Add the <code class="rounded bg-zinc-800 px-1 py-0.5 text-zinc-200">hoister</code> service
-						to your
-						<code class="rounded bg-zinc-800 px-1 py-0.5 text-zinc-200">docker-compose.yaml</code>
-						and replace <code class="rounded bg-zinc-800 px-1 py-0.5 text-zinc-200"
-							>your-controller</code
-						> with your controller's hostname or IP.
+						Add the <code class="rounded bg-zinc-800 px-1 py-0.5 text-zinc-200">hoister</code>
+						service to your
+						<code class="rounded bg-zinc-800 px-1 py-0.5 text-zinc-200">docker-compose.yaml</code>.
+						This token is shown <strong>once</strong> — save it now. Rotate if it leaks or you lose it.
 					</p>
 					<div class="relative">
 						<pre
 							class="overflow-x-auto rounded-lg bg-zinc-900 p-4 text-sm leading-relaxed text-zinc-200">{snippet}</pre>
 						<button
 							onclick={copySnippet}
-							class="absolute right-3 top-3 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+							class="absolute top-3 right-3 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
 						>
 							{copied ? 'Copied!' : 'Copy'}
 						</button>
 					</div>
 				</section>
 			{:else}
-				<!-- Compact token row for returning users -->
-				<div class="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-3">
+				<!-- Compact row: returning user with no plaintext available -->
+				<div
+					class="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-3"
+				>
 					<div class="flex items-center gap-3 text-sm text-zinc-400">
 						<span class="h-2 w-2 rounded-full bg-emerald-400"></span>
-						Agent connected
-						<code class="font-mono text-xs text-zinc-500">{data.agentToken.token.slice(0, 16)}…</code>
+						Agent token issued
+						<span class="text-xs text-zinc-600"
+							>(plaintext only shown once; rotate to get a new one)</span
+						>
 					</div>
-					<button
-						onclick={() => { manuallyShown = true; manuallyHidden = false; }}
-						class="text-xs text-zinc-500 hover:text-zinc-300"
+					<form
+						method="POST"
+						action="?/rotateToken"
+						use:enhance={() => {
+							rotating = true;
+							return async ({ update }) => {
+								await update();
+								rotating = false;
+								manuallyShown = true;
+								manuallyHidden = false;
+							};
+						}}
 					>
-						Show setup snippet
-					</button>
+						<button
+							type="submit"
+							disabled={rotating}
+							class="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100 disabled:opacity-50"
+						>
+							{rotating ? 'Rotating…' : 'Rotate token'}
+						</button>
+					</form>
 				</div>
 			{/if}
 		{/if}
 
+		{#if form?.rotateError}
+			<div class="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-400">
+				<span class="font-medium">Rotation failed:</span>
+				{form.rotateError}
+			</div>
+		{/if}
+
 		{#if data.tokenError}
-			<div class="rounded-xl border border-yellow-800 bg-yellow-950/40 px-4 py-3 text-sm text-yellow-400">
+			<div
+				class="rounded-xl border border-yellow-800 bg-yellow-950/40 px-4 py-3 text-sm text-yellow-400"
+			>
 				<span class="font-medium">Agent token unavailable:</span>
 				{data.tokenError}
 			</div>
