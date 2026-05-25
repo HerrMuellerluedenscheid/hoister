@@ -26,22 +26,28 @@ impl<DR: DeploymentsRepository> DeploymentsService for Service<DR> {
 
     async fn get_all_deployments(
         &self,
-        user_id: Option<&str>,
+        user_id: &str,
     ) -> Result<Vec<Deployment>, GetDeploymentError> {
         self.deployments_repository
             .get_all_deployments(user_id)
             .await
     }
 
-    async fn get_deployment(&self, id: DeploymentId) -> Result<Deployment, GetDeploymentError> {
-        self.deployments_repository.get_deployment(id).await
+    async fn get_deployment(
+        &self,
+        id: DeploymentId,
+        user_id: &str,
+    ) -> Result<Deployment, GetDeploymentError> {
+        self.deployments_repository
+            .get_deployment(id, user_id)
+            .await
     }
 
     async fn get_deployments_of_service(
         &self,
         project_name: &ProjectName,
         service_name: &ServiceName,
-        user_id: Option<&str>,
+        user_id: &str,
     ) -> Result<Vec<Deployment>, GetDeploymentError> {
         self.deployments_repository
             .get_deployments_of_service(project_name, service_name, user_id)

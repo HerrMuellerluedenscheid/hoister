@@ -39,11 +39,8 @@ impl Sqlite {
         Ok(())
     }
 
-    /// Get all deployments, optionally scoped to a Clerk user.
-    pub async fn get_all_deployments(
-        &self,
-        user_id: Option<&str>,
-    ) -> Result<Vec<Deployment>, SqlxError> {
+    /// Get all deployments owned by `user_id`.
+    pub async fn get_all_deployments(&self, user_id: &str) -> Result<Vec<Deployment>, SqlxError> {
         let rows = sqlx::query(
             "SELECT
                     d.id,
@@ -58,11 +55,10 @@ impl Sqlite {
                 JOIN service s ON d.service_id = s.id
                 JOIN project p ON s.project_id = p.id
                 LEFT JOIN host h ON d.host_id = h.id
-                WHERE (? IS NULL OR p.user_id = ?)
+                WHERE p.user_id = ?
                 ORDER BY d.created_at DESC
                 LIMIT 50",
         )
-        .bind(user_id)
         .bind(user_id)
         .fetch_all(&self.pool)
         .await?;
@@ -89,7 +85,7 @@ impl Sqlite {
     pub async fn upsert_project(
         &self,
         name: &ProjectName,
-        user_id: Option<&str>,
+        user_id: &str,
     ) -> Result<i64, SqlxError> {
         let result = sqlx::query(
             r#"
@@ -134,7 +130,7 @@ impl Sqlite {
     pub async fn upsert_host(
         &self,
         hostname: &HostName,
-        user_id: Option<&str>,
+        user_id: &str,
     ) -> Result<Vec<u8>, SqlxError> {
         let id = uuid::Uuid::new_v4().as_bytes().to_vec();
         let result = sqlx::query(
@@ -205,8 +201,13 @@ impl Sqlite {
         Ok(())
     }
 
-    /// Get deployment by ID
-    pub async fn get_deployment(&self, id: DeploymentId) -> Result<Deployment, SqlxError> {
+    /// Get a deployment by ID, scoped to `user_id`. Returns RowNotFound if
+    /// the deployment exists but belongs to another tenant.
+    pub async fn get_deployment(
+        &self,
+        id: DeploymentId,
+        user_id: &str,
+    ) -> Result<Deployment, SqlxError> {
         let row = sqlx::query(
             "SELECT
                     d.id,
@@ -221,9 +222,10 @@ impl Sqlite {
                 JOIN service s ON d.service_id = s.id
                 JOIN project p ON s.project_id = p.id
                 LEFT JOIN host h ON d.host_id = h.id
-                WHERE d.id = ?",
+                WHERE d.id = ? AND p.user_id = ?",
         )
         .bind(id.0)
+        .bind(user_id)
         .fetch_one(&self.pool)
         .await?;
 
@@ -241,12 +243,12 @@ impl Sqlite {
         Ok(deployment)
     }
 
-    /// Get deployments by service, optionally scoped to a Clerk user.
+    /// Get deployments by service for a specific user.
     pub async fn get_deployments_of_service(
         &self,
         project_name: &ProjectName,
         service_name: &ServiceName,
-        user_id: Option<&str>,
+        user_id: &str,
     ) -> Result<Vec<Deployment>, SqlxError> {
         let project = self.get_project(project_name).await?;
         let service = self.get_service(&project, service_name).await?;
@@ -264,11 +266,10 @@ impl Sqlite {
                     JOIN service s ON d.service_id = s.id
                     JOIN project p ON s.project_id = p.id
                     LEFT JOIN host h ON d.host_id = h.id
-                WHERE d.service_id = ? AND (? IS NULL OR p.user_id = ?)
+                WHERE d.service_id = ? AND p.user_id = ?
                 ORDER BY d.created_at DESC LIMIT 50",
         )
         .bind(service.id.0)
-        .bind(user_id)
         .bind(user_id)
         .fetch_all(&self.pool)
         .await?;
@@ -293,7 +294,7 @@ impl Sqlite {
         &self,
         req: &CreateDeploymentRequest,
     ) -> Result<DeploymentId, SqlxError> {
-        let user_id = req.user_id.as_deref();
+        let user_id = req.user_id.as_str();
         let project_id = self.upsert_project(&req.project_name, user_id).await?;
         let service_id = self
             .upsert_service(project_id, &req.service_name, &req.image_name)
@@ -383,7 +384,7 @@ impl DeploymentsRepository for Sqlite {
 
     async fn get_all_deployments(
         &self,
-        user_id: Option<&str>,
+        user_id: &str,
     ) -> Result<Vec<Deployment>, GetDeploymentError> {
         self.get_all_deployments(user_id).await.map_err(|e| {
             error!("Failed to get all deployments: {e:?}");
@@ -394,21 +395,24 @@ impl DeploymentsRepository for Sqlite {
     async fn get_deployment(
         &self,
         deployment_id: DeploymentId,
+        user_id: &str,
     ) -> Result<Deployment, GetDeploymentError> {
-        self.get_deployment(deployment_id).await.map_err(|e| {
-            error!("Failed to get all deployments: {e:?}");
-            match e {
-                sqlx::error::Error::RowNotFound => GetDeploymentError::DeploymentNotFound,
-                _ => GetDeploymentError::UnknownError,
-            }
-        })
+        self.get_deployment(deployment_id, user_id)
+            .await
+            .map_err(|e| {
+                error!("Failed to get deployment: {e:?}");
+                match e {
+                    sqlx::error::Error::RowNotFound => GetDeploymentError::DeploymentNotFound,
+                    _ => GetDeploymentError::UnknownError,
+                }
+            })
     }
 
     async fn get_deployments_of_service(
         &self,
         project_name: &ProjectName,
         service_name: &ServiceName,
-        user_id: Option<&str>,
+        user_id: &str,
     ) -> Result<Vec<Deployment>, GetDeploymentError> {
         self.get_deployments_of_service(project_name, service_name, user_id)
             .await

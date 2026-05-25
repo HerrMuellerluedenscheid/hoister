@@ -19,21 +19,21 @@ pub struct CreateDeploymentRequest {
     pub image_digest: ImageDigest,
     pub deployment_status: DeploymentStatus,
     pub hostname: HostName,
-    /// Clerk user ID of the owner. None for agent-initiated deployments
-    /// until per-user tokens are implemented.
-    pub user_id: Option<String>,
+    /// Owning tenant. Always resolved by the auth middleware before the
+    /// handler sees the request, so this is never `None`.
+    pub user_id: String,
 }
 
-impl From<CreateDeployment> for CreateDeploymentRequest {
-    fn from(val: CreateDeployment) -> Self {
+impl CreateDeploymentRequest {
+    pub fn from_payload(payload: CreateDeployment, user_id: String) -> Self {
         Self {
-            image_name: val.image,
-            image_digest: val.digest,
-            service_name: val.service,
-            project_name: val.project,
-            deployment_status: val.status,
-            hostname: val.hostname,
-            user_id: None,
+            image_name: payload.image,
+            image_digest: payload.digest,
+            service_name: payload.service,
+            project_name: payload.project,
+            deployment_status: payload.status,
+            hostname: payload.hostname,
+            user_id,
         }
     }
 }
