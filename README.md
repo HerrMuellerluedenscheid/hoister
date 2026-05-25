@@ -45,3 +45,15 @@ See the [Getting Started guide](https://docs.hoister.io/guides/getting-started/)
 | Multi-host setup | [docs.hoister.io/guides/multi-host](https://docs.hoister.io/guides/multi-host/) |
 | All environment variables | [docs.hoister.io/reference/environment-variables](https://docs.hoister.io/reference/environment-variables/) |
 | Troubleshooting | [docs.hoister.io/guides/troubleshooting](https://docs.hoister.io/guides/troubleshooting/) |
+
+---
+
+## License
+
+The agent (`agent/`), frontends (`frontend/`, `frontend-cloud/`), shared
+crate (`hoister_shared/`), and documentation are MIT-licensed. See the
+top-level [`LICENSE`](./LICENSE).
+
+The controller (`controller/`) is licensed under
+[AGPL-3.0-only](./controller/LICENSE) — modifications offered as a network
+service must be published under the same license.
