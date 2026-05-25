@@ -11,13 +11,21 @@ regex = '''hst_[A-Za-z0-9]{20,}'''
 keywords = ["hst_"]
 
 [allowlist]
-description = "Placeholder values and test fixtures"
+description = "Placeholder values, build artifacts, and gitignored paths"
 paths = [
     '''\.env\.example$''',
     '''\.env\.template$''',
     # Frontend bcrypt example hash in the self-hosted docs.
     '''docker-compose\.yaml$''',
     '''documentation/src/content/docs/guides/frontend\.md$''',
+    # Docs include real-looking example credentials by design.
+    '''documentation/src/content/docs/guides/registries\.md$''',
+    # Build / dependency artifacts contain test keys from upstream crates.
+    '''^target/''',
+    '''\.rmeta$''',
+    # Gitignored, but the manual `gitleaks detect --no-git` walks them anyway.
+    '''^certs/''',
+    '''node_modules/''',
 ]
 regexes = [
     # Common placeholder text used in examples.
