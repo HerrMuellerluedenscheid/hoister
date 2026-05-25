@@ -51,7 +51,7 @@ impl ContainerStateRepository for StateMemory {
     async fn add_container_state(&self, request: AddContainerStateRequest) {
         let hostname = request.hostname;
         let project_name = request.project_name;
-        let container_inspect_responses = request.container_inspect_responses;
+        let services = request.services;
 
         let mut state = self.state.write().await;
         let entry = state
@@ -62,7 +62,7 @@ impl ContainerStateRepository for StateMemory {
                 services: Default::default(),
                 last_updated: Utc::now(),
             });
-        entry.services = container_inspect_responses;
+        entry.services = services;
         entry.last_updated = Utc::now();
     }
 }

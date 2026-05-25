@@ -7,14 +7,15 @@ use axum::{
     response::{Json, Response},
     routing::{get, post},
 };
-use bollard::models::ContainerInspectResponse;
 use chrono::{DateTime, Utc};
 use log::{debug, error};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::domain::container_state::models::state::{AddContainerStateRequest, ContainerStateData};
+use crate::domain::container_state::models::state::{
+    AddContainerStateRequest, ContainerStateData, ServiceState,
+};
 use crate::domain::container_state::port::ContainerStateService;
 use crate::domain::deployments::models::deployment::{
     CreateDeploymentRequest, Deployment, GetDeploymentError,
@@ -252,7 +253,7 @@ async fn create_deployment<DS: DeploymentsService, CS: ContainerStateService, TS
 #[derive(Deserialize, Serialize)]
 pub struct PostContainerStateRequest {
     pub project_name: ProjectName,
-    pub payload: HashMap<ServiceName, ContainerInspectResponse>,
+    pub payload: HashMap<ServiceName, ServiceState>,
 }
 
 async fn post_container_state<
@@ -273,7 +274,7 @@ async fn post_container_state<
     let req = AddContainerStateRequest {
         hostname,
         project_name,
-        container_inspect_responses: payload.payload,
+        services: payload.payload,
     };
     state.container_state_service.add_container_state(req).await;
 
@@ -287,7 +288,8 @@ struct ContainerStateResponse {
     project_name: ProjectName,
     service_name: ServiceName,
     #[ts(type = "any")]
-    container_inspections: ContainerInspectResponse,
+    container_inspections: bollard::models::ContainerInspectResponse,
+    last_logs: Option<String>,
     last_updated: DateTime<Utc>,
 }
 
@@ -300,14 +302,13 @@ impl From<ContainerStateData> for ContainerStateResponses {
         let mut responses = Vec::new();
         for (hostname, projects) in value.iter() {
             for (project_name, host_project_state) in projects.iter() {
-                for (service_name, container_inspect_responses) in
-                    host_project_state.services.iter()
-                {
+                for (service_name, service_state) in host_project_state.services.iter() {
                     let r = ContainerStateResponse {
                         hostname: hostname.clone(),
                         project_name: project_name.clone(),
                         service_name: service_name.clone(),
-                        container_inspections: container_inspect_responses.clone(),
+                        container_inspections: service_state.inspect.clone(),
+                        last_logs: service_state.last_logs.clone(),
                         last_updated: host_project_state.last_updated,
                     };
                     responses.push(r);
@@ -339,7 +340,7 @@ async fn get_container_state_by_service_name<
         .await
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    let container_inspections = host_project_state
+    let service_state = host_project_state
         .services
         .into_values()
         .next()
@@ -349,7 +350,8 @@ async fn get_container_state_by_service_name<
         hostname,
         project_name,
         service_name,
-        container_inspections,
+        container_inspections: service_state.inspect,
+        last_logs: service_state.last_logs,
         last_updated: host_project_state.last_updated,
     })))
 }

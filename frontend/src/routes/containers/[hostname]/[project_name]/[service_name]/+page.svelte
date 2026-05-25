@@ -11,6 +11,7 @@
   const service_name = $derived(data.inspections.service_name);
   const project_name = $derived(data.inspections.project_name);
   const last_updated = $derived(data.inspections.last_updated);
+  const last_logs = $derived(data.inspections.last_logs);
 
   let stale = $state(false);
   let refreshInterval: ReturnType<typeof setInterval>;
@@ -142,6 +143,18 @@
             Check the container logs on the host for the cause.
           </p>
         {/if}
+      </div>
+    {/if}
+
+    {#if last_logs}
+      <div class="mb-6 rounded-lg bg-white p-6 shadow">
+        <h2 class="mb-1 text-xl font-semibold text-gray-900">Container logs (tail)</h2>
+        <p class="mb-3 text-xs text-gray-500">
+          Last lines captured by the agent because the container is not running. Secrets matching
+          known sensitive env-var values are redacted.
+        </p>
+        <pre
+          class="max-h-96 overflow-auto rounded bg-gray-900 p-4 font-mono text-xs leading-relaxed text-gray-100 whitespace-pre-wrap">{last_logs}</pre>
       </div>
     {/if}
 
