@@ -513,6 +513,13 @@ pub async fn create_internal_router<
             "/container/state/{hostname}/{project_name}/{service_name}",
             get(get_container_state_by_service_name::<DS, CS, TS>),
         )
+        // Pending-update read/apply mirrored from the agent router so the
+        // BFF can drive them. Writes (POST /pending-updates) stay agent-only.
+        .route("/pending-updates", get(get_pending_updates::<DS, CS, TS>))
+        .route(
+            "/pending-updates/{hostname}/{project_name}/{service_name}/apply",
+            post(apply_pending_update::<DS, CS, TS>),
+        )
         .layer(middleware::from_fn(internal_user_middleware))
         .layer(middleware::from_fn(audit_log_middleware))
         .with_state(state)
