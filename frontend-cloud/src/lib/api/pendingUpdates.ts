@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import { backendHeaders } from './_headers';
 
 const BACKEND_URL = env.HOISTER_CONTROLLER_URL;
 
@@ -14,7 +15,7 @@ export interface PendingUpdate {
 export async function getPendingUpdates(userId: string): Promise<PendingUpdate[]> {
 	if (!BACKEND_URL) return [];
 	const response = await fetch(`${BACKEND_URL}/pending-updates`, {
-		headers: { 'X-User-Id': userId }
+		headers: backendHeaders(userId)
 	});
 	if (!response.ok) return [];
 	return (await response.json()) as PendingUpdate[];
@@ -31,7 +32,7 @@ export async function applyUpdate(
 		`${BACKEND_URL}/pending-updates/${encodeURIComponent(hostname)}/${encodeURIComponent(projectName)}/${encodeURIComponent(serviceName)}/apply`,
 		{
 			method: 'POST',
-			headers: { 'X-User-Id': userId }
+			headers: backendHeaders(userId)
 		}
 	);
 	return response.ok;

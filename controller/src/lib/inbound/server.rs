@@ -42,6 +42,13 @@ use ts_rs::TS;
 #[derive(Debug, Clone)]
 pub struct UserId(pub String);
 
+/// Shared secret expected from the BFF as `X-Internal-Auth`. When `None`,
+/// the internal router only enforces `X-User-Id` — acceptable when the
+/// listener is on loopback, but a footgun on a docker bridge. The
+/// `create_internal_router` entry point logs a warning in that case.
+#[derive(Clone)]
+pub struct InternalSecret(pub Option<String>);
+
 #[derive(Clone)]
 pub struct AppState<DS: DeploymentsService, CS: ContainerStateService, TS: TokenService> {
     pub deployments_service: Arc<DS>,
@@ -147,11 +154,27 @@ async fn agent_auth_middleware<
 /// auth is required. We simply trust the `X-User-Id` header set by the BFF
 /// (which has already authenticated the user via Clerk).
 async fn internal_user_middleware(
+    Extension(InternalSecret(expected)): Extension<InternalSecret>,
     mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
     if request.uri().path() == "/health" {
         return Ok(next.run(request).await);
+    }
+
+    // If a shared secret is configured, every request must carry a matching
+    // X-Internal-Auth header. We compare with subtle::ConstantTimeEq to
+    // avoid leaking the secret via response-time differences across an
+    // attacker on the same docker bridge.
+    if let Some(expected) = expected.as_deref() {
+        let got = request
+            .headers()
+            .get("X-Internal-Auth")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
+        if !constant_time_eq(got.as_bytes(), expected.as_bytes()) {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
     }
 
     let Some(user_id) = request
@@ -167,6 +190,18 @@ async fn internal_user_middleware(
     request.extensions_mut().insert(UserId(user_id));
 
     Ok(next.run(request).await)
+}
+
+/// Constant-time byte equality. Returns false for differing lengths.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff: u8 = 0;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
 }
 
 // Web handlers
@@ -498,7 +533,16 @@ pub async fn create_internal_router<
     TS: TokenService,
 >(
     state: AppState<DS, CS, TS>,
+    internal_secret: InternalSecret,
 ) -> Router {
+    if internal_secret.0.is_none() {
+        log::warn!(
+            "Internal router has no X-Internal-Auth secret configured \
+             (HOISTER_CONTROLLER_INTERNAL_SECRET). Only safe when the \
+             listener binds to loopback — any host or container that can \
+             reach the internal port can impersonate any user otherwise."
+        );
+    }
     Router::new()
         .route("/health", get(health))
         .route("/token", get(get_or_create_token::<DS, CS, TS>))
@@ -521,6 +565,26 @@ pub async fn create_internal_router<
             post(apply_pending_update::<DS, CS, TS>),
         )
         .layer(middleware::from_fn(internal_user_middleware))
+        .layer(Extension(internal_secret))
         .layer(middleware::from_fn(audit_log_middleware))
         .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::constant_time_eq;
+
+    #[test]
+    fn constant_time_eq_matches_strings() {
+        assert!(constant_time_eq(b"secret", b"secret"));
+        assert!(!constant_time_eq(b"secret", b"Secret"));
+        assert!(!constant_time_eq(b"secret", b"secrex"));
+    }
+
+    #[test]
+    fn constant_time_eq_rejects_length_mismatch() {
+        assert!(!constant_time_eq(b"secret", b"secret-longer"));
+        assert!(!constant_time_eq(b"", b"a"));
+        assert!(constant_time_eq(b"", b""));
+    }
 }

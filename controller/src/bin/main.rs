@@ -2,7 +2,9 @@ use controller::config::get_config;
 use controller::domain::container_state::service::Service as ContainerStateService;
 use controller::domain::deployments::service::Service as DeploymentsService;
 use controller::domain::tokens::service::Service as TokenService;
-use controller::inbound::server::{AppState, create_agent_router, create_internal_router};
+use controller::inbound::server::{
+    AppState, InternalSecret, create_agent_router, create_internal_router,
+};
 use controller::outbound::Database;
 use controller::outbound::pending_updates_memory::PendingUpdatesMemory;
 use controller::outbound::state_memory::StateMemory;
@@ -31,8 +33,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         event_tx,
         pending_updates,
     };
+    let internal_secret = InternalSecret(config.internal_secret.clone());
     let agent_app = create_agent_router(state.clone()).await;
-    let internal_app = create_internal_router(state).await;
+    let internal_app = create_internal_router(state, internal_secret).await;
     info!(
         "starting internal listener on {}:{}",
         config.internal_bind_addr, config.internal_port

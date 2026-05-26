@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
+import { backendHeaders } from './_headers';
 
 const BACKEND_URL = env.HOISTER_CONTROLLER_URL;
 
@@ -20,7 +21,7 @@ export async function getOrCreateToken(userId: string): Promise<TokenResponse> {
 	if (!BACKEND_URL) throw error(500, 'Backend URL not configured');
 
 	const response = await fetch(`${BACKEND_URL}/token`, {
-		headers: { 'X-User-Id': userId }
+		headers: backendHeaders(userId)
 	});
 
 	if (!response.ok) throw error(response.status, 'Failed to retrieve agent token');
@@ -34,7 +35,7 @@ export async function rotateToken(userId: string): Promise<TokenResponse> {
 
 	const response = await fetch(`${BACKEND_URL}/token/rotate`, {
 		method: 'POST',
-		headers: { 'X-User-Id': userId }
+		headers: backendHeaders(userId)
 	});
 
 	if (!response.ok) throw error(response.status, 'Failed to rotate agent token');

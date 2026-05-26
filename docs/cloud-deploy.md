@@ -57,8 +57,12 @@ HOISTER_CLOUD_API_DOMAIN=api.hoister.io
 HOISTER_CLOUD_LE_EMAIL=ops@hoister.io
 
 POSTGRES_USER=hoister
-POSTGRES_PASSWORD=<64-char-random>        # openssl rand -base64 48
+POSTGRES_PASSWORD=<64-char-random>             # openssl rand -base64 48
 POSTGRES_DB=hoister
+
+# Shared secret between controller and frontend-cloud; protects the
+# internal router from any other container on the docker bridge.
+HOISTER_CONTROLLER_INTERNAL_SECRET=<64-char-random>   # openssl rand -base64 48
 
 PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...
 CLERK_SECRET_KEY=sk_live_...
@@ -90,15 +94,18 @@ dashboard is live at `https://hoister.io`.
 |---|---|---|---|
 | caddy | 80, 443 | Yes | Public internet |
 | hoister-controller | 3033 (agent) | No (only `expose`) | Caddy → docker bridge |
-| hoister-controller | 3034 (internal) | No (only `expose`) | hoister-frontend-cloud → docker bridge |
+| hoister-controller | 3034 (internal) | No (only `expose`) | hoister-frontend-cloud → docker bridge (also requires `X-Internal-Auth`) |
 | hoister-frontend-cloud | 3000 | No (only `expose`) | Caddy → docker bridge |
 | backend-db | 5432 | No (only `expose`) | hoister-controller → docker bridge |
 
 Nothing other than `:80` and `:443` is reachable from outside the VPS. The
-controller's internal port (`3034`) is on the docker bridge network; the
-host firewall plays no part. If the VPS provides a public IP and a private
-network, set the firewall to drop everything except 80/443 on the public
-interface as defense in depth.
+controller's internal port (`3034`) is on the docker bridge network; any
+other container on that bridge would otherwise be able to spoof
+`X-User-Id` and impersonate users, so the controller additionally requires
+the shared `X-Internal-Auth` secret (`HOISTER_CONTROLLER_INTERNAL_SECRET`)
+on every internal-router request. If the VPS provides a public IP and a
+private network, set the firewall to drop everything except 80/443 on the
+public interface as defense in depth.
 
 ## Backups
 
