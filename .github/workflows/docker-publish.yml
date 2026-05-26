@@ -39,3 +39,13 @@ jobs:
       runs-on: 'ubuntu-24.04'
     secrets:
       registry_password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+  build-frontend-cloud:
+    uses: ./.github/workflows/docker-build-reusable.yml
+    with:
+      context: frontend-cloud
+      dockerfile: frontend-cloud/Dockerfile
+      image_name: emrius11/hoister-frontend-cloud
+      runs-on: 'ubuntu-24.04'
+    secrets:
+      registry_password: ${{ secrets.DOCKERHUB_PASSWORD }}
