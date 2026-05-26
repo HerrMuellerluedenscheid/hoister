@@ -28,12 +28,12 @@
 				1. Verantwortlicher
 			</h2>
 			<div class="space-y-1 text-zinc-300">
-				<p>Vector &amp; Veneer (in Gründung)</p>
+				<p>Vector &amp; Veneer UG (haftungsbeschränkt)</p>
 				<p>Rubenstr. 108, 12157 Berlin</p>
 				<p>
 					E-Mail: <a
-						href="mailto:hello@vectorandveneer.de"
-						class="text-indigo-400 hover:text-indigo-300">hello@vectorandveneer.de</a
+						href="mailto:info@vectorandveneer.com"
+						class="text-indigo-400 hover:text-indigo-300">info@vectorandveneer.com</a
 					>
 				</p>
 			</div>
@@ -264,8 +264,8 @@
 			</ul>
 			<p class="mt-3 text-zinc-400">
 				Zur Ausübung Ihrer Rechte wenden Sie sich bitte an: <a
-					href="mailto:hello@vectorandveneer.de"
-					class="text-indigo-400 hover:text-indigo-300">hello@vectorandveneer.de</a
+					href="mailto:info@hoister.io"
+					class="text-indigo-400 hover:text-indigo-300">info@hoister.io</a
 				>
 			</p>
 		</section>
