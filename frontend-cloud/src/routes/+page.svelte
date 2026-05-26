@@ -1,5 +1,28 @@
 <script lang="ts">
 	import { Show, SignInButton, UserButton } from 'svelte-clerk';
+
+	const composeSnippet = `services:
+  hoister:
+    image: emrius11/hoister:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Until the public :latest image picks up the new default,
+      # set the controller URL explicitly:
+      HOISTER_CONTROLLER_URL: "https://api.hoister.io"
+      HOISTER_CONTROLLER_TOKEN: "hst_<paste-your-token-here>"
+      HOISTER_HOSTNAME: "<this-host-name>"
+      # Opt in to forwarding container log tails for crashed containers:
+      # HOISTER_REPORT_LOGS: "true"`;
+
+	let copied = $state(false);
+	async function copySnippet() {
+		await navigator.clipboard.writeText(composeSnippet);
+		copied = true;
+		setTimeout(() => (copied = false), 2000);
+	}
 </script>
 
 <div class="flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
@@ -155,6 +178,34 @@
 				<div class="text-sm leading-relaxed text-zinc-400">{feature.desc}</div>
 			</div>
 		{/each}
+	</section>
+
+	<!-- Connect your stack -->
+	<section class="mx-auto mb-20 w-full max-w-3xl px-8">
+		<div class="rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
+			<h2 class="mb-1 text-lg font-semibold text-zinc-100">Connect a Docker Compose stack</h2>
+			<p class="mb-4 text-sm text-zinc-400">
+				Sign in to <a href="/tokens" class="text-indigo-400 hover:text-indigo-300">/tokens</a> to mint
+				an agent token, then add this service to your existing
+				<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">docker-compose.yaml</code>:
+			</p>
+			<div class="relative">
+				<pre
+					class="overflow-x-auto rounded-lg bg-zinc-950 p-4 font-mono text-xs leading-relaxed text-zinc-200">{composeSnippet}</pre>
+				<button
+					type="button"
+					onclick={copySnippet}
+					class="absolute top-3 right-3 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+				>
+					{copied ? 'Copied!' : 'Copy'}
+				</button>
+			</div>
+			<p class="mt-3 text-xs text-zinc-500">
+				The <code class="rounded bg-zinc-800 px-1 py-0.5 font-mono">HOISTER_CONTROLLER_URL</code>
+				override will become unnecessary once the public <code class="rounded bg-zinc-800 px-1 py-0.5 font-mono">emrius11/hoister:latest</code>
+				image is bumped to the cloud-aware build.
+			</p>
+		</div>
 	</section>
 
 	<footer class="border-t border-zinc-800 py-5 text-center text-xs text-zinc-600">
