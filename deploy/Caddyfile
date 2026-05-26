@@ -1,0 +1,52 @@
+# Caddy config for the hoister.io hosted stack.
+#
+# Env vars (passed via docker-compose):
+#   HOISTER_CLOUD_DOMAIN       (e.g. hoister.io)
+#   HOISTER_CLOUD_API_DOMAIN   (e.g. api.hoister.io)
+#   HOISTER_CLOUD_LE_EMAIL     ACME registration email
+#
+# Caddy auto-provisions Let's Encrypt certificates for both hostnames on
+# first start.
+
+{
+	email {$HOISTER_CLOUD_LE_EMAIL}
+	# Persist ACME state under /data (mounted volume).
+}
+
+# Public dashboard.
+{$HOISTER_CLOUD_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy hoister-frontend-cloud:3000
+
+	# The dashboard sets only auth-session cookies; no analytics, no fonts,
+	# no third-party JS at runtime apart from Clerk's SDK. We can lock the
+	# header policy down accordingly.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options    "nosniff"
+		Referrer-Policy           "strict-origin-when-cross-origin"
+		Permissions-Policy        "interest-cohort=()"
+		# Clerk loads its SDK from clerk.com / clerk.accounts.dev.
+		Content-Security-Policy   "default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clerk.com https://*.clerk.accounts.dev; connect-src 'self' https://*.clerk.com https://*.clerk.accounts.dev; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; frame-src https://*.clerk.com https://*.clerk.accounts.dev; worker-src 'self' blob:"
+		-Server
+	}
+}
+
+# Agent ingress.
+{$HOISTER_CLOUD_API_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy hoister-controller:3033 {
+		# Long-lived SSE connections from agents.
+		flush_interval -1
+		transport http {
+			read_timeout    24h
+			keepalive       30s
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options    "nosniff"
+		-Server
+	}
+}
