@@ -17,6 +17,13 @@ pub struct Config {
     /// runs in a sibling container, set this to `0.0.0.0`.
     #[serde(default = "default_internal_bind_addr")]
     pub internal_bind_addr: String,
+    /// Shared secret required from the BFF as the `X-Internal-Auth` header.
+    /// When the internal listener has to bind to a non-loopback interface
+    /// (e.g. docker bridge), this is the only thing standing between the
+    /// internal router and any other host/container that can reach the
+    /// port — set it to a long random value in production.
+    #[serde(default)]
+    pub internal_secret: Option<String>,
     pub database_path: String,
     #[serde(default)]
     pub tls_cert_path: Option<PathBuf>,
