@@ -132,11 +132,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         let sse_client = http_client.clone();
         let monitor_client = http_client.clone();
         let report_logs = config.report_logs;
-        tokio::spawn(async move { sse::consume_sse(url_sse.as_str(), tx_sse, sse_client).await });
+        let token_sse = controller_config.token.clone();
+        let token_monitor = controller_config.token.clone();
         tokio::spawn(async move {
-            monitor::start(&url_state, pn, hn, monitor_client, report_logs)
-                .await
-                .expect("Failed to start monitor");
+            sse::consume_sse(url_sse.as_str(), token_sse, tx_sse, sse_client).await
+        });
+        tokio::spawn(async move {
+            monitor::start(
+                &url_state,
+                token_monitor,
+                pn,
+                hn,
+                monitor_client,
+                report_logs,
+            )
+            .await
+            .expect("Failed to start monitor");
         });
     } else {
         info!(

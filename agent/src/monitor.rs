@@ -258,6 +258,7 @@ fn redact_credentials(inspect: &mut ContainerInspectResponse) {
 async fn send_to_backend(
     client: &reqwest::Client,
     controller_url: &Url,
+    token: Option<&str>,
     project_name: ProjectName,
     hostname: HostName,
     states: &HashMap<ServiceName, ServiceState>,
@@ -271,13 +272,18 @@ async fn send_to_backend(
         payload: states.clone(),
     };
 
-    let response = client.post(url).json(&request).send().await?;
+    let mut req = client.post(url).json(&request);
+    if let Some(token) = token {
+        req = req.bearer_auth(token);
+    }
+    let response = req.send().await?;
     response.error_for_status()?;
     Ok(())
 }
 
 pub(crate) async fn start(
     controller_url: &Url,
+    token: Option<String>,
     project_name: ProjectName,
     hostname: HostName,
     client: reqwest::Client,
@@ -298,6 +304,7 @@ pub(crate) async fn start(
                 if let Err(e) = send_to_backend(
                     &client,
                     controller_url,
+                    token.as_deref(),
                     project_name.clone(),
                     hostname.clone(),
                     &current_states,
