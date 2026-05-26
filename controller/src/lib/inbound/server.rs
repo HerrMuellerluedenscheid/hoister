@@ -363,10 +363,19 @@ struct ContainerStateResponse {
     hostname: HostName,
     project_name: ProjectName,
     service_name: ServiceName,
+    /// Routed through `serde_json::Value` (BTreeMap-backed by default) so
+    /// nested maps — Labels, ExposedPorts, Networks, etc. — serialize in a
+    /// stable alphabetical order rather than HashMap's arbitrary one.
     #[ts(type = "any")]
-    container_inspections: bollard::models::ContainerInspectResponse,
+    container_inspections: serde_json::Value,
     last_logs: Option<String>,
     last_updated: DateTime<Utc>,
+}
+
+fn inspect_to_sorted_value(
+    inspect: &bollard::models::ContainerInspectResponse,
+) -> serde_json::Value {
+    serde_json::to_value(inspect).unwrap_or(serde_json::Value::Null)
 }
 
 #[derive(TS, Serialize)]
@@ -383,7 +392,7 @@ impl From<ContainerStateData> for ContainerStateResponses {
                         hostname: hostname.clone(),
                         project_name: project_name.clone(),
                         service_name: service_name.clone(),
-                        container_inspections: service_state.inspect.clone(),
+                        container_inspections: inspect_to_sorted_value(&service_state.inspect),
                         last_logs: service_state.last_logs.clone(),
                         last_updated: host_project_state.last_updated,
                     };
@@ -427,7 +436,7 @@ async fn get_container_state_by_service_name<
         hostname,
         project_name,
         service_name,
-        container_inspections: service_state.inspect,
+        container_inspections: inspect_to_sorted_value(&service_state.inspect),
         last_logs: service_state.last_logs,
         last_updated: host_project_state.last_updated,
     })))
