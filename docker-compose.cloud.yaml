@@ -11,8 +11,9 @@
 #   HOISTER_CLOUD_API_DOMAIN=api.hoister.io
 #   HOISTER_CLOUD_LE_EMAIL=ops@hoister.io
 #   POSTGRES_USER=hoister
-#   POSTGRES_PASSWORD=...           # generate fresh; do NOT reuse
+#   POSTGRES_PASSWORD=...                       # generate fresh; do NOT reuse
 #   POSTGRES_DB=hoister
+#   HOISTER_CONTROLLER_INTERNAL_SECRET=...      # shared by controller and BFF
 #   PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...
 #   CLERK_SECRET_KEY=sk_live_...
 #   CLERK_WEBHOOK_SECRET=whsec_...
@@ -49,6 +50,10 @@ services:
       # container, so we bind 0.0.0.0 inside the container. It is NOT
       # published to the host — `expose:` only.
       HOISTER_CONTROLLER_INTERNAL_BIND_ADDR: "0.0.0.0"
+      # Shared secret the BFF includes as X-Internal-Auth on every internal
+      # request. Without this, any container on the docker bridge could
+      # impersonate any user by spoofing X-User-Id.
+      HOISTER_CONTROLLER_INTERNAL_SECRET: ${HOISTER_CONTROLLER_INTERNAL_SECRET:?HOISTER_CONTROLLER_INTERNAL_SECRET is required}
       RUST_LOG: "info,bollard=warn,hyper_util=warn"
     depends_on:
       - backend-db
@@ -60,6 +65,7 @@ services:
       - "3000"
     environment:
       HOISTER_CONTROLLER_URL: "http://hoister-controller:3034"
+      HOISTER_CONTROLLER_INTERNAL_SECRET: ${HOISTER_CONTROLLER_INTERNAL_SECRET:?HOISTER_CONTROLLER_INTERNAL_SECRET is required}
       ORIGIN: "https://${HOISTER_CLOUD_DOMAIN:?HOISTER_CLOUD_DOMAIN is required}"
       PUBLIC_CLERK_PUBLISHABLE_KEY: ${PUBLIC_CLERK_PUBLISHABLE_KEY:?PUBLIC_CLERK_PUBLISHABLE_KEY is required}
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:?CLERK_SECRET_KEY is required}

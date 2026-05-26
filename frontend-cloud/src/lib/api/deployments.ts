@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { Deployment } from '../../bindings/Deployment';
+import { backendHeaders } from './_headers';
 
 const BACKEND_URL = env.HOISTER_CONTROLLER_URL;
 
@@ -14,7 +15,7 @@ export async function getDeployments(userId: string) {
 	if (!BACKEND_URL) throw error(500, 'Backend URL not configured');
 
 	const response = await fetch(`${BACKEND_URL}/deployments`, {
-		headers: { 'X-User-Id': userId }
+		headers: backendHeaders(userId)
 	});
 
 	if (!response.ok) throw error(response.status, 'Failed to load data from backend');
@@ -35,7 +36,7 @@ export async function getDeploymentsByServiceName(
 
 	const response = await fetch(
 		`${BACKEND_URL}/deployments/${encodeURIComponent(project_name)}/${encodeURIComponent(service_name)}`,
-		{ headers: { 'X-User-Id': userId } }
+		{ headers: backendHeaders(userId) }
 	);
 
 	if (!response.ok) throw error(response.status, 'Failed to load data from backend');
