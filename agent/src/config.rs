@@ -206,6 +206,13 @@ pub(crate) async fn load_config(config_path: &Path) -> Config {
         controller.ca_cert_path = std::env::var("HOISTER_CONTROLLER_CA_CERT_PATH").ok();
     }
 
+    // Same quirk for the top-level snake_case flag.
+    if !config.report_logs
+        && let Ok(v) = std::env::var("HOISTER_REPORT_LOGS")
+    {
+        config.report_logs = matches!(v.as_str(), "true" | "1" | "yes");
+    }
+
     config
 }
 
