@@ -128,20 +128,35 @@ impl DeploymentsRepository for Database {
 }
 
 impl TokenRepository for Database {
-    async fn get_or_create_token(&self, user_id: &str) -> Result<ApiToken, TokenError> {
+    async fn list_tokens(&self, user_id: &str) -> Result<Vec<ApiToken>, TokenError> {
         match self {
-            Self::Sqlite(db) => <Sqlite as TokenRepository>::get_or_create_token(db, user_id).await,
+            Self::Sqlite(db) => <Sqlite as TokenRepository>::list_tokens(db, user_id).await,
+            Self::Postgresql(db) => <Postgresql as TokenRepository>::list_tokens(db, user_id).await,
+        }
+    }
+
+    async fn create_token(
+        &self,
+        user_id: &str,
+        comment: Option<String>,
+    ) -> Result<ApiToken, TokenError> {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as TokenRepository>::create_token(db, user_id, comment).await
+            }
             Self::Postgresql(db) => {
-                <Postgresql as TokenRepository>::get_or_create_token(db, user_id).await
+                <Postgresql as TokenRepository>::create_token(db, user_id, comment).await
             }
         }
     }
 
-    async fn rotate_token(&self, user_id: &str) -> Result<ApiToken, TokenError> {
+    async fn delete_token(&self, user_id: &str, token_id: i64) -> Result<bool, TokenError> {
         match self {
-            Self::Sqlite(db) => <Sqlite as TokenRepository>::rotate_token(db, user_id).await,
+            Self::Sqlite(db) => {
+                <Sqlite as TokenRepository>::delete_token(db, user_id, token_id).await
+            }
             Self::Postgresql(db) => {
-                <Postgresql as TokenRepository>::rotate_token(db, user_id).await
+                <Postgresql as TokenRepository>::delete_token(db, user_id, token_id).await
             }
         }
     }
