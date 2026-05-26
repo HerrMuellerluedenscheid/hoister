@@ -2,7 +2,7 @@
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import { ClerkProvider } from 'svelte-clerk';
-	import { PUBLIC_CLERK_PUBLISHABLE_KEY } from '$env/static/public';
+	import { env } from '$env/dynamic/public';
 	import CookieBanner from '$lib/components/CookieBanner.svelte';
 
 	let { children } = $props();
@@ -10,7 +10,7 @@
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
 
-<ClerkProvider publishableKey={PUBLIC_CLERK_PUBLISHABLE_KEY}>
+<ClerkProvider publishableKey={env.PUBLIC_CLERK_PUBLISHABLE_KEY}>
 	{@render children()}
 	<CookieBanner />
 </ClerkProvider>
