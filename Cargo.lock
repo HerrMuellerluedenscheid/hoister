@@ -438,6 +438,7 @@ dependencies = [
  "env_logger",
  "figment2",
  "futures-util",
+ "hmac",
  "hoister_shared",
  "http",
  "hyper",

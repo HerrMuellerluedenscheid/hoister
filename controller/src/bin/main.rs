@@ -21,7 +21,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = get_config();
 
     let (event_tx, _) = broadcast::channel::<UserScopedEvent>(100);
-    let db = Database::connect(&config.database_path).await?;
+
+    // HOISTER_CONTROLLER_TOKEN_PEPPER is the HMAC key for agent-token
+    // storage. Loud warning if missing — the resulting hashes degrade to
+    // unsalted SHA-256, acceptable only in local dev.
+    let token_pepper = config.token_pepper.clone().unwrap_or_default();
+    if token_pepper.is_empty() {
+        warn!(
+            "HOISTER_CONTROLLER_TOKEN_PEPPER is not set. Agent tokens will be \
+             stored under an unsalted SHA-256 hash — a DB read alone is then \
+             enough to verify a stolen token. Set the env var to a long random \
+             value in production."
+        );
+    }
+    let db = Database::connect(&config.database_path, token_pepper.into_bytes()).await?;
 
     let pending_updates = PendingUpdatesMemory::default();
     let state = AppState {

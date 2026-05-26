@@ -24,6 +24,14 @@ pub struct Config {
     /// port — set it to a long random value in production.
     #[serde(default)]
     pub internal_secret: Option<String>,
+    /// Server-side pepper combined via HMAC-SHA256 with every agent token
+    /// before storage. A DB dump alone is then insufficient to verify a
+    /// stolen `hst_` token — the attacker also needs this value.
+    ///
+    /// Optional in dev (controller logs a warning and falls back to an
+    /// unsalted hash). Required in production.
+    #[serde(default)]
+    pub token_pepper: Option<String>,
     pub database_path: String,
     #[serde(default)]
     pub tls_cert_path: Option<PathBuf>,

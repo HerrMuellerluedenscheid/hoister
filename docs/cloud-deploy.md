@@ -64,6 +64,10 @@ POSTGRES_DB=hoister
 # internal router from any other container on the docker bridge.
 HOISTER_CONTROLLER_INTERNAL_SECRET=<64-char-random>   # openssl rand -base64 48
 
+# HMAC pepper for stored agent-token hashes. Treat as critical: rotating
+# it invalidates every issued token.
+HOISTER_CONTROLLER_TOKEN_PEPPER=<64-char-random>      # openssl rand -base64 48
+
 PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...
 CLERK_SECRET_KEY=sk_live_...
 CLERK_WEBHOOK_SECRET=whsec_...
