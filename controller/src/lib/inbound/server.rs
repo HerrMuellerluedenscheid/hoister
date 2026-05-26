@@ -209,32 +209,55 @@ async fn health() -> &'static str {
     "OK"
 }
 
-async fn get_or_create_token<
-    DS: DeploymentsService,
-    CS: ContainerStateService,
-    TS: TokenService,
->(
+async fn list_tokens<DS: DeploymentsService, CS: ContainerStateService, TS: TokenService>(
     State(state): State<AppState<DS, CS, TS>>,
-    user: Extension<UserId>,
-) -> Result<Json<ApiResponse<ApiToken>>, StatusCode> {
-    let Extension(UserId(user_id)) = user;
-    match state.token_service.get_or_create_token(&user_id).await {
-        Ok(token) => Ok(Json(ApiResponse::success(token))),
+    Extension(UserId(user_id)): Extension<UserId>,
+) -> Result<Json<ApiResponse<Vec<ApiToken>>>, StatusCode> {
+    match state.token_service.list_tokens(&user_id).await {
+        Ok(tokens) => Ok(Json(ApiResponse::success(tokens))),
         Err(e) => {
-            error!("Error getting/creating token for {user_id}: {e:?}");
+            error!("Error listing tokens for {user_id}: {e:?}");
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
 }
 
-async fn rotate_token<DS: DeploymentsService, CS: ContainerStateService, TS: TokenService>(
+#[derive(Deserialize, Default)]
+struct CreateTokenRequest {
+    #[serde(default)]
+    comment: Option<String>,
+}
+
+async fn create_token<DS: DeploymentsService, CS: ContainerStateService, TS: TokenService>(
     State(state): State<AppState<DS, CS, TS>>,
     Extension(UserId(user_id)): Extension<UserId>,
+    body: Option<Json<CreateTokenRequest>>,
 ) -> Result<Json<ApiResponse<ApiToken>>, StatusCode> {
-    match state.token_service.rotate_token(&user_id).await {
+    // Empty bodies and missing Content-Type are both accepted: a plain
+    // `POST /tokens` mints an unlabelled token.
+    let comment = body
+        .map(|Json(b)| b.comment)
+        .unwrap_or_default()
+        .filter(|s| !s.trim().is_empty());
+    match state.token_service.create_token(&user_id, comment).await {
         Ok(token) => Ok(Json(ApiResponse::success(token))),
         Err(e) => {
-            error!("Error rotating token for {user_id}: {e:?}");
+            error!("Error creating token for {user_id}: {e:?}");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn delete_token<DS: DeploymentsService, CS: ContainerStateService, TS: TokenService>(
+    State(state): State<AppState<DS, CS, TS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+    Path(token_id): Path<i64>,
+) -> Result<StatusCode, StatusCode> {
+    match state.token_service.delete_token(&user_id, token_id).await {
+        Ok(true) => Ok(StatusCode::NO_CONTENT),
+        Ok(false) => Err(StatusCode::NOT_FOUND),
+        Err(e) => {
+            error!("Error deleting token {token_id} for {user_id}: {e:?}");
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
@@ -544,8 +567,12 @@ pub async fn create_internal_router<
     }
     Router::new()
         .route("/health", get(health))
-        .route("/token", get(get_or_create_token::<DS, CS, TS>))
-        .route("/token/rotate", post(rotate_token::<DS, CS, TS>))
+        .route("/tokens", get(list_tokens::<DS, CS, TS>))
+        .route("/tokens", post(create_token::<DS, CS, TS>))
+        .route(
+            "/tokens/{id}",
+            axum::routing::delete(delete_token::<DS, CS, TS>),
+        )
         .route("/deployments", get(get_deployments::<DS, CS, TS>))
         .route(
             "/deployments/{project_name}/{service_name}",
