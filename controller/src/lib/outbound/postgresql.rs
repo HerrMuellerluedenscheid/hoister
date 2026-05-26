@@ -14,6 +14,9 @@ use tracing::{debug, info};
 #[derive(Debug, Clone)]
 pub struct Postgresql {
     pool: PgPool,
+    /// Server-side pepper combined with every agent token via HMAC-SHA256
+    /// before storage. See `crate::domain::tokens::hash::hash_token`.
+    token_pepper: std::sync::Arc<Vec<u8>>,
 }
 
 fn status_from_i16(val: i16) -> DeploymentStatus {
@@ -30,10 +33,13 @@ fn status_from_i16(val: i16) -> DeploymentStatus {
 }
 
 impl Postgresql {
-    pub async fn new(database_url: &str) -> Result<Self, SqlxError> {
+    pub async fn new(database_url: &str, token_pepper: Vec<u8>) -> Result<Self, SqlxError> {
         info!("Connecting to database: {database_url}");
         let pool = PgPool::connect(database_url).await?;
-        Ok(Self { pool })
+        Ok(Self {
+            pool,
+            token_pepper: std::sync::Arc::new(token_pepper),
+        })
     }
 
     /// Run embedded database migrations.
@@ -351,7 +357,7 @@ impl TokenRepository for Postgresql {
         }
 
         let token = format!("hst_{}", uuid::Uuid::new_v4().simple());
-        let token_hash = crate::domain::tokens::hash::hash_token(&token);
+        let token_hash = crate::domain::tokens::hash::hash_token(&token, &self.token_pepper);
         sqlx::query("INSERT INTO api_token (token_hash, user_id) VALUES ($1, $2)")
             .bind(&token_hash)
             .bind(user_id)
@@ -367,7 +373,7 @@ impl TokenRepository for Postgresql {
     }
 
     async fn find_user_by_token(&self, token: &str) -> Option<String> {
-        let token_hash = crate::domain::tokens::hash::hash_token(token);
+        let token_hash = crate::domain::tokens::hash::hash_token(token, &self.token_pepper);
         sqlx::query_scalar::<_, String>("SELECT user_id FROM api_token WHERE token_hash = $1")
             .bind(token_hash)
             .fetch_optional(&self.pool)
@@ -378,7 +384,7 @@ impl TokenRepository for Postgresql {
 
     async fn rotate_token(&self, user_id: &str) -> Result<ApiToken, TokenError> {
         let token = format!("hst_{}", uuid::Uuid::new_v4().simple());
-        let token_hash = crate::domain::tokens::hash::hash_token(&token);
+        let token_hash = crate::domain::tokens::hash::hash_token(&token, &self.token_pepper);
         sqlx::query(
             r#"
             INSERT INTO api_token (token_hash, user_id) VALUES ($1, $2)

@@ -26,15 +26,18 @@ pub enum Database {
 impl Database {
     /// Connect to the database and run migrations.
     /// URLs starting with `postgres` use PostgreSQL; everything else uses SQLite.
-    pub async fn connect(url: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn connect(
+        url: &str,
+        token_pepper: Vec<u8>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         if url.starts_with("postgres") {
             info!("Using PostgreSQL backend: {url}");
-            let repo = Postgresql::new(url).await?;
+            let repo = Postgresql::new(url, token_pepper).await?;
             repo.migrate().await?;
             Ok(Self::Postgresql(repo))
         } else {
             info!("Using SQLite backend: {url}");
-            let repo = Sqlite::new(url).await?;
+            let repo = Sqlite::new(url, token_pepper).await?;
             repo.migrate().await?;
             Ok(Self::Sqlite(repo))
         }

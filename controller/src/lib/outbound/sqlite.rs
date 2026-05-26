@@ -15,10 +15,13 @@ use tracing::{debug, info};
 #[derive(Debug, Clone)]
 pub struct Sqlite {
     pool: SqlitePool,
+    /// Server-side pepper combined with every agent token via HMAC-SHA256
+    /// before storage. See `crate::domain::tokens::hash::hash_token`.
+    token_pepper: std::sync::Arc<Vec<u8>>,
 }
 
 impl Sqlite {
-    pub async fn new(database_url: &str) -> Result<Self, SqlxError> {
+    pub async fn new(database_url: &str, token_pepper: Vec<u8>) -> Result<Self, SqlxError> {
         info!("Connecting to database: {database_url}");
         if !sqlx::Sqlite::database_exists(database_url).await? {
             sqlx::Sqlite::create_database(database_url).await?;
@@ -26,7 +29,10 @@ impl Sqlite {
 
         let pool = SqlitePool::connect(database_url).await?;
 
-        Ok(Self { pool })
+        Ok(Self {
+            pool,
+            token_pepper: std::sync::Arc::new(token_pepper),
+        })
     }
 
     /// Run embedded database migrations.
@@ -345,7 +351,7 @@ impl TokenRepository for Sqlite {
         }
 
         let token = format!("hst_{}", uuid::Uuid::new_v4().simple());
-        let token_hash = crate::domain::tokens::hash::hash_token(&token);
+        let token_hash = crate::domain::tokens::hash::hash_token(&token, &self.token_pepper);
         sqlx::query("INSERT INTO api_token (token_hash, user_id) VALUES (?, ?)")
             .bind(&token_hash)
             .bind(user_id)
@@ -361,7 +367,7 @@ impl TokenRepository for Sqlite {
     }
 
     async fn find_user_by_token(&self, token: &str) -> Option<String> {
-        let token_hash = crate::domain::tokens::hash::hash_token(token);
+        let token_hash = crate::domain::tokens::hash::hash_token(token, &self.token_pepper);
         sqlx::query_scalar::<_, String>("SELECT user_id FROM api_token WHERE token_hash = ?")
             .bind(token_hash)
             .fetch_optional(&self.pool)
@@ -372,7 +378,7 @@ impl TokenRepository for Sqlite {
 
     async fn rotate_token(&self, user_id: &str) -> Result<ApiToken, TokenError> {
         let token = format!("hst_{}", uuid::Uuid::new_v4().simple());
-        let token_hash = crate::domain::tokens::hash::hash_token(&token);
+        let token_hash = crate::domain::tokens::hash::hash_token(&token, &self.token_pepper);
         // Upsert: if the user already has a row, replace its hash; otherwise
         // create one. Either way the previous plaintext is now unusable.
         sqlx::query(

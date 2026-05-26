@@ -14,6 +14,7 @@
 #   POSTGRES_PASSWORD=...                       # generate fresh; do NOT reuse
 #   POSTGRES_DB=hoister
 #   HOISTER_CONTROLLER_INTERNAL_SECRET=...      # shared by controller and BFF
+#   HOISTER_CONTROLLER_TOKEN_PEPPER=...          # HMAC key for hashed agent tokens
 #   PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...
 #   CLERK_SECRET_KEY=sk_live_...
 #   CLERK_WEBHOOK_SECRET=whsec_...
@@ -57,6 +58,9 @@ services:
       # request. Without this, any container on the docker bridge could
       # impersonate any user by spoofing X-User-Id.
       HOISTER_CONTROLLER_INTERNAL_SECRET: ${HOISTER_CONTROLLER_INTERNAL_SECRET:?HOISTER_CONTROLLER_INTERNAL_SECRET is required}
+      # HMAC pepper for agent-token storage. Hashes become unverifiable
+      # without this value, so a DB dump alone is insufficient.
+      HOISTER_CONTROLLER_TOKEN_PEPPER: ${HOISTER_CONTROLLER_TOKEN_PEPPER:?HOISTER_CONTROLLER_TOKEN_PEPPER is required}
       RUST_LOG: "info,bollard=warn,hyper_util=warn"
     depends_on:
       - backend-db
