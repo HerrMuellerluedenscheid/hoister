@@ -1,34 +1,50 @@
 use crate::domain::tokens::models::{ApiToken, TokenError};
 
 pub trait TokenRepository: Send + Sync + 'static + Clone {
-    /// Return the existing token for `user_id`, or generate and persist a new one.
-    fn get_or_create_token(
+    /// List all of `user_id`'s tokens (no plaintext, prefix + comment only).
+    fn list_tokens(
         &self,
         user_id: &str,
-    ) -> impl Future<Output = Result<ApiToken, TokenError>> + Send;
+    ) -> impl Future<Output = Result<Vec<ApiToken>, TokenError>> + Send;
 
-    /// Replace the user's stored token with a freshly-generated one. The
-    /// plaintext is returned once; subsequent calls to `get_or_create_token`
-    /// will not be able to recover it.
-    fn rotate_token(
+    /// Generate a fresh token, store its hash, return the plaintext exactly
+    /// once. `comment` is an optional human-readable label.
+    fn create_token(
         &self,
         user_id: &str,
+        comment: Option<String>,
     ) -> impl Future<Output = Result<ApiToken, TokenError>> + Send;
 
-    /// Look up the Clerk user ID that owns `token`, if any.
+    /// Delete a token by id, scoped to `user_id` so users cannot delete
+    /// each other's rows. Returns `Ok(true)` if a row was removed.
+    fn delete_token(
+        &self,
+        user_id: &str,
+        token_id: i64,
+    ) -> impl Future<Output = Result<bool, TokenError>> + Send;
+
+    /// Look up the Clerk user ID that owns `token`, if any. Used by the
+    /// agent-auth middleware.
     fn find_user_by_token(&self, token: &str) -> impl Future<Output = Option<String>> + Send;
 }
 
 pub trait TokenService: Send + Sync + 'static + Clone {
-    fn get_or_create_token(
+    fn list_tokens(
         &self,
         user_id: &str,
+    ) -> impl Future<Output = Result<Vec<ApiToken>, TokenError>> + Send;
+
+    fn create_token(
+        &self,
+        user_id: &str,
+        comment: Option<String>,
     ) -> impl Future<Output = Result<ApiToken, TokenError>> + Send;
 
-    fn rotate_token(
+    fn delete_token(
         &self,
         user_id: &str,
-    ) -> impl Future<Output = Result<ApiToken, TokenError>> + Send;
+        token_id: i64,
+    ) -> impl Future<Output = Result<bool, TokenError>> + Send;
 
     fn find_user_by_token(&self, token: &str) -> impl Future<Output = Option<String>> + Send;
 }

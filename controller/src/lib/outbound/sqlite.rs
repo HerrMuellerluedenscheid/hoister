@@ -332,38 +332,70 @@ impl Sqlite {
 }
 
 impl TokenRepository for Sqlite {
-    async fn get_or_create_token(&self, user_id: &str) -> Result<ApiToken, TokenError> {
-        let already_exists: Option<i64> =
-            sqlx::query_scalar("SELECT id FROM api_token WHERE user_id = ?")
-                .bind(user_id)
-                .fetch_optional(&self.pool)
-                .await
-                .map_err(|_| TokenError::UnknownError)?;
+    async fn list_tokens(&self, user_id: &str) -> Result<Vec<ApiToken>, TokenError> {
+        let rows = sqlx::query(
+            "SELECT id, user_id, token_prefix, comment, created_at
+                FROM api_token
+                WHERE user_id = ?
+                ORDER BY created_at DESC, id DESC",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|_| TokenError::UnknownError)?;
 
-        if already_exists.is_some() {
-            // Token already issued. We only store its hash, so we cannot
-            // return the plaintext here — caller must rotate to get a new one.
-            return Ok(ApiToken {
+        Ok(rows
+            .iter()
+            .map(|r| ApiToken {
+                id: r.get("id"),
+                user_id: r.get("user_id"),
                 token: None,
-                user_id: user_id.to_string(),
-                is_new: false,
-            });
-        }
+                token_prefix: r.get("token_prefix"),
+                comment: r.get("comment"),
+                created_at: r.get("created_at"),
+            })
+            .collect())
+    }
 
+    async fn create_token(
+        &self,
+        user_id: &str,
+        comment: Option<String>,
+    ) -> Result<ApiToken, TokenError> {
         let token = format!("hst_{}", uuid::Uuid::new_v4().simple());
         let token_hash = crate::domain::tokens::hash::hash_token(&token, &self.token_pepper);
-        sqlx::query("INSERT INTO api_token (token_hash, user_id) VALUES (?, ?)")
-            .bind(&token_hash)
+        let token_prefix = token[..12].to_string();
+        let row = sqlx::query(
+            "INSERT INTO api_token (user_id, token_hash, token_prefix, comment)
+                VALUES (?, ?, ?, ?)
+                RETURNING id, created_at",
+        )
+        .bind(user_id)
+        .bind(&token_hash)
+        .bind(&token_prefix)
+        .bind(&comment)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|_| TokenError::UnknownError)?;
+
+        Ok(ApiToken {
+            id: row.get("id"),
+            user_id: user_id.to_string(),
+            token: Some(token),
+            token_prefix,
+            comment,
+            created_at: row.get("created_at"),
+        })
+    }
+
+    async fn delete_token(&self, user_id: &str, token_id: i64) -> Result<bool, TokenError> {
+        let result = sqlx::query("DELETE FROM api_token WHERE id = ? AND user_id = ?")
+            .bind(token_id)
             .bind(user_id)
             .execute(&self.pool)
             .await
             .map_err(|_| TokenError::UnknownError)?;
-
-        Ok(ApiToken {
-            token: Some(token),
-            user_id: user_id.to_string(),
-            is_new: true,
-        })
+        Ok(result.rows_affected() > 0)
     }
 
     async fn find_user_by_token(&self, token: &str) -> Option<String> {
@@ -374,30 +406,6 @@ impl TokenRepository for Sqlite {
             .await
             .ok()
             .flatten()
-    }
-
-    async fn rotate_token(&self, user_id: &str) -> Result<ApiToken, TokenError> {
-        let token = format!("hst_{}", uuid::Uuid::new_v4().simple());
-        let token_hash = crate::domain::tokens::hash::hash_token(&token, &self.token_pepper);
-        // Upsert: if the user already has a row, replace its hash; otherwise
-        // create one. Either way the previous plaintext is now unusable.
-        sqlx::query(
-            r#"
-            INSERT INTO api_token (token_hash, user_id) VALUES (?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET token_hash = excluded.token_hash
-            "#,
-        )
-        .bind(&token_hash)
-        .bind(user_id)
-        .execute(&self.pool)
-        .await
-        .map_err(|_| TokenError::UnknownError)?;
-
-        Ok(ApiToken {
-            token: Some(token),
-            user_id: user_id.to_string(),
-            is_new: true,
-        })
     }
 }
 
