@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { UserButton } from 'svelte-clerk';
 	import { invalidateAll } from '$app/navigation';
 	import { onDestroy, onMount } from 'svelte';
 	import Deployments from '$lib/components/Deployments.svelte';
@@ -49,19 +48,8 @@
 	}
 </script>
 
-<div class="min-h-screen bg-zinc-950 text-zinc-100">
-	<header class="flex items-center justify-between border-b border-zinc-800 px-8 py-5">
-		<div class="flex items-center gap-4">
-			<a href="/dashboard" class="font-semibold tracking-tight hover:text-indigo-300">Hoister</a>
-			<nav class="flex gap-3 text-sm text-zinc-400">
-				<a href="/dashboard" class="hover:text-zinc-100">Dashboard</a>
-				<a href="/containers" class="hover:text-zinc-100">Containers</a>
-			</nav>
-		</div>
-		<UserButton />
-	</header>
-
-	<main class="mx-auto max-w-6xl space-y-6 px-8 py-10">
+<div class="px-8 py-10">
+	<div class="mx-auto max-w-6xl space-y-6">
 		{#if data.error || !container}
 			<div class="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-400">
 				{data.error ?? 'Container not found.'}
@@ -388,5 +376,5 @@
 				</div>
 			</section>
 		{/if}
-	</main>
+	</div>
 </div>
