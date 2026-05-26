@@ -40,6 +40,9 @@ services:
 
   hoister-controller:
     image: emrius11/hoister-controller:latest
+    build:
+      context: .
+      dockerfile: controller/Dockerfile
     restart: unless-stopped
     expose:
       - "3033"   # agent port (reached via caddy → api.hoister.io)
@@ -60,6 +63,9 @@ services:
 
   hoister-frontend-cloud:
     image: emrius11/hoister-frontend-cloud:latest
+    build:
+      context: frontend-cloud
+      dockerfile: Dockerfile
     restart: unless-stopped
     expose:
       - "3000"
