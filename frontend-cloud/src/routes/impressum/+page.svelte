@@ -22,7 +22,7 @@
 		<h1 class="mb-8 text-3xl font-bold tracking-tight">Impressum</h1>
 
 		<section class="mb-8">
-			<h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-zinc-500">
+			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
 				Angaben gemäß § 5 TMG
 			</h2>
 			<div class="space-y-1 text-zinc-300">
@@ -34,7 +34,7 @@
 		</section>
 
 		<section class="mb-8">
-			<h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-zinc-500">Kontakt</h2>
+			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">Kontakt</h2>
 			<div class="space-y-1 text-zinc-300">
 				<p>
 					E-Mail: <a
@@ -46,7 +46,7 @@
 		</section>
 
 		<section class="mb-8">
-			<h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-zinc-500">
+			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
 				Hinweis Handelsregister &amp; USt-IdNr.
 			</h2>
 			<p class="text-zinc-400">
@@ -56,7 +56,7 @@
 		</section>
 
 		<section class="mb-8">
-			<h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-zinc-500">
+			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
 				Verantwortlich für den Inhalt (§ 55 Abs. 2 RStV)
 			</h2>
 			<div class="space-y-1 text-zinc-300">
@@ -67,7 +67,7 @@
 		</section>
 
 		<section class="mb-8">
-			<h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-zinc-500">
+			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
 				Datenschutz
 			</h2>
 			<p class="text-zinc-400">

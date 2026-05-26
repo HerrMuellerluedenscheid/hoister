@@ -1,11 +1,10 @@
 <script lang="ts">
-	import { UserButton } from 'svelte-clerk';
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import { onDestroy, onMount } from 'svelte';
 	import InspectionCard from '$lib/components/InspectionCard.svelte';
 	import type { PageProps } from './$types';
-	import type { ContainerStateResponse } from '../../bindings/ContainerStateResponse';
+	import type { ContainerStateResponse } from '../../../bindings/ContainerStateResponse';
 
 	let { data, form }: PageProps = $props();
 
@@ -37,19 +36,8 @@
 	const grouped = $derived(groupByHostname(data.inspections));
 </script>
 
-<div class="min-h-screen bg-zinc-950 text-zinc-100">
-	<header class="flex items-center justify-between border-b border-zinc-800 px-8 py-5">
-		<div class="flex items-center gap-4">
-			<a href="/dashboard" class="font-semibold tracking-tight hover:text-indigo-300">Hoister</a>
-			<nav class="flex gap-3 text-sm text-zinc-400">
-				<a href="/dashboard" class="hover:text-zinc-100">Dashboard</a>
-				<a href="/containers" class="text-zinc-100">Containers</a>
-			</nav>
-		</div>
-		<UserButton />
-	</header>
-
-	<main class="mx-auto max-w-7xl space-y-8 px-8 py-10">
+<div class="px-8 py-10">
+	<div class="mx-auto max-w-7xl space-y-8">
 		<h1 class="text-2xl font-bold">Containers</h1>
 
 		{#if data.error}
@@ -145,5 +133,5 @@
 				</div>
 			</section>
 		{/each}
-	</main>
+	</div>
 </div>
