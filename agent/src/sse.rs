@@ -74,13 +74,14 @@ pub(super) enum SSEError {
 
 pub(crate) async fn consume_sse(
     url: &str,
+    token: Option<String>,
     tx_sse: Sender<ControllerEvent>,
     client: Client,
 ) -> Result<(), SSEError> {
     loop {
         info!("Connecting to SSE...");
 
-        match try_consume_stream(&client, url, &tx_sse).await {
+        match try_consume_stream(&client, url, token.as_deref(), &tx_sse).await {
             Ok(_) => info!("Stream ended normally"),
             Err(e) => warn!("Stream error: {e}"),
         }
@@ -93,9 +94,14 @@ pub(crate) async fn consume_sse(
 async fn try_consume_stream(
     client: &Client,
     url: &str,
+    token: Option<&str>,
     tx_sse: &Sender<ControllerEvent>,
 ) -> Result<(), SSEError> {
-    let response = client.get(url).send().await?;
+    let mut req = client.get(url);
+    if let Some(token) = token {
+        req = req.bearer_auth(token);
+    }
+    let response = req.send().await?;
     let response = response.error_for_status()?;
 
     let mut stream = response.bytes_stream();
