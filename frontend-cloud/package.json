@@ -38,6 +38,7 @@
 		"vite": "^7.3.1"
 	},
 	"dependencies": {
+		"posthog-js": "^1.376.2",
 		"svelte-clerk": "^1.1.1"
 	}
 }

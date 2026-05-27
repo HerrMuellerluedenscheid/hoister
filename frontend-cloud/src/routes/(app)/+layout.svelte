@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { UserButton } from 'svelte-clerk';
+	import { UserButton, useClerkContext } from 'svelte-clerk';
+	import { analyticsConsent } from '$lib/consent.svelte';
+	import { identifyUser, resetUser } from '$lib/posthog';
 
 	let { children } = $props();
 
@@ -15,6 +17,20 @@
 		const path = page.url.pathname;
 		return path === href || path.startsWith(href + '/');
 	}
+
+	const clerk = useClerkContext();
+	let lastIdentified = $state<string | null>(null);
+	$effect(() => {
+		if (analyticsConsent.value !== 'accepted') return;
+		const userId = clerk.auth.userId ?? null;
+		if (userId && userId !== lastIdentified) {
+			identifyUser(userId);
+			lastIdentified = userId;
+		} else if (!userId && lastIdentified) {
+			resetUser();
+			lastIdentified = null;
+		}
+	});
 </script>
 
 <div class="flex min-h-screen bg-zinc-950 text-zinc-100">
