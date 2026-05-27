@@ -7,7 +7,8 @@
 	const nav = [
 		{ href: '/dashboard', label: 'Dashboard' },
 		{ href: '/containers', label: 'Containers' },
-		{ href: '/tokens', label: 'Tokens' }
+		{ href: '/tokens', label: 'Tokens' },
+		{ href: '/notifiers', label: 'Notifiers' }
 	];
 
 	function isActive(href: string): boolean {

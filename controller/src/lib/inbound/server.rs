@@ -19,10 +19,13 @@ use crate::domain::deployments::models::deployment::{
     CreateDeploymentRequest, Deployment, GetDeploymentError,
 };
 use crate::domain::deployments::ports::DeploymentsService;
+use crate::domain::notifiers::models::{Notifier, NotifierConfig};
+use crate::domain::notifiers::ports::NotifierService;
 use crate::domain::tokens::models::ApiToken;
 use crate::domain::tokens::ports::TokenService;
 use crate::inbound::audit_log::audit_log_middleware;
 use crate::inbound::rate_limit::{RateLimiter, rate_limit_middleware};
+use crate::outbound::notification_dispatch::dispatch_to_all;
 use crate::outbound::pending_updates_memory::{PendingUpdate, PendingUpdatesMemory};
 use crate::sse::{ControllerEvent, UserScopedEvent, sse_handler};
 
@@ -31,7 +34,8 @@ use crate::sse::{ControllerEvent, UserScopedEvent, sse_handler};
 /// so we leave generous headroom; this exists to shed abuse, not to enforce
 /// product limits.
 const AGENT_BODY_LIMIT: usize = 1024 * 1024;
-use hoister_shared::{CreateDeployment, HostName, ProjectName, ServiceName};
+use chatterbox::message::Message;
+use hoister_shared::{CreateDeployment, DeploymentStatus, HostName, ProjectName, ServiceName};
 use tokio::sync::broadcast;
 use ts_rs::TS;
 
@@ -50,10 +54,16 @@ pub struct UserId(pub String);
 pub struct InternalSecret(pub Option<String>);
 
 #[derive(Clone)]
-pub struct AppState<DS: DeploymentsService, CS: ContainerStateService, TS: TokenService> {
+pub struct AppState<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+> {
     pub deployments_service: Arc<DS>,
     pub container_state_service: Arc<CS>,
     pub token_service: Arc<TS>,
+    pub notifier_service: Arc<NS>,
     #[cfg(feature = "self-hosted")]
     pub api_secret: Option<String>,
     pub event_tx: broadcast::Sender<UserScopedEvent>,
@@ -91,8 +101,9 @@ async fn agent_auth_middleware<
     DS: DeploymentsService,
     CS: ContainerStateService,
     TS: TokenService,
+    NS: NotifierService,
 >(
-    State(state): State<AppState<DS, CS, TS>>,
+    State(state): State<AppState<DS, CS, TS, NS>>,
     mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
@@ -209,8 +220,13 @@ async fn health() -> &'static str {
     "OK"
 }
 
-async fn list_tokens<DS: DeploymentsService, CS: ContainerStateService, TS: TokenService>(
-    State(state): State<AppState<DS, CS, TS>>,
+async fn list_tokens<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS>>,
     Extension(UserId(user_id)): Extension<UserId>,
 ) -> Result<Json<ApiResponse<Vec<ApiToken>>>, StatusCode> {
     match state.token_service.list_tokens(&user_id).await {
@@ -228,8 +244,13 @@ struct CreateTokenRequest {
     comment: Option<String>,
 }
 
-async fn create_token<DS: DeploymentsService, CS: ContainerStateService, TS: TokenService>(
-    State(state): State<AppState<DS, CS, TS>>,
+async fn create_token<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     body: Option<Json<CreateTokenRequest>>,
 ) -> Result<Json<ApiResponse<ApiToken>>, StatusCode> {
@@ -248,8 +269,13 @@ async fn create_token<DS: DeploymentsService, CS: ContainerStateService, TS: Tok
     }
 }
 
-async fn delete_token<DS: DeploymentsService, CS: ContainerStateService, TS: TokenService>(
-    State(state): State<AppState<DS, CS, TS>>,
+async fn delete_token<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path(token_id): Path<i64>,
 ) -> Result<StatusCode, StatusCode> {
@@ -263,8 +289,112 @@ async fn delete_token<DS: DeploymentsService, CS: ContainerStateService, TS: Tok
     }
 }
 
-async fn get_deployments<DS: DeploymentsService, CS: ContainerStateService, TS: TokenService>(
-    State(state): State<AppState<DS, CS, TS>>,
+async fn list_notifiers<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+) -> Result<Json<ApiResponse<Vec<Notifier>>>, StatusCode> {
+    match state.notifier_service.list_notifiers(&user_id).await {
+        Ok(notifiers) => Ok(Json(ApiResponse::success(notifiers))),
+        Err(e) => {
+            error!("Error listing notifiers for {user_id}: {e:?}");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn create_notifier<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+    Json(config): Json<NotifierConfig>,
+) -> Result<Json<ApiResponse<Notifier>>, StatusCode> {
+    match state
+        .notifier_service
+        .create_notifier(&user_id, config)
+        .await
+    {
+        Ok(notifier) => Ok(Json(ApiResponse::success(notifier))),
+        Err(crate::domain::notifiers::models::NotifierError::InvalidConfig(msg)) => {
+            error!("Invalid notifier config from {user_id}: {msg}");
+            Err(StatusCode::BAD_REQUEST)
+        }
+        Err(e) => {
+            error!("Error creating notifier for {user_id}: {e:?}");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn delete_notifier<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+    Path(notifier_id): Path<i64>,
+) -> Result<StatusCode, StatusCode> {
+    match state
+        .notifier_service
+        .delete_notifier(&user_id, notifier_id)
+        .await
+    {
+        Ok(true) => Ok(StatusCode::NO_CONTENT),
+        Ok(false) => Err(StatusCode::NOT_FOUND),
+        Err(e) => {
+            error!("Error deleting notifier {notifier_id} for {user_id}: {e:?}");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct SetEnabledRequest {
+    enabled: bool,
+}
+
+async fn set_notifier_enabled<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+    Path(notifier_id): Path<i64>,
+    Json(req): Json<SetEnabledRequest>,
+) -> Result<StatusCode, StatusCode> {
+    match state
+        .notifier_service
+        .set_enabled(&user_id, notifier_id, req.enabled)
+        .await
+    {
+        Ok(true) => Ok(StatusCode::NO_CONTENT),
+        Ok(false) => Err(StatusCode::NOT_FOUND),
+        Err(e) => {
+            error!("Error toggling notifier {notifier_id} for {user_id}: {e:?}");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn get_deployments<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS>>,
     Extension(UserId(user_id)): Extension<UserId>,
 ) -> Result<Json<ApiResponse<Vec<Deployment>>>, StatusCode> {
     match state
@@ -284,8 +414,9 @@ async fn get_deployments_by_service<
     DS: DeploymentsService,
     CS: ContainerStateService,
     TS: TokenService,
+    NS: NotifierService,
 >(
-    State(state): State<AppState<DS, CS, TS>>,
+    State(state): State<AppState<DS, CS, TS, NS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path((project_name, service_name)): Path<(ProjectName, ServiceName)>,
 ) -> Result<Json<ApiResponse<Vec<Deployment>>>, StatusCode> {
@@ -304,16 +435,31 @@ async fn get_deployments_by_service<
     }
 }
 
-async fn create_deployment<DS: DeploymentsService, CS: ContainerStateService, TS: TokenService>(
-    State(state): State<AppState<DS, CS, TS>>,
+async fn create_deployment<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Json(payload): Json<CreateDeployment>,
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
+    let notify_payload = if should_notify_for(&payload.status) {
+        Some(payload_message(&payload))
+    } else {
+        None
+    };
     let req = CreateDeploymentRequest::from_payload(payload, user_id.clone());
 
     match state.deployments_service.create_deployment(&req).await {
         Ok(id) => match state.deployments_service.get_deployment(id, &user_id).await {
-            Ok(deployment) => Ok(Json(ApiResponse::success(deployment))),
+            Ok(deployment) => {
+                if let Some(message) = notify_payload {
+                    notify_user(&state.notifier_service, user_id.clone(), message);
+                }
+                Ok(Json(ApiResponse::success(deployment)))
+            }
             Err(e) => {
                 eprintln!("Error retrieving created deployment: {e:?}");
                 Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -326,14 +472,39 @@ async fn create_deployment<DS: DeploymentsService, CS: ContainerStateService, TS
     }
 }
 
+fn should_notify_for(status: &DeploymentStatus) -> bool {
+    matches!(
+        status,
+        DeploymentStatus::Success | DeploymentStatus::Failed | DeploymentStatus::RollbackFinished,
+    )
+}
+
+fn payload_message(payload: &CreateDeployment) -> Message {
+    payload.to_message()
+}
+
+fn notify_user<NS: NotifierService>(service: &Arc<NS>, user_id: String, message: Message) {
+    let service = service.clone();
+    tokio::spawn(async move {
+        match service.list_notifiers(&user_id).await {
+            Ok(notifiers) if !notifiers.is_empty() => {
+                dispatch_to_all(notifiers, message).await;
+            }
+            Ok(_) => {}
+            Err(e) => error!("Failed to load notifiers for {user_id}: {e:?}"),
+        }
+    });
+}
+
 pub use hoister_shared::wire::PostContainerStateRequest;
 
 async fn post_container_state<
     DS: DeploymentsService,
     CS: ContainerStateService,
     TS: TokenService,
+    NS: NotifierService,
 >(
-    State(state): State<AppState<DS, CS, TS>>,
+    State(state): State<AppState<DS, CS, TS, NS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path((hostname, project_name)): Path<(HostName, ProjectName)>,
     Json(payload): Json<PostContainerStateRequest>,
@@ -413,8 +584,9 @@ async fn get_container_state_by_service_name<
     DS: DeploymentsService,
     CS: ContainerStateService,
     TS: TokenService,
+    NS: NotifierService,
 >(
-    State(state): State<AppState<DS, CS, TS>>,
+    State(state): State<AppState<DS, CS, TS, NS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
 ) -> Result<Json<ApiResponse<ContainerStateResponse>>, StatusCode> {
@@ -445,8 +617,9 @@ async fn get_container_states<
     DS: DeploymentsService,
     CS: ContainerStateService,
     TS: TokenService,
+    NS: NotifierService,
 >(
-    State(state): State<AppState<DS, CS, TS>>,
+    State(state): State<AppState<DS, CS, TS, NS>>,
     Extension(UserId(user_id)): Extension<UserId>,
 ) -> impl IntoResponse {
     debug!("Received request for container states (user: {user_id})");
@@ -470,8 +643,9 @@ async fn post_pending_update<
     DS: DeploymentsService,
     CS: ContainerStateService,
     TS: TokenService,
+    NS: NotifierService,
 >(
-    State(state): State<AppState<DS, CS, TS>>,
+    State(state): State<AppState<DS, CS, TS, NS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Json(payload): Json<PendingUpdateRequest>,
 ) -> impl IntoResponse {
@@ -483,16 +657,32 @@ async fn post_pending_update<
         new_digest: payload.new_digest,
         detected_at: Utc::now(),
     };
+    let message = pending_update_message(&update);
     state.pending_updates.add(&user_id, update).await;
+    notify_user(&state.notifier_service, user_id, message);
     StatusCode::OK.into_response()
+}
+
+fn pending_update_message(update: &PendingUpdate) -> Message {
+    let title = format!("Update available: {}", update.image_name);
+    let body = format!(
+        "New image {} ({}) is available\n(project {} | service {} | host {})",
+        update.image_name,
+        update.new_digest,
+        update.project_name.as_str(),
+        update.service_name.as_str(),
+        update.hostname.as_str(),
+    );
+    Message::new(title, body)
 }
 
 async fn get_pending_updates<
     DS: DeploymentsService,
     CS: ContainerStateService,
     TS: TokenService,
+    NS: NotifierService,
 >(
-    State(state): State<AppState<DS, CS, TS>>,
+    State(state): State<AppState<DS, CS, TS, NS>>,
     Extension(UserId(user_id)): Extension<UserId>,
 ) -> impl IntoResponse {
     let updates = state.pending_updates.get_all(&user_id).await;
@@ -503,8 +693,9 @@ async fn apply_pending_update<
     DS: DeploymentsService,
     CS: ContainerStateService,
     TS: TokenService,
+    NS: NotifierService,
 >(
-    State(state): State<AppState<DS, CS, TS>>,
+    State(state): State<AppState<DS, CS, TS, NS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
 ) -> impl IntoResponse {
@@ -523,23 +714,30 @@ pub async fn create_agent_router<
     DS: DeploymentsService,
     CS: ContainerStateService,
     TS: TokenService,
+    NS: NotifierService,
 >(
-    state: AppState<DS, CS, TS>,
+    state: AppState<DS, CS, TS, NS>,
 ) -> Router {
     let rate_limiter = RateLimiter::new();
     Router::new()
         .route("/health", get(health))
         .route("/sse", get(sse_handler))
-        .route("/deployments", post(create_deployment::<DS, CS, TS>))
+        .route("/deployments", post(create_deployment::<DS, CS, TS, NS>))
         .route(
             "/container/state/{hostname}/{project_name}",
-            post(post_container_state::<DS, CS, TS>),
+            post(post_container_state::<DS, CS, TS, NS>),
         )
-        .route("/pending-updates", post(post_pending_update::<DS, CS, TS>))
-        .route("/pending-updates", get(get_pending_updates::<DS, CS, TS>))
+        .route(
+            "/pending-updates",
+            post(post_pending_update::<DS, CS, TS, NS>),
+        )
+        .route(
+            "/pending-updates",
+            get(get_pending_updates::<DS, CS, TS, NS>),
+        )
         .route(
             "/pending-updates/{hostname}/{project_name}/{service_name}/apply",
-            post(apply_pending_update::<DS, CS, TS>),
+            post(apply_pending_update::<DS, CS, TS, NS>),
         )
         // Rate limit runs AFTER auth so it can key on the resolved user_id.
         // Auth runs first because `.layer` applies in reverse order.
@@ -547,7 +745,7 @@ pub async fn create_agent_router<
         .layer(Extension(rate_limiter))
         .layer(middleware::from_fn_with_state(
             state.clone(),
-            agent_auth_middleware::<DS, CS, TS>,
+            agent_auth_middleware::<DS, CS, TS, NS>,
         ))
         .layer(DefaultBodyLimit::max(AGENT_BODY_LIMIT))
         // Audit log is outermost so it sees the final response status,
@@ -562,8 +760,9 @@ pub async fn create_internal_router<
     DS: DeploymentsService,
     CS: ContainerStateService,
     TS: TokenService,
+    NS: NotifierService,
 >(
-    state: AppState<DS, CS, TS>,
+    state: AppState<DS, CS, TS, NS>,
     internal_secret: InternalSecret,
 ) -> Router {
     if internal_secret.0.is_none() {
@@ -576,28 +775,44 @@ pub async fn create_internal_router<
     }
     Router::new()
         .route("/health", get(health))
-        .route("/tokens", get(list_tokens::<DS, CS, TS>))
-        .route("/tokens", post(create_token::<DS, CS, TS>))
+        .route("/tokens", get(list_tokens::<DS, CS, TS, NS>))
+        .route("/tokens", post(create_token::<DS, CS, TS, NS>))
         .route(
             "/tokens/{id}",
-            axum::routing::delete(delete_token::<DS, CS, TS>),
+            axum::routing::delete(delete_token::<DS, CS, TS, NS>),
         )
-        .route("/deployments", get(get_deployments::<DS, CS, TS>))
+        .route("/notifiers", get(list_notifiers::<DS, CS, TS, NS>))
+        .route("/notifiers", post(create_notifier::<DS, CS, TS, NS>))
+        .route(
+            "/notifiers/{id}",
+            axum::routing::delete(delete_notifier::<DS, CS, TS, NS>),
+        )
+        .route(
+            "/notifiers/{id}/enabled",
+            axum::routing::patch(set_notifier_enabled::<DS, CS, TS, NS>),
+        )
+        .route("/deployments", get(get_deployments::<DS, CS, TS, NS>))
         .route(
             "/deployments/{project_name}/{service_name}",
-            get(get_deployments_by_service::<DS, CS, TS>),
+            get(get_deployments_by_service::<DS, CS, TS, NS>),
         )
-        .route("/container/state", get(get_container_states::<DS, CS, TS>))
+        .route(
+            "/container/state",
+            get(get_container_states::<DS, CS, TS, NS>),
+        )
         .route(
             "/container/state/{hostname}/{project_name}/{service_name}",
-            get(get_container_state_by_service_name::<DS, CS, TS>),
+            get(get_container_state_by_service_name::<DS, CS, TS, NS>),
         )
         // Pending-update read/apply mirrored from the agent router so the
         // BFF can drive them. Writes (POST /pending-updates) stay agent-only.
-        .route("/pending-updates", get(get_pending_updates::<DS, CS, TS>))
+        .route(
+            "/pending-updates",
+            get(get_pending_updates::<DS, CS, TS, NS>),
+        )
         .route(
             "/pending-updates/{hostname}/{project_name}/{service_name}/apply",
-            post(apply_pending_update::<DS, CS, TS>),
+            post(apply_pending_update::<DS, CS, TS, NS>),
         )
         .layer(middleware::from_fn(internal_user_middleware))
         .layer(Extension(internal_secret))
