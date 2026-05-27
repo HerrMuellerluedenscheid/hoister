@@ -311,3 +311,60 @@ impl From<HoisterError> for Option<Message> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::mpsc;
+
+    fn sample_handler() -> (DeploymentResultHandler, mpsc::Receiver<CreateDeployment>) {
+        let (tx, rx) = mpsc::channel(8);
+        (DeploymentResultHandler::new(tx, HostName::default()), rx)
+    }
+
+    fn sample_args() -> (ProjectName, ServiceName, ImageName, ImageDigest) {
+        (
+            ProjectName::new("p"),
+            ServiceName::new("s"),
+            ImageName::new("img:latest"),
+            ImageDigest::new("sha256:1"),
+        )
+    }
+
+    // Regression for the panic at notifications.rs:50: every inform_* method
+    // used to `.unwrap()` the channel send, so a dropped receiver crashed the
+    // agent the next time we tried to report a deploy result.
+    #[tokio::test]
+    async fn inform_methods_do_not_panic_when_receiver_is_dropped() {
+        let (handler, rx) = sample_handler();
+        drop(rx);
+
+        let (p, s, i, d) = sample_args();
+        handler
+            .inform_container_failed(p.clone(), s.clone(), i.clone(), d.clone())
+            .await;
+        handler
+            .inform_rollback_complete(p.clone(), s.clone(), i.clone(), d.clone())
+            .await;
+        handler.inform_update_success(p, s, i, d).await;
+        handler.test_message().await;
+    }
+
+    // Regression for the silent break in main.rs: with no chatterbox
+    // dispatcher configured, send_to_chatterbox previously required a
+    // Dispatcher reference. Verify the None path is a no-op so the receiver
+    // can be spawned unconditionally.
+    #[tokio::test]
+    async fn send_to_chatterbox_is_noop_when_dispatcher_is_none() {
+        let (p, s, i, d) = sample_args();
+        let msg = CreateDeployment {
+            project: p,
+            service: s,
+            image: i,
+            digest: d,
+            status: DeploymentStatus::Success,
+            hostname: HostName::default(),
+        };
+        assert!(send_to_chatterbox(&msg, None).await.is_ok());
+    }
+}
