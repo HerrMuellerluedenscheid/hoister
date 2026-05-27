@@ -38,7 +38,39 @@
 
 <div class="px-8 py-10">
 	<div class="mx-auto max-w-7xl space-y-8">
-		<h1 class="text-2xl font-bold">Containers</h1>
+		<div class="flex items-baseline justify-between gap-4">
+			<h1 class="text-2xl font-bold">Containers</h1>
+			{#if data.me}
+				{@const max = data.me.limits.max_projects}
+				{@const used = data.me.usage.projects}
+				<div class="text-sm text-zinc-400">
+					{#if max === null}
+						{used} project{used === 1 ? '' : 's'} <span class="text-indigo-400">(Pro)</span>
+					{:else}
+						<span class:text-amber-400={used >= max}>
+							{used} / {max} projects
+						</span>
+						{#if used >= max}
+							·
+							<a href="/settings/plan" class="text-indigo-400 underline hover:text-indigo-300"
+								>Upgrade</a
+							>
+						{/if}
+					{/if}
+				</div>
+			{/if}
+		</div>
+
+		{#if data.me && data.me.plan === 'free' && data.me.limits.max_projects !== null && data.me.usage.projects >= data.me.limits.max_projects}
+			<div
+				class="rounded-xl border border-amber-800/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-300"
+			>
+				You've reached the Free plan limit of {data.me.limits.max_projects} compose projects. Any new
+				project reported by an agent will be rejected until you
+				<a href="/settings/plan" class="font-medium underline hover:text-amber-200">upgrade to Pro</a
+				>.
+			</div>
+		{/if}
 
 		{#if data.error}
 			<div class="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-400">

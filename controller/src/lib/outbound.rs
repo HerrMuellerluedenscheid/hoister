@@ -4,6 +4,12 @@ pub mod postgresql;
 pub mod sqlite;
 pub mod state_memory;
 
+use crate::domain::billing::models::{Plan, PlanError};
+use crate::domain::billing::ports::PlanRepository;
+use crate::domain::container_state::models::state::{
+    AddContainerStateRequest, ContainerStateData, HostProjectState,
+};
+use crate::domain::container_state::port::ContainerStateRepository;
 use crate::domain::deployments::models::deployment::{
     CreateDeploymentError, CreateDeploymentRequest, Deployment, DeploymentId, GetDeploymentError,
     GetProjectError, Project,
@@ -13,7 +19,7 @@ use crate::domain::notifiers::models::{Notifier, NotifierConfig, NotifierError};
 use crate::domain::notifiers::ports::NotifierRepository;
 use crate::domain::tokens::models::{ApiToken, TokenError};
 use crate::domain::tokens::ports::TokenRepository;
-use hoister_shared::{ProjectName, ServiceName};
+use hoister_shared::{HostName, ProjectName, ServiceName};
 use log::info;
 use postgresql::Postgresql;
 use sqlite::Sqlite;
@@ -227,6 +233,79 @@ impl NotifierRepository for Database {
             Self::Postgresql(db) => {
                 <Postgresql as NotifierRepository>::set_enabled(db, user_id, notifier_id, enabled)
                     .await
+            }
+        }
+    }
+}
+
+impl PlanRepository for Database {
+    async fn get_plan(&self, user_id: &str) -> Result<Plan, PlanError> {
+        match self {
+            Self::Sqlite(db) => <Sqlite as PlanRepository>::get_plan(db, user_id).await,
+            Self::Postgresql(db) => <Postgresql as PlanRepository>::get_plan(db, user_id).await,
+        }
+    }
+
+    async fn set_plan(&self, user_id: &str, plan: Plan) -> Result<(), PlanError> {
+        match self {
+            Self::Sqlite(db) => <Sqlite as PlanRepository>::set_plan(db, user_id, plan).await,
+            Self::Postgresql(db) => {
+                <Postgresql as PlanRepository>::set_plan(db, user_id, plan).await
+            }
+        }
+    }
+}
+
+impl ContainerStateRepository for Database {
+    async fn get_container_state(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+        service_name: &ServiceName,
+    ) -> Option<HostProjectState> {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as ContainerStateRepository>::get_container_state(
+                    db,
+                    user_id,
+                    hostname,
+                    project_name,
+                    service_name,
+                )
+                .await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as ContainerStateRepository>::get_container_state(
+                    db,
+                    user_id,
+                    hostname,
+                    project_name,
+                    service_name,
+                )
+                .await
+            }
+        }
+    }
+
+    async fn get_container_states(&self, user_id: &str) -> ContainerStateData {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as ContainerStateRepository>::get_container_states(db, user_id).await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as ContainerStateRepository>::get_container_states(db, user_id).await
+            }
+        }
+    }
+
+    async fn add_container_state(&self, req: AddContainerStateRequest) {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as ContainerStateRepository>::add_container_state(db, req).await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as ContainerStateRepository>::add_container_state(db, req).await
             }
         }
     }
