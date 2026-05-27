@@ -37,17 +37,15 @@ impl DeploymentResultHandler {
         image: ImageName,
         digest: ImageDigest,
     ) {
-        self.tx
-            .send(CreateDeployment {
-                project,
-                service,
-                image,
-                digest,
-                status: DeploymentStatus::Failed,
-                hostname: self.hostname.clone(),
-            })
-            .await
-            .unwrap();
+        self.send(CreateDeployment {
+            project,
+            service,
+            image,
+            digest,
+            status: DeploymentStatus::Failed,
+            hostname: self.hostname.clone(),
+        })
+        .await;
     }
 
     pub(crate) async fn inform_rollback_complete(
@@ -57,17 +55,15 @@ impl DeploymentResultHandler {
         image: ImageName,
         digest: ImageDigest,
     ) {
-        self.tx
-            .send(CreateDeployment {
-                project,
-                service,
-                image,
-                digest,
-                status: DeploymentStatus::RollbackFinished,
-                hostname: self.hostname.clone(),
-            })
-            .await
-            .unwrap();
+        self.send(CreateDeployment {
+            project,
+            service,
+            image,
+            digest,
+            status: DeploymentStatus::RollbackFinished,
+            hostname: self.hostname.clone(),
+        })
+        .await;
     }
 
     pub(crate) async fn inform_update_success(
@@ -77,28 +73,28 @@ impl DeploymentResultHandler {
         image: ImageName,
         digest: ImageDigest,
     ) {
-        match self
-            .tx
-            .send(CreateDeployment {
-                project,
-                service,
-                image,
-                digest,
-                status: DeploymentStatus::Success,
-                hostname: self.hostname.clone(),
-            })
-            .await
-        {
-            Ok(_) => {}
-            Err(e) => {
-                error!("Failed to send notification");
-                error!("Error: {e:?}");
-            }
-        };
+        self.send(CreateDeployment {
+            project,
+            service,
+            image,
+            digest,
+            status: DeploymentStatus::Success,
+            hostname: self.hostname.clone(),
+        })
+        .await;
     }
 
     pub(crate) async fn test_message(&self) {
-        self.tx.send(CreateDeployment::test()).await.unwrap();
+        self.send(CreateDeployment::test()).await;
+    }
+
+    /// Best-effort enqueue onto the in-process notification channel. The
+    /// receiver runs on its own task; if it has died (panicked, shut down)
+    /// we log and drop the event rather than panicking the agent itself.
+    async fn send(&self, message: CreateDeployment) {
+        if let Err(e) = self.tx.send(message).await {
+            error!("notification channel closed, dropping event: {e:?}");
+        }
     }
 }
 
