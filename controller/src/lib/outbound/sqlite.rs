@@ -4,6 +4,8 @@ use crate::domain::deployments::models::deployment::{
 };
 use crate::domain::deployments::models::service::{Service, ServiceId};
 use crate::domain::deployments::ports::DeploymentsRepository;
+use crate::domain::notifiers::models::{Notifier, NotifierConfig, NotifierError, NotifierKind};
+use crate::domain::notifiers::ports::NotifierRepository;
 use crate::domain::tokens::models::{ApiToken, TokenError};
 use crate::domain::tokens::ports::TokenRepository;
 use hoister_shared::{DeploymentStatus, HostName, ImageName, ProjectName, ServiceName};
@@ -470,5 +472,104 @@ impl DeploymentsRepository for Sqlite {
             error!("Failed to get project: {e:?}");
             GetProjectError::UnknownError
         })
+    }
+}
+
+impl NotifierRepository for Sqlite {
+    async fn list_notifiers(&self, user_id: &str) -> Result<Vec<Notifier>, NotifierError> {
+        let rows = sqlx::query(
+            "SELECT id, user_id, kind, config, enabled, created_at
+                FROM notifier
+                WHERE user_id = ?
+                ORDER BY created_at DESC, id DESC",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("list_notifiers failed: {e:?}");
+            NotifierError::UnknownError
+        })?;
+
+        let mut out = Vec::with_capacity(rows.len());
+        for r in rows {
+            let kind_str: String = r.get("kind");
+            let kind = NotifierKind::parse(&kind_str)
+                .ok_or_else(|| NotifierError::InvalidConfig(format!("unknown kind {kind_str}")))?;
+            let config_str: String = r.get("config");
+            let config: NotifierConfig = serde_json::from_str(&config_str)
+                .map_err(|e| NotifierError::InvalidConfig(e.to_string()))?;
+            let enabled_int: i64 = r.get("enabled");
+            out.push(Notifier {
+                id: r.get("id"),
+                user_id: r.get("user_id"),
+                kind,
+                config,
+                enabled: enabled_int != 0,
+                created_at: r.get("created_at"),
+            });
+        }
+        Ok(out)
+    }
+
+    async fn create_notifier(
+        &self,
+        user_id: &str,
+        config: NotifierConfig,
+    ) -> Result<Notifier, NotifierError> {
+        let kind = config.kind();
+        let config_json = serde_json::to_string(&config)
+            .map_err(|e| NotifierError::InvalidConfig(e.to_string()))?;
+        let row = sqlx::query(
+            "INSERT INTO notifier (user_id, kind, config) VALUES (?, ?, ?)
+                RETURNING id, created_at",
+        )
+        .bind(user_id)
+        .bind(kind.as_str())
+        .bind(&config_json)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("create_notifier failed: {e:?}");
+            NotifierError::UnknownError
+        })?;
+        Ok(Notifier {
+            id: row.get("id"),
+            user_id: user_id.to_string(),
+            kind,
+            config,
+            enabled: true,
+            created_at: row.get("created_at"),
+        })
+    }
+
+    async fn delete_notifier(
+        &self,
+        user_id: &str,
+        notifier_id: i64,
+    ) -> Result<bool, NotifierError> {
+        let result = sqlx::query("DELETE FROM notifier WHERE id = ? AND user_id = ?")
+            .bind(notifier_id)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|_| NotifierError::UnknownError)?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn set_enabled(
+        &self,
+        user_id: &str,
+        notifier_id: i64,
+        enabled: bool,
+    ) -> Result<bool, NotifierError> {
+        let result = sqlx::query("UPDATE notifier SET enabled = ? WHERE id = ? AND user_id = ?")
+            .bind(if enabled { 1_i64 } else { 0 })
+            .bind(notifier_id)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|_| NotifierError::UnknownError)?;
+        Ok(result.rows_affected() > 0)
     }
 }
