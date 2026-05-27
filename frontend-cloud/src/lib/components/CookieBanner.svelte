@@ -1,12 +1,7 @@
 <script lang="ts">
-	import { browser } from '$app/environment';
+	import { analyticsConsent } from '$lib/consent.svelte';
 
-	let visible = $state(browser && !localStorage.getItem('cookie-consent'));
-
-	function accept() {
-		localStorage.setItem('cookie-consent', '1');
-		visible = false;
-	}
+	const visible = $derived(analyticsConsent.value === 'unknown');
 </script>
 
 {#if visible}
@@ -17,18 +12,26 @@
 			class="mx-auto flex max-w-4xl flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"
 		>
 			<p class="text-sm text-zinc-400">
-				This site uses strictly necessary cookies for authentication. No tracking or advertising
-				cookies are used. See our <a
+				We use strictly necessary cookies for authentication. With your permission we'd also like to
+				use PostHog to anonymously measure how the dashboard is used so we can improve it. See our <a
 					href="/datenschutz"
 					class="text-indigo-400 underline hover:text-indigo-300">privacy policy</a
 				> for details.
 			</p>
-			<button
-				onclick={accept}
-				class="shrink-0 rounded-lg border border-zinc-700 px-4 py-1.5 text-sm font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
-			>
-				OK
-			</button>
+			<div class="flex shrink-0 gap-2">
+				<button
+					onclick={() => analyticsConsent.decline()}
+					class="rounded-lg border border-zinc-700 px-4 py-1.5 text-sm font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-100"
+				>
+					Decline
+				</button>
+				<button
+					onclick={() => analyticsConsent.accept()}
+					class="rounded-lg bg-indigo-500 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-indigo-400"
+				>
+					Accept
+				</button>
+			</div>
 		</div>
 	</div>
 {/if}
