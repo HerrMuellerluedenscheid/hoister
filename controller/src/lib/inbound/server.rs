@@ -27,7 +27,7 @@ use crate::domain::tokens::models::ApiToken;
 use crate::domain::tokens::ports::TokenService;
 use crate::inbound::audit_log::audit_log_middleware;
 use crate::inbound::rate_limit::{RateLimiter, rate_limit_middleware};
-use crate::outbound::notification_dispatch::dispatch_to_all;
+use crate::outbound::notification_dispatch::{dispatch_one_async, dispatch_to_all};
 use crate::outbound::pending_updates_memory::{PendingUpdate, PendingUpdatesMemory};
 use crate::sse::{ControllerEvent, UserScopedEvent, sse_handler};
 
@@ -474,6 +474,60 @@ async fn set_notifier_enabled<
         Err(e) => {
             error!("Error toggling notifier {notifier_id} for {user_id}: {e:?}");
             Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct NotifierDispatchError {
+    success: bool,
+    error: String,
+}
+
+/// Dispatch a synthetic test message through a specific notifier. Disabled
+/// notifiers are still tested so the user can verify config before flipping
+/// the channel on. Unlike deployment-event dispatch, errors are returned
+/// (502 + body) so the user knows what's wrong.
+async fn test_notifier<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+    BS: BillingService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS, BS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+    Path(notifier_id): Path<i64>,
+) -> Response {
+    let notifiers = match state.notifier_service.list_notifiers(&user_id).await {
+        Ok(n) => n,
+        Err(e) => {
+            error!("test_notifier list failed for {user_id}: {e:?}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+    let Some(notifier) = notifiers.into_iter().find(|n| n.id == notifier_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let kind = notifier.kind;
+    let msg = Message::new(
+        "Hoister test message".to_string(),
+        format!(
+            "If you see this, the {kind:?} notifier on your hoister account is configured correctly."
+        ),
+    );
+    match dispatch_one_async(notifier, msg).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => {
+            error!("test_notifier dispatch failed for {user_id}/{notifier_id}: {e}");
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(NotifierDispatchError {
+                    success: false,
+                    error: e,
+                }),
+            )
+                .into_response()
         }
     }
 }
@@ -927,6 +981,10 @@ pub async fn create_internal_router<
         .route(
             "/notifiers/{id}/enabled",
             axum::routing::patch(set_notifier_enabled::<DS, CS, TS, NS, BS>),
+        )
+        .route(
+            "/notifiers/{id}/test",
+            post(test_notifier::<DS, CS, TS, NS, BS>),
         )
         .route("/deployments", get(get_deployments::<DS, CS, TS, NS, BS>))
         .route(

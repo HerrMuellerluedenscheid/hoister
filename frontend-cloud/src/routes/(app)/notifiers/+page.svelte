@@ -77,6 +77,19 @@
 			{form.toggleError}
 		</div>
 	{/if}
+	{#if form?.testError}
+		<div class="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-400">
+			<span class="font-medium">Test failed:</span>
+			{form.testError}
+		</div>
+	{:else if form?.testedId}
+		<div
+			class="rounded-xl border border-emerald-800 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-300"
+		>
+			Test message sent. Check the channel — if it didn't arrive, the credentials may still be
+			wrong even though the dispatcher accepted them.
+		</div>
+	{/if}
 
 	<!-- Create form -->
 	<section class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
@@ -294,26 +307,48 @@
 								</td>
 								<td class="px-4 py-3 text-xs text-zinc-500">{formatDate(n.created_at)}</td>
 								<td class="px-4 py-3 text-right">
-									<form
-										method="POST"
-										action="?/delete"
-										use:enhance={() => {
-											busyId = n.id;
-											return async ({ update }) => {
-												await update();
-												busyId = null;
-											};
-										}}
-									>
-										<input type="hidden" name="id" value={n.id} />
-										<button
-											type="submit"
-											disabled={busyId === n.id}
-											class="rounded-md border border-red-500/40 px-3 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/15 disabled:opacity-50"
+									<div class="flex justify-end gap-2">
+										<form
+											method="POST"
+											action="?/test"
+											use:enhance={() => {
+												busyId = n.id;
+												return async ({ update }) => {
+													await update();
+													busyId = null;
+												};
+											}}
 										>
-											{busyId === n.id ? 'Working…' : 'Delete'}
-										</button>
-									</form>
+											<input type="hidden" name="id" value={n.id} />
+											<button
+												type="submit"
+												disabled={busyId === n.id}
+												class="rounded-md border border-indigo-500/40 px-3 py-1 text-xs font-medium text-indigo-300 transition hover:bg-indigo-500/15 disabled:opacity-50"
+											>
+												{busyId === n.id ? 'Sending…' : 'Test'}
+											</button>
+										</form>
+										<form
+											method="POST"
+											action="?/delete"
+											use:enhance={() => {
+												busyId = n.id;
+												return async ({ update }) => {
+													await update();
+													busyId = null;
+												};
+											}}
+										>
+											<input type="hidden" name="id" value={n.id} />
+											<button
+												type="submit"
+												disabled={busyId === n.id}
+												class="rounded-md border border-red-500/40 px-3 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/15 disabled:opacity-50"
+											>
+												{busyId === n.id ? 'Working…' : 'Delete'}
+											</button>
+										</form>
+									</div>
 								</td>
 							</tr>
 						{/each}

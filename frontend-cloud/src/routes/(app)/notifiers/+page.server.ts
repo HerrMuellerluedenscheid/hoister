@@ -5,6 +5,7 @@ import {
 	deleteNotifier,
 	listNotifiers,
 	setNotifierEnabled,
+	testNotifier,
 	type NotifierConfig
 } from '$lib/api/notifiers';
 
@@ -134,6 +135,24 @@ export const actions: Actions = {
 		} catch (e) {
 			console.error('[notifiers] toggle failed:', e);
 			return fail(500, { toggleError: 'Failed to toggle notifier' });
+		}
+	},
+	test: async ({ locals, request }) => {
+		const auth = locals.auth();
+		if (!auth.userId) throw error(401, 'Not authenticated');
+
+		const form = await request.formData();
+		const raw = form.get('id');
+		const id = typeof raw === 'string' ? Number.parseInt(raw, 10) : NaN;
+		if (!Number.isFinite(id)) return fail(400, { testError: 'Invalid notifier id' });
+
+		try {
+			const result = await testNotifier(auth.userId, id);
+			if (!result.ok) return fail(502, { testedId: id, testError: result.error });
+			return { testedId: id };
+		} catch (e) {
+			console.error('[notifiers] test failed:', e);
+			return fail(500, { testError: 'Failed to send test message' });
 		}
 	}
 };
