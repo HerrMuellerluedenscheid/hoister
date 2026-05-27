@@ -18,16 +18,17 @@
 	encode zstd gzip
 	reverse_proxy hoister-frontend-cloud:3000
 
-	# The dashboard sets only auth-session cookies; no analytics, no fonts,
-	# no third-party JS at runtime apart from Clerk's SDK. We can lock the
-	# header policy down accordingly.
+	# Third parties allowed at runtime:
+	#   - Clerk (clerk.com / clerk.accounts.dev): auth SDK
+	#   - PostHog EU (eu.i.posthog.com, eu-assets.i.posthog.com): product
+	#     analytics, opt-in via the cookie banner. Lazy-loads its recorder
+	#     and autocapture bundles from the assets host.
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options    "nosniff"
 		Referrer-Policy           "strict-origin-when-cross-origin"
 		Permissions-Policy        "interest-cohort=()"
-		# Clerk loads its SDK from clerk.com / clerk.accounts.dev.
-		Content-Security-Policy   "default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clerk.com https://*.clerk.accounts.dev; connect-src 'self' https://*.clerk.com https://*.clerk.accounts.dev; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; frame-src https://*.clerk.com https://*.clerk.accounts.dev; worker-src 'self' blob:"
+		Content-Security-Policy   "default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clerk.com https://*.clerk.accounts.dev https://eu.i.posthog.com https://eu-assets.i.posthog.com; connect-src 'self' https://*.clerk.com https://*.clerk.accounts.dev https://eu.i.posthog.com https://eu-assets.i.posthog.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; frame-src https://*.clerk.com https://*.clerk.accounts.dev; worker-src 'self' blob:"
 		-Server
 	}
 }
