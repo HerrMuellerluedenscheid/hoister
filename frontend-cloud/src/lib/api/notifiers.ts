@@ -86,6 +86,20 @@ export async function deleteNotifier(userId: string, notifierId: number): Promis
 	return true;
 }
 
+export type TestNotifierResult = { ok: true } | { ok: false; error: string };
+
+export async function testNotifier(userId: string, notifierId: number): Promise<TestNotifierResult> {
+	if (!BACKEND_URL) throw error(500, 'Backend URL not configured');
+	const response = await fetch(`${BACKEND_URL}/notifiers/${notifierId}/test`, {
+		method: 'POST',
+		headers: backendHeaders(userId)
+	});
+	if (response.status === 204) return { ok: true };
+	if (response.status === 404) return { ok: false, error: 'Notifier not found' };
+	const body = (await response.json().catch(() => ({}))) as { error?: string };
+	return { ok: false, error: body.error ?? `Test failed (HTTP ${response.status})` };
+}
+
 export async function setNotifierEnabled(
 	userId: string,
 	notifierId: number,
