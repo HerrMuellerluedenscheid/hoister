@@ -434,6 +434,7 @@ dependencies = [
  "async-stream",
  "axum",
  "bollard",
+ "chatterbox",
  "chrono",
  "env_logger",
  "figment2",
@@ -456,6 +457,7 @@ dependencies = [
  "tower",
  "tracing",
  "ts-rs",
+ "url",
  "uuid",
 ]
 

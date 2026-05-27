@@ -1,5 +1,6 @@
 use crate::domain::container_state::port::ContainerStateService;
 use crate::domain::deployments::ports::DeploymentsService;
+use crate::domain::notifiers::ports::NotifierService;
 use crate::domain::tokens::ports::TokenService;
 use crate::inbound::server::{AppState, UserId};
 use axum::Extension;
@@ -20,8 +21,9 @@ pub(crate) async fn sse_handler<
     DS: DeploymentsService,
     CS: ContainerStateService,
     TS: TokenService,
+    NS: NotifierService,
 >(
-    State(state): State<AppState<DS, CS, TS>>,
+    State(state): State<AppState<DS, CS, TS, NS>>,
     Extension(UserId(subscriber_user_id)): Extension<UserId>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let mut rx = state.event_tx.subscribe();

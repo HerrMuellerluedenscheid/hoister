@@ -1,3 +1,4 @@
+pub mod notification_dispatch;
 pub mod pending_updates_memory;
 pub mod postgresql;
 pub mod sqlite;
@@ -8,6 +9,8 @@ use crate::domain::deployments::models::deployment::{
     GetProjectError, Project,
 };
 use crate::domain::deployments::ports::DeploymentsRepository;
+use crate::domain::notifiers::models::{Notifier, NotifierConfig, NotifierError};
+use crate::domain::notifiers::ports::NotifierRepository;
 use crate::domain::tokens::models::{ApiToken, TokenError};
 use crate::domain::tokens::ports::TokenRepository;
 use hoister_shared::{ProjectName, ServiceName};
@@ -166,6 +169,64 @@ impl TokenRepository for Database {
             Self::Sqlite(db) => <Sqlite as TokenRepository>::find_user_by_token(db, token).await,
             Self::Postgresql(db) => {
                 <Postgresql as TokenRepository>::find_user_by_token(db, token).await
+            }
+        }
+    }
+}
+
+impl NotifierRepository for Database {
+    async fn list_notifiers(&self, user_id: &str) -> Result<Vec<Notifier>, NotifierError> {
+        match self {
+            Self::Sqlite(db) => <Sqlite as NotifierRepository>::list_notifiers(db, user_id).await,
+            Self::Postgresql(db) => {
+                <Postgresql as NotifierRepository>::list_notifiers(db, user_id).await
+            }
+        }
+    }
+
+    async fn create_notifier(
+        &self,
+        user_id: &str,
+        config: NotifierConfig,
+    ) -> Result<Notifier, NotifierError> {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as NotifierRepository>::create_notifier(db, user_id, config).await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as NotifierRepository>::create_notifier(db, user_id, config).await
+            }
+        }
+    }
+
+    async fn delete_notifier(
+        &self,
+        user_id: &str,
+        notifier_id: i64,
+    ) -> Result<bool, NotifierError> {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as NotifierRepository>::delete_notifier(db, user_id, notifier_id).await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as NotifierRepository>::delete_notifier(db, user_id, notifier_id).await
+            }
+        }
+    }
+
+    async fn set_enabled(
+        &self,
+        user_id: &str,
+        notifier_id: i64,
+        enabled: bool,
+    ) -> Result<bool, NotifierError> {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as NotifierRepository>::set_enabled(db, user_id, notifier_id, enabled).await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as NotifierRepository>::set_enabled(db, user_id, notifier_id, enabled)
+                    .await
             }
         }
     }
