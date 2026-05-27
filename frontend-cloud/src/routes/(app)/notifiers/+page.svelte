@@ -5,9 +5,23 @@
 
 	let { data, form }: PageProps = $props();
 
-	let kind = $state<NotifierKind>('slack');
+	const ALL_KINDS: Array<{ value: NotifierKind; label: string }> = [
+		{ value: 'slack', label: 'Slack' },
+		{ value: 'telegram', label: 'Telegram' },
+		{ value: 'discord', label: 'Discord' },
+		{ value: 'gotify', label: 'Gotify' },
+		{ value: 'email', label: 'Email' }
+	];
+	const allowed = $derived<Set<NotifierKind>>(
+		new Set(data.me?.limits.allowed_notifier_kinds ?? ALL_KINDS.map((k) => k.value))
+	);
+	const isFree = $derived((data.me?.plan ?? 'free') === 'free');
+
+	let kind = $state<NotifierKind>('telegram');
 	let creating = $state(false);
 	let busyId = $state<number | null>(null);
+
+	const selectedAllowed = $derived(allowed.has(kind));
 
 	function formatDate(iso: string): string {
 		const d = new Date(iso);
@@ -89,12 +103,20 @@
 					bind:value={kind}
 					class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
 				>
-					<option value="slack">Slack</option>
-					<option value="telegram">Telegram</option>
-					<option value="discord">Discord</option>
-					<option value="gotify">Gotify</option>
-					<option value="email">Email</option>
+					{#each ALL_KINDS as k (k.value)}
+						<option value={k.value} disabled={!allowed.has(k.value)}>
+							{k.label}{allowed.has(k.value) ? '' : ' (Pro)'}
+						</option>
+					{/each}
 				</select>
+				{#if !selectedAllowed && isFree}
+					<p class="mt-2 text-xs text-amber-400">
+						This notifier requires the Pro plan. <a
+							href="/settings/plan"
+							class="underline hover:text-amber-300">Upgrade to enable.</a
+						>
+					</p>
+				{/if}
 			</div>
 
 			{#if kind === 'slack'}
@@ -209,8 +231,8 @@
 			<div>
 				<button
 					type="submit"
-					disabled={creating}
-					class="rounded-md bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:opacity-50"
+					disabled={creating || !selectedAllowed}
+					class="rounded-md bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					{creating ? 'Saving…' : 'Add notifier'}
 				</button>

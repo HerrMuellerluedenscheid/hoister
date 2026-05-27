@@ -10,7 +10,8 @@
 		{ href: '/dashboard', label: 'Dashboard' },
 		{ href: '/containers', label: 'Containers' },
 		{ href: '/tokens', label: 'Tokens' },
-		{ href: '/notifiers', label: 'Notifiers' }
+		{ href: '/notifiers', label: 'Notifiers' },
+		{ href: '/settings/plan', label: 'Plan' }
 	];
 
 	function isActive(href: string): boolean {

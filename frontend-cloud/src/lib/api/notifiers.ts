@@ -52,7 +52,14 @@ export async function listNotifiers(userId: string): Promise<Notifier[]> {
 	return unwrap<Notifier[]>(response, 'list notifiers');
 }
 
-export async function createNotifier(userId: string, config: NotifierConfig): Promise<Notifier> {
+export type CreateNotifierResult =
+	| { ok: true; notifier: Notifier }
+	| { ok: false; upgradeRequired: string };
+
+export async function createNotifier(
+	userId: string,
+	config: NotifierConfig
+): Promise<CreateNotifierResult> {
 	if (!BACKEND_URL) throw error(500, 'Backend URL not configured');
 	const headers = { ...backendHeaders(userId), 'Content-Type': 'application/json' };
 	const response = await fetch(`${BACKEND_URL}/notifiers`, {
@@ -60,7 +67,12 @@ export async function createNotifier(userId: string, config: NotifierConfig): Pr
 		headers,
 		body: JSON.stringify(config)
 	});
-	return unwrap<Notifier>(response, 'create notifier');
+	if (response.status === 402) {
+		const body = (await response.json().catch(() => ({}))) as { error?: string };
+		return { ok: false, upgradeRequired: body.error ?? 'Upgrade required' };
+	}
+	const notifier = await unwrap<Notifier>(response, 'create notifier');
+	return { ok: true, notifier };
 }
 
 export async function deleteNotifier(userId: string, notifierId: number): Promise<boolean> {
