@@ -149,11 +149,11 @@ pub(crate) async fn send_pending_update_to_controller(
 pub(super) async fn start_notification_handler(
     config: &Config,
     mut rx: Receiver<CreateDeployment>,
-    dispatcher: Dispatcher,
+    dispatcher: Option<Dispatcher>,
     client: reqwest::Client,
 ) {
     while let Some(deployment_message) = rx.recv().await {
-        send(config, &deployment_message, &dispatcher, &client).await;
+        send(config, &deployment_message, dispatcher.as_ref(), &client).await;
     }
 }
 
@@ -191,8 +191,11 @@ async fn send_to_controller(
 
 async fn send_to_chatterbox(
     deployment_message: &CreateDeployment,
-    dispatcher: &Dispatcher,
+    dispatcher: Option<&Dispatcher>,
 ) -> Result<(), NotificationError> {
+    let Some(dispatcher) = dispatcher else {
+        return Ok(());
+    };
     match deployment_message.status {
         DeploymentStatus::NoUpdate => Ok(()),
         _ => {
@@ -206,7 +209,7 @@ async fn send_to_chatterbox(
 pub(crate) async fn send(
     config: &Config,
     deployment_message: &CreateDeployment,
-    dispatcher: &Dispatcher,
+    dispatcher: Option<&Dispatcher>,
     client: &reqwest::Client,
 ) {
     debug!("sending deployment request");

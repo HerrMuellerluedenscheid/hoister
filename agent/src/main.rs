@@ -72,13 +72,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     let result_handler = DeploymentResultHandler::new(tx_notification, config.hostname.clone());
 
-    let _ = setup_dispatcher(&config).map(|d| {
+    // The notification handler always runs: it forwards events to the
+    // controller (if configured) and to chatterbox (if configured). Skipping
+    // the spawn when chatterbox is absent drops the receiver, which made
+    // every later send panic and also silently disabled controller reporting.
+    let dispatcher = setup_dispatcher(&config);
+    {
         let c = Arc::clone(&config);
         let client = http_client.clone();
         tokio::spawn(async move {
-            start_notification_handler(&c, rx_notification, d, client).await;
+            start_notification_handler(&c, rx_notification, dispatcher, client).await;
         });
-    });
+    }
 
     info!("Starting hoister");
     if config.send_test_message {
