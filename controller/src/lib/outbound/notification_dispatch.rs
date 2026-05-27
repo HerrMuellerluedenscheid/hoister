@@ -37,6 +37,17 @@ fn dispatch_one(notifier: Notifier, message: Message) -> Result<(), String> {
     dispatcher.dispatch(&message).map_err(|e| e.to_string())
 }
 
+/// Like `dispatch_one` but async (wraps the blocking dispatcher call) and
+/// returns the error to the caller instead of swallowing it. Used by the
+/// "test notifier" handler so the user sees why a misconfigured channel
+/// failed; not used by deployment-event dispatch, which still fans out
+/// fire-and-forget via [`dispatch_to_all`].
+pub async fn dispatch_one_async(notifier: Notifier, message: Message) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || dispatch_one(notifier, message))
+        .await
+        .map_err(|e| format!("dispatch task panicked: {e}"))?
+}
+
 fn sender_for(config: NotifierConfig) -> Result<Sender, String> {
     let mut sender = Sender {
         slack: None,
