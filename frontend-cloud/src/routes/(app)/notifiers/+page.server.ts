@@ -89,8 +89,11 @@ export const actions: Actions = {
 		if ('error' in parsed) return fail(400, { createError: parsed.error });
 
 		try {
-			const created = await createNotifier(auth.userId, parsed);
-			return { created };
+			const result = await createNotifier(auth.userId, parsed);
+			if (!result.ok) {
+				return fail(402, { createError: result.upgradeRequired });
+			}
+			return { created: result.notifier };
 		} catch (e) {
 			console.error('[notifiers] create failed:', e);
 			return fail(500, { createError: 'Failed to create notifier' });

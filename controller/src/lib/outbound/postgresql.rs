@@ -1,3 +1,9 @@
+use crate::domain::billing::models::{Plan, PlanError};
+use crate::domain::billing::ports::PlanRepository;
+use crate::domain::container_state::models::state::{
+    AddContainerStateRequest, ContainerStateData, HostProjectState, ServiceState,
+};
+use crate::domain::container_state::port::ContainerStateRepository;
 use crate::domain::deployments::models::deployment::{
     CreateDeploymentError, CreateDeploymentRequest, Deployment, DeploymentId, GetDeploymentError,
     GetProjectError, Project, ProjectId,
@@ -11,6 +17,7 @@ use crate::domain::tokens::ports::TokenRepository;
 use hoister_shared::{DeploymentStatus, HostName, ImageName, ProjectName, ServiceName};
 use log::error;
 use sqlx::{Error as SqlxError, PgPool, Row};
+use std::collections::HashMap;
 use tracing::{debug, info};
 
 #[derive(Debug, Clone)]
@@ -19,6 +26,17 @@ pub struct Postgresql {
     /// Server-side pepper combined with every agent token via HMAC-SHA256
     /// before storage. See `crate::domain::tokens::hash::hash_token`.
     token_pepper: std::sync::Arc<Vec<u8>>,
+}
+
+/// Best-effort parse of a postgres `timestamptz::text` value (e.g.
+/// `2026-05-28 09:12:01.234567+00`) into a UTC `DateTime`. Falls back to
+/// `Utc::now()` if the format drifts — the on-disk timestamp is informational
+/// only (UI sort key), not load-bearing for correctness.
+fn parse_pg_timestamp(s: &str) -> chrono::DateTime<chrono::Utc> {
+    chrono::DateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f%#z")
+        .or_else(|_| chrono::DateTime::parse_from_rfc3339(s))
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .unwrap_or_else(|_| chrono::Utc::now())
 }
 
 fn status_from_i16(val: i16) -> DeploymentStatus {
@@ -578,5 +596,134 @@ impl NotifierRepository for Postgresql {
             .await
             .map_err(|_| NotifierError::UnknownError)?;
         Ok(result.rows_affected() > 0)
+    }
+}
+
+impl PlanRepository for Postgresql {
+    async fn get_plan(&self, user_id: &str) -> Result<Plan, PlanError> {
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT plan FROM user_plan WHERE user_id = $1")
+                .bind(user_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|e| {
+                    error!("get_plan failed: {e:?}");
+                    PlanError::UnknownError
+                })?;
+        Ok(row.and_then(|(s,)| Plan::parse(&s)).unwrap_or(Plan::Free))
+    }
+
+    async fn set_plan(&self, user_id: &str, plan: Plan) -> Result<(), PlanError> {
+        sqlx::query(
+            "INSERT INTO user_plan (user_id, plan, updated_at) VALUES ($1, $2, NOW())
+                 ON CONFLICT(user_id) DO UPDATE SET plan = EXCLUDED.plan, updated_at = NOW()",
+        )
+        .bind(user_id)
+        .bind(plan.as_str())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("set_plan failed: {e:?}");
+            PlanError::UnknownError
+        })?;
+        Ok(())
+    }
+}
+
+impl ContainerStateRepository for Postgresql {
+    async fn get_container_state(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+        service_name: &ServiceName,
+    ) -> Option<HostProjectState> {
+        let row: (String, String) = sqlx::query_as(
+            "SELECT services::text, last_updated::text FROM container_state
+                WHERE user_id = $1 AND hostname = $2 AND project_name = $3",
+        )
+        .bind(user_id)
+        .bind(hostname.as_str())
+        .bind(project_name.as_str())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| error!("get_container_state failed: {e:?}"))
+        .ok()??;
+
+        let (services_json, last_updated) = row;
+        let mut services: HashMap<ServiceName, ServiceState> = serde_json::from_str(&services_json)
+            .map_err(|e| error!("services blob decode failed: {e:?}"))
+            .ok()?;
+        services.retain(|k, _| k == service_name);
+        if services.is_empty() {
+            return None;
+        }
+        Some(HostProjectState {
+            services,
+            last_updated: parse_pg_timestamp(&last_updated),
+        })
+    }
+
+    async fn get_container_states(&self, user_id: &str) -> ContainerStateData {
+        let rows: Vec<(String, String, String, String)> = match sqlx::query_as(
+            "SELECT hostname, project_name, services::text, last_updated::text
+                FROM container_state WHERE user_id = $1",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        {
+            Ok(rs) => rs,
+            Err(e) => {
+                error!("get_container_states failed: {e:?}");
+                return ContainerStateData::default();
+            }
+        };
+
+        let mut out: ContainerStateData = HashMap::new();
+        for (hostname, project_name, services_json, last_updated) in rows {
+            let services: HashMap<ServiceName, ServiceState> =
+                match serde_json::from_str(&services_json) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        error!("services blob decode failed: {e:?}");
+                        continue;
+                    }
+                };
+            out.entry(HostName::new(hostname)).or_default().insert(
+                ProjectName::new(project_name),
+                HostProjectState {
+                    services,
+                    last_updated: parse_pg_timestamp(&last_updated),
+                },
+            );
+        }
+        out
+    }
+
+    async fn add_container_state(&self, req: AddContainerStateRequest) {
+        let services_json = match serde_json::to_string(&req.services) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("encode services for {} failed: {e:?}", req.user_id);
+                return;
+            }
+        };
+        if let Err(e) = sqlx::query(
+            "INSERT INTO container_state (user_id, hostname, project_name, services, last_updated)
+                 VALUES ($1, $2, $3, $4::jsonb, NOW())
+                 ON CONFLICT(user_id, hostname, project_name) DO UPDATE SET
+                     services = EXCLUDED.services,
+                     last_updated = NOW()",
+        )
+        .bind(&req.user_id)
+        .bind(req.hostname.as_str())
+        .bind(req.project_name.as_str())
+        .bind(&services_json)
+        .execute(&self.pool)
+        .await
+        {
+            error!("add_container_state failed: {e:?}");
+        }
     }
 }

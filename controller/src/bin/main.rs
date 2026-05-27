@@ -1,4 +1,5 @@
 use controller::config::get_config;
+use controller::domain::billing::service::Service as BillingServiceImpl;
 use controller::domain::container_state::service::Service as ContainerStateService;
 use controller::domain::deployments::service::Service as DeploymentsService;
 use controller::domain::notifiers::service::Service as NotifierService;
@@ -8,7 +9,6 @@ use controller::inbound::server::{
 };
 use controller::outbound::Database;
 use controller::outbound::pending_updates_memory::PendingUpdatesMemory;
-use controller::outbound::state_memory::StateMemory;
 use controller::sse::UserScopedEvent;
 use env_logger::Env;
 use log::{info, warn};
@@ -40,9 +40,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pending_updates = PendingUpdatesMemory::default();
     let state = AppState {
         deployments_service: Arc::new(DeploymentsService::new(db.clone())),
-        container_state_service: Arc::new(ContainerStateService::new(StateMemory::default())),
+        container_state_service: Arc::new(ContainerStateService::new(db.clone())),
         token_service: Arc::new(TokenService::new(db.clone())),
-        notifier_service: Arc::new(NotifierService::new(db)),
+        notifier_service: Arc::new(NotifierService::new(db.clone())),
+        billing_service: Arc::new(BillingServiceImpl::new(db)),
         #[cfg(feature = "self-hosted")]
         api_secret: config.api_secret.clone(),
         event_tx,
