@@ -19,7 +19,9 @@
 	reverse_proxy hoister-frontend-cloud:3000
 
 	# Third parties allowed at runtime:
-	#   - Clerk (clerk.com / clerk.accounts.dev): auth SDK
+	#   - Clerk (clerk.com / clerk.accounts.dev / clerk.hoister.io): auth SDK.
+	#     The custom prod Frontend API domain (clerk.hoister.io) serves
+	#     clerk-js + ui; challenges.cloudflare.com is Clerk bot protection.
 	#   - PostHog EU (eu.i.posthog.com, eu-assets.i.posthog.com): product
 	#     analytics, opt-in via the cookie banner. Lazy-loads its recorder
 	#     and autocapture bundles from the assets host.
@@ -28,7 +30,7 @@
 		X-Content-Type-Options    "nosniff"
 		Referrer-Policy           "strict-origin-when-cross-origin"
 		Permissions-Policy        "interest-cohort=()"
-		Content-Security-Policy   "default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clerk.com https://*.clerk.accounts.dev https://eu.i.posthog.com https://eu-assets.i.posthog.com; connect-src 'self' https://*.clerk.com https://*.clerk.accounts.dev https://eu.i.posthog.com https://eu-assets.i.posthog.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; frame-src https://*.clerk.com https://*.clerk.accounts.dev; worker-src 'self' blob:"
+		Content-Security-Policy   "default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clerk.com https://*.clerk.accounts.dev https://clerk.hoister.io https://challenges.cloudflare.com https://eu.i.posthog.com https://eu-assets.i.posthog.com; connect-src 'self' https://*.clerk.com https://*.clerk.accounts.dev https://clerk.hoister.io https://eu.i.posthog.com https://eu-assets.i.posthog.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; frame-src https://*.clerk.com https://*.clerk.accounts.dev https://clerk.hoister.io https://challenges.cloudflare.com; worker-src 'self' blob:"
 		-Server
 	}
 }
