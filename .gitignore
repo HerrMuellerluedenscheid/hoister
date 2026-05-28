@@ -1,6 +1,7 @@
 .idea
 .vscode
 .claude
+CLAUDE.local.md
 **/target
 *.Dockerfile
 .env

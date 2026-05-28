@@ -35,7 +35,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
              value in production."
         );
     }
-    let db = Database::connect(&config.database_path, token_pepper.into_bytes()).await?;
+    let aead = controller::outbound::secrets::Aead::from_base64_or_passthrough(
+        config.notifier_key.as_deref(),
+    )?;
+    if !aead.is_active() {
+        warn!(
+            "HOISTER_CONTROLLER_NOTIFIER_KEY is not set. Notifier secrets \
+             (Slack webhook URLs, Telegram/Discord bot tokens, SMTP passwords, \
+             etc.) will be stored in plaintext. Set the env var to a base64 \
+             32-byte random value in production; back the key up offline."
+        );
+    }
+    let db = Database::connect(&config.database_path, token_pepper.into_bytes(), aead).await?;
 
     let pending_updates = PendingUpdatesMemory::default();
     let state = AppState {

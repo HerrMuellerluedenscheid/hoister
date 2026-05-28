@@ -36,7 +36,16 @@ export async function initPostHog(): Promise<void> {
 		// so we don't miss SPA route changes and don't double-count on hard loads.
 		capture_pageview: false,
 		capture_pageleave: true,
-		autocapture: true,
+		// Autocapture is restricted to clicks and submits — we deliberately
+		// drop `change`/`input` events because the notifier creation form
+		// (and any future credential form) has plain text inputs that
+		// would otherwise ship the user's bot tokens and webhook URLs to
+		// PostHog on every keystroke. Forms that hold secrets carry
+		// `class="ph-no-capture"` as a second line of defence.
+		autocapture: {
+			dom_event_allowlist: ['click', 'submit'],
+			element_allowlist: ['a', 'button', 'form', 'select', 'label']
+		},
 		disable_session_recording: true,
 		capture_performance: true,
 		persistence: 'localStorage+cookie'
