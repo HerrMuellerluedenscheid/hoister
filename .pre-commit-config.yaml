@@ -10,4 +10,16 @@ repos:
       hooks:
         -   id: fmt
         -   id: cargo-check
-        -   id: clippy
+
+  # Clippy as a local hook so we can match CI exactly: the self-hosted
+  # feature must be enabled for cfg-gated code to be linted, and warnings
+  # are denied. The doublify clippy hook bakes in `cargo clippy --`, which
+  # can't take cargo flags like `--features`.
+  - repo: local
+    hooks:
+      - id: clippy
+        name: clippy (matches CI)
+        entry: cargo clippy --features controller/self-hosted -- --deny warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
