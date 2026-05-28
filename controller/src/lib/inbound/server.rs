@@ -143,11 +143,11 @@ async fn agent_auth_middleware<
     // anyone with the secret impersonate any user. Only the internal router
     // (VPC-private) trusts X-User-Id.
     #[cfg(feature = "self-hosted")]
-    if let Some(ref secret) = state.api_secret {
-        if token == *secret {
-            request.extensions_mut().insert(UserId("local".to_string()));
-            return Ok(next.run(request).await);
-        }
+    if let Some(ref secret) = state.api_secret
+        && token == *secret
+    {
+        request.extensions_mut().insert(UserId("local".to_string()));
+        return Ok(next.run(request).await);
     }
 
     // 2. Per-user agent token (hst_ prefix) — look up user ID from DB.
