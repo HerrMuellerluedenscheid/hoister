@@ -15,9 +15,10 @@
 #   POSTGRES_DB=hoister
 #   HOISTER_CONTROLLER_INTERNAL_SECRET=...      # shared by controller and BFF
 #   HOISTER_CONTROLLER_TOKEN_PEPPER=...          # HMAC key for hashed agent tokens
+#   HOISTER_CONTROLLER_NOTIFIER_KEY=...          # base64 32-byte AES-256-GCM key for notifier secrets at rest
 #   PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...
 #   CLERK_SECRET_KEY=sk_live_...
-#   CLERK_WEBHOOK_SECRET=whsec_...
+#   CLERK_WEBHOOK_SECRET=whsec_...             # optional; only for Clerk webhooks
 
 services:
   caddy:
@@ -61,6 +62,7 @@ services:
       # HMAC pepper for agent-token storage. Hashes become unverifiable
       # without this value, so a DB dump alone is insufficient.
       HOISTER_CONTROLLER_TOKEN_PEPPER: ${HOISTER_CONTROLLER_TOKEN_PEPPER:?HOISTER_CONTROLLER_TOKEN_PEPPER is required}
+      HOISTER_CONTROLLER_NOTIFIER_KEY: ${HOISTER_CONTROLLER_NOTIFIER_KEY:?HOISTER_CONTROLLER_NOTIFIER_KEY is required}
       RUST_LOG: "info,bollard=warn,hyper_util=warn"
     depends_on:
       - backend-db
@@ -79,7 +81,8 @@ services:
       ORIGIN: "https://${HOISTER_CLOUD_DOMAIN:?HOISTER_CLOUD_DOMAIN is required}"
       PUBLIC_CLERK_PUBLISHABLE_KEY: ${PUBLIC_CLERK_PUBLISHABLE_KEY:?PUBLIC_CLERK_PUBLISHABLE_KEY is required}
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:?CLERK_SECRET_KEY is required}
-      CLERK_WEBHOOK_SECRET: ${CLERK_WEBHOOK_SECRET:?CLERK_WEBHOOK_SECRET is required}
+      # Optional — only needed once a Clerk webhook endpoint is wired up.
+      CLERK_WEBHOOK_SECRET: ${CLERK_WEBHOOK_SECRET:-}
       # PostHog project key (EU). Optional — unset disables analytics entirely.
       # Captures still require the user to opt in via the cookie banner.
       PUBLIC_POSTHOG_KEY: ${PUBLIC_POSTHOG_KEY:-}

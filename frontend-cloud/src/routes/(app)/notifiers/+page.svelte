@@ -31,13 +31,13 @@
 	function summarise(n: (typeof data.notifiers)[number]): string {
 		switch (n.config.kind) {
 			case 'slack':
-				return `${n.config.channel}`;
+				return n.config.channel;
 			case 'telegram':
 				return `chat ${n.config.chat_id}`;
 			case 'discord':
 				return `channel ${n.config.channel_id}`;
 			case 'gotify':
-				return n.config.server;
+				return n.config.server_host;
 			case 'email':
 				return n.config.recipient;
 		}
@@ -104,7 +104,7 @@
 					creating = false;
 				};
 			}}
-			class="space-y-3"
+			class="ph-no-capture space-y-3"
 		>
 			<div>
 				<label for="kind" class="mb-1 block text-xs tracking-wider text-zinc-400 uppercase">
@@ -323,7 +323,7 @@
 											<button
 												type="submit"
 												disabled={busyId === n.id}
-												class="rounded-md border border-indigo-500/40 px-3 py-1 text-xs font-medium text-indigo-300 transition hover:bg-indigo-500/15 disabled:opacity-50"
+												class="rounded-md border border-zinc-700 px-3 py-1 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-50"
 											>
 												{busyId === n.id ? 'Sending…' : 'Test'}
 											</button>

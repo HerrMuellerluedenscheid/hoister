@@ -138,7 +138,7 @@ pub(crate) async fn send_pending_update_to_controller(
     let res = client
         .post(url)
         .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {token})"))
+        .header("Authorization", format!("Bearer {token}"))
         .json(&body)
         .send()
         .await;
@@ -181,7 +181,7 @@ async fn send_to_controller(
     let res = client
         .post(url)
         .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {token})"))
+        .header("Authorization", format!("Bearer {token}"))
         .json(&deployment_message)
         .send()
         .await;

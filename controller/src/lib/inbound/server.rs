@@ -21,11 +21,12 @@ use crate::domain::deployments::models::deployment::{
     CreateDeploymentRequest, Deployment, GetDeploymentError,
 };
 use crate::domain::deployments::ports::DeploymentsService;
-use crate::domain::notifiers::models::{Notifier, NotifierConfig};
+use crate::domain::notifiers::models::{NotifierConfig, NotifierSummary};
 use crate::domain::notifiers::ports::NotifierService;
 use crate::domain::tokens::models::ApiToken;
 use crate::domain::tokens::ports::TokenService;
 use crate::inbound::audit_log::audit_log_middleware;
+use crate::inbound::notifier_validation::validate_config as validate_notifier_config;
 use crate::inbound::rate_limit::{RateLimiter, rate_limit_middleware};
 use crate::outbound::notification_dispatch::{dispatch_one_async, dispatch_to_all};
 use crate::outbound::pending_updates_memory::{PendingUpdate, PendingUpdatesMemory};
@@ -369,9 +370,12 @@ async fn list_notifiers<
 >(
     State(state): State<AppState<DS, CS, TS, NS, BS>>,
     Extension(UserId(user_id)): Extension<UserId>,
-) -> Result<Json<ApiResponse<Vec<Notifier>>>, StatusCode> {
+) -> Result<Json<ApiResponse<Vec<NotifierSummary>>>, StatusCode> {
     match state.notifier_service.list_notifiers(&user_id).await {
-        Ok(notifiers) => Ok(Json(ApiResponse::success(notifiers))),
+        Ok(notifiers) => {
+            let summaries: Vec<NotifierSummary> = notifiers.iter().map(Into::into).collect();
+            Ok(Json(ApiResponse::success(summaries)))
+        }
         Err(e) => {
             error!("Error listing notifiers for {user_id}: {e:?}");
             Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -405,12 +409,30 @@ async fn create_notifier<
         );
     }
 
+    // SSRF guard: refuse private/loopback hosts and non-https schemes before
+    // we ever persist the config. See `notifier_validation` for the policy.
+    if let Err(e) = validate_notifier_config(&config).await {
+        let msg = e.user_message();
+        error!("Notifier validation rejected for {user_id}: {e:?}");
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(NotifierDispatchError {
+                success: false,
+                error: msg,
+            }),
+        )
+            .into_response();
+    }
+
     match state
         .notifier_service
         .create_notifier(&user_id, config)
         .await
     {
-        Ok(notifier) => Json(ApiResponse::success(notifier)).into_response(),
+        Ok(notifier) => {
+            let summary: NotifierSummary = (&notifier).into();
+            Json(ApiResponse::success(summary)).into_response()
+        }
         Err(crate::domain::notifiers::models::NotifierError::InvalidConfig(msg)) => {
             error!("Invalid notifier config from {user_id}: {msg}");
             StatusCode::BAD_REQUEST.into_response()
@@ -510,6 +532,23 @@ async fn test_notifier<
         return StatusCode::NOT_FOUND.into_response();
     };
     let kind = notifier.kind;
+
+    // Refuse to test (and therefore re-validate the credentials of) a
+    // notifier whose kind is no longer allowed under the user's current
+    // plan. Matches `notify_user`'s dispatch-side filter.
+    let plan = match state.billing_service.get_plan(&user_id).await {
+        Ok(p) => p,
+        Err(e) => {
+            error!("test_notifier: plan lookup failed for {user_id}: {e:?}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+    if !plan.limits().allows_notifier_kind(kind) {
+        return upgrade_required(
+            &format!("{kind:?} notifiers require the Pro plan"),
+            Plan::Pro,
+        );
+    }
     let msg = Message::new(
         "Hoister test message".to_string(),
         format!(
@@ -519,12 +558,21 @@ async fn test_notifier<
     match dispatch_one_async(notifier, msg).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
-            error!("test_notifier dispatch failed for {user_id}/{notifier_id}: {e}");
+            // Full chatterbox error goes to the server log only. We
+            // deliberately do NOT echo it back: chatterbox includes the
+            // upstream response body in its error string, and the dispatch
+            // path can be aimed at internal hosts. Returning the body
+            // upstream would turn the Test button into an SSRF readback
+            // primitive. The user instead gets a fixed message keyed off
+            // the notifier kind and is told to check the channel + logs.
+            error!("test_notifier dispatch failed for {user_id}/{notifier_id} ({kind:?}): {e}");
             (
                 StatusCode::BAD_GATEWAY,
                 Json(NotifierDispatchError {
                     success: false,
-                    error: e,
+                    error: format!(
+                        "{kind:?} notifier rejected the test message. Verify the credentials are still valid; if so the operator can see the upstream error in the server log."
+                    ),
                 }),
             )
                 .into_response()
@@ -591,7 +639,51 @@ async fn create_deployment<
     State(state): State<AppState<DS, CS, TS, NS, BS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Json(payload): Json<CreateDeployment>,
-) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
+) -> Response {
+    // Plan cap also applies here. `post_container_state` blocks a new
+    // project from being tracked; `create_deployment` writes into the
+    // `project` table independently — without this check a Free user
+    // could keep creating fresh project_names via the agent's deployment
+    // reports and grow `project`/`service`/`deployment` rows unbounded.
+    let plan = match state.billing_service.get_plan(&user_id).await {
+        Ok(p) => p,
+        Err(e) => {
+            error!("Failed to fetch plan for {user_id}: {e:?}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+    if let Some(max) = plan.limits().max_projects {
+        let states = state
+            .container_state_service
+            .get_container_states(&user_id)
+            .await;
+        let mut distinct: std::collections::HashSet<ProjectName> = states
+            .values()
+            .flat_map(|projs| projs.keys().cloned())
+            .collect();
+        if let Ok(existing) = state
+            .deployments_service
+            .get_all_deployments(&user_id)
+            .await
+        {
+            for d in &existing {
+                distinct.insert(d.project_name.clone());
+            }
+        }
+        if !distinct.contains(&payload.project) {
+            distinct.insert(payload.project.clone());
+            if distinct.len() as i64 > max {
+                return upgrade_required(
+                    &format!(
+                        "Project '{}' would exceed the Free plan limit of {max} projects. Upgrade to Pro for unlimited projects.",
+                        payload.project.as_str(),
+                    ),
+                    Plan::Pro,
+                );
+            }
+        }
+    }
+
     let notify_payload = if should_notify_for(&payload.status) {
         Some(payload_message(&payload))
     } else {
@@ -603,18 +695,23 @@ async fn create_deployment<
         Ok(id) => match state.deployments_service.get_deployment(id, &user_id).await {
             Ok(deployment) => {
                 if let Some(message) = notify_payload {
-                    notify_user(&state.notifier_service, user_id.clone(), message);
+                    notify_user(
+                        state.notifier_service.clone(),
+                        state.billing_service.clone(),
+                        user_id.clone(),
+                        message,
+                    );
                 }
-                Ok(Json(ApiResponse::success(deployment)))
+                Json(ApiResponse::success(deployment)).into_response()
             }
             Err(e) => {
-                eprintln!("Error retrieving created deployment: {e:?}");
-                Err(StatusCode::INTERNAL_SERVER_ERROR)
+                error!("Error retrieving created deployment: {e:?}");
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
             }
         },
         Err(e) => {
-            eprintln!("Error creating deployment: {e:?}");
-            Err(StatusCode::BAD_REQUEST)
+            error!("Error creating deployment: {e:?}");
+            StatusCode::BAD_REQUEST.into_response()
         }
     }
 }
@@ -630,12 +727,36 @@ fn payload_message(payload: &CreateDeployment) -> Message {
     payload.to_message()
 }
 
-fn notify_user<NS: NotifierService>(service: &Arc<NS>, user_id: String, message: Message) {
-    let service = service.clone();
+/// Fan out a deployment-event message to the user's notifiers, in the
+/// background. We also pass `billing_service` so notifiers whose kind is
+/// no longer allowed under the user's current plan are dropped — without
+/// this, paying for a single month of Pro permanently unlocks Slack
+/// notifications even after a downgrade.
+fn notify_user<NS: NotifierService, BS: BillingService>(
+    notifier_service: Arc<NS>,
+    billing_service: Arc<BS>,
+    user_id: String,
+    message: Message,
+) {
     tokio::spawn(async move {
-        match service.list_notifiers(&user_id).await {
+        let plan = match billing_service.get_plan(&user_id).await {
+            Ok(p) => p,
+            Err(e) => {
+                error!("notify_user: plan lookup failed for {user_id}: {e:?}");
+                return;
+            }
+        };
+        let limits = plan.limits();
+        match notifier_service.list_notifiers(&user_id).await {
             Ok(notifiers) if !notifiers.is_empty() => {
-                dispatch_to_all(notifiers, message).await;
+                let allowed: Vec<_> = notifiers
+                    .into_iter()
+                    .filter(|n| limits.allows_notifier_kind(n.kind))
+                    .collect();
+                if allowed.is_empty() {
+                    return;
+                }
+                dispatch_to_all(allowed, message).await;
             }
             Ok(_) => {}
             Err(e) => error!("Failed to load notifiers for {user_id}: {e:?}"),
@@ -842,7 +963,12 @@ async fn post_pending_update<
     };
     let message = pending_update_message(&update);
     state.pending_updates.add(&user_id, update).await;
-    notify_user(&state.notifier_service, user_id, message);
+    notify_user(
+        state.notifier_service.clone(),
+        state.billing_service.clone(),
+        user_id,
+        message,
+    );
     StatusCode::OK.into_response()
 }
 
