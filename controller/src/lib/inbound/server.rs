@@ -106,18 +106,18 @@ async fn agent_auth_middleware<
 
     // 1. Static API secret (self-hosted only).
     #[cfg(feature = "self-hosted")]
-    if let Some(ref secret) = state.api_secret {
-        if token == *secret {
-            if let Some(user_id) = request
-                .headers()
-                .get("X-User-Id")
-                .and_then(|h| h.to_str().ok())
-                .map(str::to_owned)
-            {
-                request.extensions_mut().insert(UserId(user_id));
-            }
-            return Ok(next.run(request).await);
+    if let Some(ref secret) = state.api_secret
+        && token == *secret
+    {
+        if let Some(user_id) = request
+            .headers()
+            .get("X-User-Id")
+            .and_then(|h| h.to_str().ok())
+            .map(str::to_owned)
+        {
+            request.extensions_mut().insert(UserId(user_id));
         }
+        return Ok(next.run(request).await);
     }
 
     // 2. Per-user agent token (hst_ prefix) — look up user ID from DB.
