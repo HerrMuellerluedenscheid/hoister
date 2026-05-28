@@ -10,26 +10,26 @@ mod tests {
         ServiceName,
     };
 
-    use controller::config::Config;
+    use controller::domain::billing::service::Service as BillingService;
     use controller::domain::container_state::service::Service as ContainerStateService;
     use controller::domain::deployments::models::deployment::{
         CreateDeploymentRequest, Deployment,
     };
-    use controller::domain::deployments::ports::DeploymentsService;
-    use controller::domain::deployments::service::Service;
+    use controller::domain::deployments::ports::DeploymentsService as _;
+    use controller::domain::deployments::service::Service as DeploymentsService;
+    use controller::domain::notifiers::service::Service as NotifierService;
     use controller::domain::tokens::service::Service as TokenService;
     use controller::inbound::server::{
-        ApiResponse, AppState, create_agent_router, create_internal_router,
+        ApiResponse, AppState, InternalSecret, create_agent_router, create_internal_router,
     };
-    use controller::outbound::sqlite::Sqlite;
-    use controller::outbound::state_memory::StateMemory;
-    use controller::sse::ControllerEvent;
+    use controller::outbound::Database;
+    use controller::outbound::secrets::Aead;
+    use controller::sse::UserScopedEvent;
     use std::sync::Arc;
     use tokio::sync::broadcast;
     use tower::ServiceExt;
-    // for `oneshot` and `ready`
 
-    /// The agent router maps the static api_secret to this synthetic user id,
+    /// The agent router maps the static api secret to this synthetic user id,
     /// so deployments created via the agent API are owned by "local".
     const TEST_USER: &str = "local";
 
@@ -40,55 +40,43 @@ mod tests {
         format!("/tmp/hoister_test_{}_{}", std::process::id(), id)
     }
 
-    async fn get_service(config: &Config) -> Service<Sqlite> {
-        let repo = Sqlite::new(&config.database_path)
+    /// Opens a database at `path`. `Database::connect` runs migrations, and the
+    /// passthrough AEAD keeps notifier secrets in plaintext (fine for tests).
+    async fn connect_db(path: &str) -> Database {
+        let aead = Aead::from_base64_or_passthrough(None).expect("aead");
+        Database::connect(path, b"tests-pepper".to_vec(), aead)
             .await
-            .expect("Failed to connect to database");
-        repo.migrate().await.expect("Failed to run migrations");
-        Service::new(repo)
+            .expect("connect database")
     }
 
     /// Builds both routers (agent + internal) over a shared, migrated database.
     ///
-    /// `main` split the old combined `create_app` into two routers with
-    /// distinct auth: the agent router authenticates via the `Bearer` api
-    /// secret, the internal router trusts the `X-User-Id` header (VPC-only).
-    async fn setup_test_app() -> (Router, Router, Config) {
-        let config = Config {
-            api_secret: Some("tests-secret".to_string()),
-            port: 3033,
-            internal_port: 3034,
-            database_path: unique_db_path(),
-            tls_cert_path: None,
-            tls_key_path: None,
-        };
-        let (event_tx, _) = broadcast::channel::<ControllerEvent>(100);
-
-        let repo = Sqlite::new(&config.database_path)
-            .await
-            .expect("Failed to connect to database");
-        repo.migrate().await.expect("Failed to run migrations");
-
-        let deployments_service = Service::new(repo.clone());
-        let token_service = TokenService::new(repo);
-        let container_state_service = ContainerStateService::new(StateMemory::default());
+    /// The agent router authenticates via the `Bearer` api secret; the internal
+    /// router trusts the `X-User-Id` header (`InternalSecret` is `None` in tests,
+    /// so the shared-secret check is skipped).
+    async fn setup_test_app() -> (Router, Router, String) {
+        let db_path = unique_db_path();
+        let db = connect_db(&db_path).await;
+        let (event_tx, _) = broadcast::channel::<UserScopedEvent>(100);
         let state = AppState {
-            deployments_service: Arc::new(deployments_service),
-            container_state_service: Arc::new(container_state_service),
-            token_service: Arc::new(token_service),
-            api_secret: config.api_secret.clone(),
+            deployments_service: Arc::new(DeploymentsService::new(db.clone())),
+            container_state_service: Arc::new(ContainerStateService::new(db.clone())),
+            token_service: Arc::new(TokenService::new(db.clone())),
+            notifier_service: Arc::new(NotifierService::new(db.clone())),
+            billing_service: Arc::new(BillingService::new(db)),
+            #[cfg(feature = "self-hosted")]
+            api_secret: Some("tests-secret".to_string()),
             event_tx,
             pending_updates: Default::default(),
         };
-
         let agent = create_agent_router(state.clone()).await;
-        let internal = create_internal_router(state).await;
-        (agent, internal, config)
+        let internal = create_internal_router(state, InternalSecret(None)).await;
+        (agent, internal, db_path)
     }
 
     #[tokio::test]
     async fn test_health_endpoint_no_auth_required() {
-        let (agent, _internal, _config) = setup_test_app().await;
+        let (agent, _internal, _db) = setup_test_app().await;
 
         let response = agent
             .oneshot(
@@ -110,7 +98,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_agent_router_requires_auth() {
-        let (agent, _internal, _config) = setup_test_app().await;
+        let (agent, _internal, _db) = setup_test_app().await;
 
         // No Authorization header → the agent auth middleware rejects before
         // routing.
@@ -130,7 +118,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_internal_list_deployments() {
-        let (_agent, internal, _config) = setup_test_app().await;
+        let (_agent, internal, _db) = setup_test_app().await;
 
         let response = internal
             .oneshot(
@@ -155,7 +143,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_deployment_via_agent() {
-        let (agent, _internal, _config) = setup_test_app().await;
+        let (agent, _internal, _db) = setup_test_app().await;
 
         let payload = CreateDeployment {
             project: ProjectName::new("tests-project"),
@@ -184,13 +172,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_deployment_by_service() {
-        let (_agent, internal, config) = setup_test_app().await;
+        let (_agent, internal, db_path) = setup_test_app().await;
         let image_name = ImageName::new("aaa");
         let service_name = ServiceName::new("tests-service");
         let project_name = ProjectName::new("tests-project");
 
         // Seed a deployment owned by TEST_USER directly through the repository.
-        let database_service = get_service(&config).await;
+        let database_service = DeploymentsService::new(connect_db(&db_path).await);
         let req = CreateDeploymentRequest {
             project_name: project_name.clone(),
             service_name: service_name.clone(),
@@ -198,7 +186,7 @@ mod tests {
             image_digest: ImageDigest::new("sha256:abc123"),
             deployment_status: DeploymentStatus::Pending,
             hostname: HostName::new("test-host"),
-            user_id: Some(TEST_USER.to_string()),
+            user_id: TEST_USER.to_string(),
         };
         database_service.create_deployment(&req).await.unwrap();
 
@@ -229,7 +217,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_auth_with_invalid_token() {
-        let (agent, _internal, _config) = setup_test_app().await;
+        let (agent, _internal, _db) = setup_test_app().await;
 
         let response = agent
             .oneshot(
@@ -248,7 +236,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_auth_without_bearer_prefix() {
-        let (agent, _internal, _config) = setup_test_app().await;
+        let (agent, _internal, _db) = setup_test_app().await;
 
         let response = agent
             .oneshot(
