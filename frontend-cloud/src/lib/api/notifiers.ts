@@ -20,11 +20,30 @@ export type NotifierConfig =
 			recipient: string;
 	  };
 
+/**
+ * What the controller actually returns. Secret-bearing fields (webhook,
+ * bot_token, smtp_password, gotify token) never leave the controller —
+ * only `*_set: true` markers do, so an XSS sink in the dashboard can't
+ * walk away with the customer's credentials.
+ */
+export type NotifierSummaryConfig =
+	| { kind: 'slack'; channel: string; webhook_set: boolean }
+	| { kind: 'telegram'; chat_id: number; bot_token_set: boolean }
+	| { kind: 'discord'; channel_id: number; bot_token_set: boolean }
+	| { kind: 'gotify'; server_host: string; token_set: boolean }
+	| {
+			kind: 'email';
+			smtp_server: string;
+			smtp_user: string;
+			recipient: string;
+			from: string | null;
+			smtp_password_set: boolean;
+	  };
+
 export interface Notifier {
 	id: number;
-	user_id: string;
 	kind: NotifierKind;
-	config: NotifierConfig;
+	config: NotifierSummaryConfig;
 	enabled: boolean;
 	created_at: string;
 }

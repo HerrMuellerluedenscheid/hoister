@@ -21,16 +21,23 @@ use sqlx::{Error as SqlxError, Row, SqlitePool};
 use std::collections::HashMap;
 use tracing::{debug, info};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Sqlite {
     pool: SqlitePool,
     /// Server-side pepper combined with every agent token via HMAC-SHA256
     /// before storage. See `crate::domain::tokens::hash::hash_token`.
     token_pepper: std::sync::Arc<Vec<u8>>,
+    /// Envelope-AEAD for notifier configs at rest. Pass-through when no
+    /// `HOISTER_CONTROLLER_NOTIFIER_KEY` is set (dev / self-hosted).
+    aead: crate::outbound::secrets::Aead,
 }
 
 impl Sqlite {
-    pub async fn new(database_url: &str, token_pepper: Vec<u8>) -> Result<Self, SqlxError> {
+    pub async fn new(
+        database_url: &str,
+        token_pepper: Vec<u8>,
+        aead: crate::outbound::secrets::Aead,
+    ) -> Result<Self, SqlxError> {
         info!("Connecting to database: {database_url}");
         if !sqlx::Sqlite::database_exists(database_url).await? {
             sqlx::Sqlite::create_database(database_url).await?;
@@ -41,6 +48,7 @@ impl Sqlite {
         Ok(Self {
             pool,
             token_pepper: std::sync::Arc::new(token_pepper),
+            aead,
         })
     }
 
@@ -503,7 +511,11 @@ impl NotifierRepository for Sqlite {
             let kind_str: String = r.get("kind");
             let kind = NotifierKind::parse(&kind_str)
                 .ok_or_else(|| NotifierError::InvalidConfig(format!("unknown kind {kind_str}")))?;
-            let config_str: String = r.get("config");
+            let stored: String = r.get("config");
+            let config_str = self.aead.decrypt_or_plaintext(&stored).map_err(|e| {
+                error!("notifier config decrypt failed: {e:?}");
+                NotifierError::UnknownError
+            })?;
             let config: NotifierConfig = serde_json::from_str(&config_str)
                 .map_err(|e| NotifierError::InvalidConfig(e.to_string()))?;
             let enabled_int: i64 = r.get("enabled");
@@ -527,13 +539,17 @@ impl NotifierRepository for Sqlite {
         let kind = config.kind();
         let config_json = serde_json::to_string(&config)
             .map_err(|e| NotifierError::InvalidConfig(e.to_string()))?;
+        let to_store = self.aead.encrypt(&config_json).map_err(|e| {
+            error!("notifier config encrypt failed: {e:?}");
+            NotifierError::UnknownError
+        })?;
         let row = sqlx::query(
             "INSERT INTO notifier (user_id, kind, config) VALUES (?, ?, ?)
                 RETURNING id, created_at",
         )
         .bind(user_id)
         .bind(kind.as_str())
-        .bind(&config_json)
+        .bind(&to_store)
         .fetch_one(&self.pool)
         .await
         .map_err(|e| {

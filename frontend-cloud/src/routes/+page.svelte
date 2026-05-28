@@ -88,8 +88,8 @@
 		</h1>
 
 		<p class="mb-10 max-w-lg text-base leading-relaxed text-zinc-400">
-			Hoister watches your container registry and automatically updates running containers when a new
-			image is pushed — with built-in rollback if something goes wrong.
+			Hoister watches your container registry and automatically updates running containers when a
+			new image is pushed — with built-in rollback if something goes wrong.
 		</p>
 
 		<Show when="signed-out">
@@ -155,23 +155,7 @@
 
 	<!-- Feature strip -->
 	<section class="mx-auto mb-20 grid max-w-3xl grid-cols-1 gap-6 px-8 sm:grid-cols-3">
-		{#each [
-			{
-				icon: '🔄',
-				title: 'Auto-updates',
-				desc: 'Detects new image digests and rolls out without any manual steps.'
-			},
-			{
-				icon: '↩️',
-				title: 'Auto-rollback',
-				desc: 'Health check fails? Hoister restores the previous container automatically.'
-			},
-			{
-				icon: '🔔',
-				title: 'Notifications',
-				desc: 'Get alerts via Slack, Telegram, Discord, or email on every deploy.'
-			}
-		] as feature}
+		{#each [{ icon: '🔄', title: 'Auto-updates', desc: 'Detects new image digests and rolls out without any manual steps.' }, { icon: '↩️', title: 'Auto-rollback', desc: 'Health check fails? Hoister restores the previous container automatically.' }, { icon: '🔔', title: 'Notifications', desc: 'Get alerts via Slack, Telegram, Discord, or email on every deploy.' }] as feature}
 			<div class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
 				<div class="mb-2 text-2xl">{feature.icon}</div>
 				<div class="mb-1 font-semibold text-zinc-100">{feature.title}</div>
@@ -185,8 +169,8 @@
 		<div class="rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
 			<h2 class="mb-1 text-lg font-semibold text-zinc-100">Connect a Docker Compose stack</h2>
 			<p class="mb-4 text-sm text-zinc-400">
-				Sign in to <a href="/tokens" class="text-indigo-400 hover:text-indigo-300">/tokens</a> to mint
-				an agent token, then add this service to your existing
+				Sign in to <a href="/tokens" class="text-indigo-400 hover:text-indigo-300">/tokens</a> to
+				mint an agent token, then add this service to your existing
 				<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">docker-compose.yaml</code>:
 			</p>
 			<div class="relative">
@@ -202,14 +186,22 @@
 			</div>
 			<p class="mt-3 text-xs text-zinc-500">
 				The <code class="rounded bg-zinc-800 px-1 py-0.5 font-mono">HOISTER_CONTROLLER_URL</code>
-				override will become unnecessary once the public <code class="rounded bg-zinc-800 px-1 py-0.5 font-mono">emrius11/hoister:latest</code>
+				override will become unnecessary once the public
+				<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono">emrius11/hoister:latest</code>
 				image is bumped to the cloud-aware build.
 			</p>
 		</div>
 	</section>
 
 	<footer class="border-t border-zinc-800 py-5 text-center text-xs text-zinc-600">
-		Hoister — open source on GitHub ·
+		Hoister — open source on
+		<a
+			href="https://github.com/HerrMuellerluedenscheid/hoister"
+			target="_blank"
+			rel="noopener noreferrer"
+			class="hover:text-zinc-400">GitHub</a
+		>
+		·
 		<a href="/impressum" class="hover:text-zinc-400">Impressum</a> ·
 		<a href="/datenschutz" class="hover:text-zinc-400">Datenschutz</a>
 	</footer>

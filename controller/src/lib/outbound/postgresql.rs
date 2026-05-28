@@ -20,12 +20,14 @@ use sqlx::{Error as SqlxError, PgPool, Row};
 use std::collections::HashMap;
 use tracing::{debug, info};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Postgresql {
     pool: PgPool,
     /// Server-side pepper combined with every agent token via HMAC-SHA256
     /// before storage. See `crate::domain::tokens::hash::hash_token`.
     token_pepper: std::sync::Arc<Vec<u8>>,
+    /// Envelope-AEAD for notifier configs at rest. See `outbound::secrets`.
+    aead: crate::outbound::secrets::Aead,
 }
 
 /// Best-effort parse of a postgres `timestamptz::text` value (e.g.
@@ -53,12 +55,17 @@ fn status_from_i16(val: i16) -> DeploymentStatus {
 }
 
 impl Postgresql {
-    pub async fn new(database_url: &str, token_pepper: Vec<u8>) -> Result<Self, SqlxError> {
+    pub async fn new(
+        database_url: &str,
+        token_pepper: Vec<u8>,
+        aead: crate::outbound::secrets::Aead,
+    ) -> Result<Self, SqlxError> {
         info!("Connecting to database: {database_url}");
         let pool = PgPool::connect(database_url).await?;
         Ok(Self {
             pool,
             token_pepper: std::sync::Arc::new(token_pepper),
+            aead,
         })
     }
 
@@ -522,7 +529,11 @@ impl NotifierRepository for Postgresql {
             let kind_str: String = r.get("kind");
             let kind = NotifierKind::parse(&kind_str)
                 .ok_or_else(|| NotifierError::InvalidConfig(format!("unknown kind {kind_str}")))?;
-            let config_str: String = r.get("config");
+            let stored: String = r.get("config");
+            let config_str = self.aead.decrypt_or_plaintext(&stored).map_err(|e| {
+                error!("notifier config decrypt failed: {e:?}");
+                NotifierError::UnknownError
+            })?;
             let config: NotifierConfig = serde_json::from_str(&config_str)
                 .map_err(|e| NotifierError::InvalidConfig(e.to_string()))?;
             out.push(Notifier {
@@ -545,13 +556,17 @@ impl NotifierRepository for Postgresql {
         let kind = config.kind();
         let config_json = serde_json::to_string(&config)
             .map_err(|e| NotifierError::InvalidConfig(e.to_string()))?;
+        let to_store = self.aead.encrypt(&config_json).map_err(|e| {
+            error!("notifier config encrypt failed: {e:?}");
+            NotifierError::UnknownError
+        })?;
         let row = sqlx::query(
             "INSERT INTO notifier (user_id, kind, config) VALUES ($1, $2, $3::jsonb)
                 RETURNING id, created_at::text AS created_at",
         )
         .bind(user_id)
         .bind(kind.as_str())
-        .bind(&config_json)
+        .bind(&to_store)
         .fetch_one(&self.pool)
         .await
         .map_err(|e| {

@@ -32,6 +32,12 @@ pub struct Config {
     /// unsalted hash). Required in production.
     #[serde(default)]
     pub token_pepper: Option<String>,
+    /// Base64-encoded 32-byte AES-256-GCM key used to encrypt notifier
+    /// `config` blobs at rest. Optional — when missing, configs are stored
+    /// in plaintext (the controller logs a warning at startup). Required
+    /// for cloud / multi-tenant deployments. See `outbound::secrets`.
+    #[serde(default)]
+    pub notifier_key: Option<String>,
     pub database_path: String,
     #[serde(default)]
     pub tls_cert_path: Option<PathBuf>,

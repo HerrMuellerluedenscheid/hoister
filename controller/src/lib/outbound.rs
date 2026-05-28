@@ -1,6 +1,7 @@
 pub mod notification_dispatch;
 pub mod pending_updates_memory;
 pub mod postgresql;
+pub mod secrets;
 pub mod sqlite;
 pub mod state_memory;
 
@@ -38,15 +39,16 @@ impl Database {
     pub async fn connect(
         url: &str,
         token_pepper: Vec<u8>,
+        aead: crate::outbound::secrets::Aead,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         if url.starts_with("postgres") {
             info!("Using PostgreSQL backend: {url}");
-            let repo = Postgresql::new(url, token_pepper).await?;
+            let repo = Postgresql::new(url, token_pepper, aead).await?;
             repo.migrate().await?;
             Ok(Self::Postgresql(repo))
         } else {
             info!("Using SQLite backend: {url}");
-            let repo = Sqlite::new(url, token_pepper).await?;
+            let repo = Sqlite::new(url, token_pepper, aead).await?;
             repo.migrate().await?;
             Ok(Self::Sqlite(repo))
         }
