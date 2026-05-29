@@ -1,21 +1,27 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { page } from '$app/state';
+	import { env } from '$env/dynamic/public';
 	import type { PageProps } from './$types';
 	import type { NotifierKind } from '$lib/api/notifiers';
 
 	let { data, form }: PageProps = $props();
 
+	// Slack is added via OAuth ("Add to Slack"), not the manual form below.
 	const ALL_KINDS: Array<{ value: NotifierKind; label: string }> = [
-		{ value: 'slack', label: 'Slack' },
 		{ value: 'telegram', label: 'Telegram' },
 		{ value: 'discord', label: 'Discord' },
 		{ value: 'gotify', label: 'Gotify' },
 		{ value: 'email', label: 'Email' }
 	];
 	const allowed = $derived<Set<NotifierKind>>(
-		new Set(data.me?.limits.allowed_notifier_kinds ?? ALL_KINDS.map((k) => k.value))
+		new Set(data.me?.limits.allowed_notifier_kinds ?? ['slack', ...ALL_KINDS.map((k) => k.value)])
 	);
 	const isFree = $derived((data.me?.plan ?? 'free') === 'free');
+
+	const slackEnabled = Boolean(env.PUBLIC_SLACK_CLIENT_ID);
+	const slackAllowed = $derived(allowed.has('slack'));
+	const slackStatus = $derived(page.url.searchParams.get('slack'));
 
 	let kind = $state<NotifierKind>('telegram');
 	let creating = $state(false);
@@ -44,7 +50,7 @@
 	}
 </script>
 
-<div class="space-y-8 px-8 py-10">
+<div class="space-y-8 px-4 py-6 sm:px-8 sm:py-10">
 	<header>
 		<h1 class="text-2xl font-bold">Notifiers</h1>
 		<p class="mt-1 text-sm text-zinc-400">
@@ -86,9 +92,77 @@
 		<div
 			class="rounded-xl border border-emerald-800 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-300"
 		>
-			Test message sent. Check the channel — if it didn't arrive, the credentials may still be
-			wrong even though the dispatcher accepted them.
+			Test message sent. Check the channel — if it didn't arrive, the credentials may still be wrong
+			even though the dispatcher accepted them.
 		</div>
+	{/if}
+
+	{#if slackStatus === 'connected'}
+		<div
+			class="rounded-xl border border-emerald-800 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-300"
+		>
+			Slack connected — deployment events will post to the channel you chose.
+		</div>
+	{:else if slackStatus === 'denied'}
+		<div
+			class="rounded-xl border border-amber-800 bg-amber-950/30 px-4 py-3 text-sm text-amber-300"
+		>
+			Slack authorization was cancelled.
+		</div>
+	{:else if slackStatus === 'upgrade'}
+		<div
+			class="rounded-xl border border-amber-800 bg-amber-950/30 px-4 py-3 text-sm text-amber-300"
+		>
+			Slack notifiers require the Pro plan.
+			<a href="/settings/plan" class="underline hover:text-amber-200">Upgrade to enable.</a>
+		</div>
+	{:else if slackStatus === 'error'}
+		<div class="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-400">
+			Couldn't connect Slack. Please try again.
+		</div>
+	{/if}
+
+	{#if slackEnabled}
+		<!-- Slack: installed via OAuth, not the manual form below. -->
+		<section class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
+			<h2 class="mb-1 text-base font-semibold text-zinc-200">Slack</h2>
+			<p class="mb-3 text-sm text-zinc-400">
+				Install Hoister into a Slack channel in two clicks — pick a channel and we'll post
+				deployment events there. No webhook URLs to copy.
+			</p>
+			{#if slackAllowed}
+				<a
+					href="/slack/oauth/start"
+					data-sveltekit-reload
+					class="inline-flex items-center gap-2 rounded-md bg-[#4A154B] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#611f64]"
+				>
+					<svg class="h-4 w-4" viewBox="0 0 122.8 122.8" aria-hidden="true">
+						<path
+							d="M25.8 77.6c0 7.1-5.8 12.9-12.9 12.9S0 84.7 0 77.6s5.8-12.9 12.9-12.9h12.9zm6.5 0c0-7.1 5.8-12.9 12.9-12.9s12.9 5.8 12.9 12.9v32.3c0 7.1-5.8 12.9-12.9 12.9s-12.9-5.8-12.9-12.9z"
+							fill="#36C5F0"
+						/>
+						<path
+							d="M45.2 25.8c-7.1 0-12.9-5.8-12.9-12.9S38.1 0 45.2 0s12.9 5.8 12.9 12.9v12.9zm0 6.5c7.1 0 12.9 5.8 12.9 12.9s-5.8 12.9-12.9 12.9H12.9C5.8 58.1 0 52.3 0 45.2s5.8-12.9 12.9-12.9z"
+							fill="#2EB67D"
+						/>
+						<path
+							d="M97 45.2c0-7.1 5.8-12.9 12.9-12.9s12.9 5.8 12.9 12.9-5.8 12.9-12.9 12.9H97zm-6.5 0c0 7.1-5.8 12.9-12.9 12.9s-12.9-5.8-12.9-12.9V12.9C64.7 5.8 70.5 0 77.6 0s12.9 5.8 12.9 12.9z"
+							fill="#ECB22E"
+						/>
+						<path
+							d="M77.6 97c7.1 0 12.9 5.8 12.9 12.9s-5.8 12.9-12.9 12.9-12.9-5.8-12.9-12.9V97zm0-6.5c-7.1 0-12.9-5.8-12.9-12.9s5.8-12.9 12.9-12.9h32.3c7.1 0 12.9 5.8 12.9 12.9s-5.8 12.9-12.9 12.9z"
+							fill="#E01E5A"
+						/>
+					</svg>
+					Add to Slack
+				</a>
+			{:else}
+				<p class="text-xs text-amber-400">
+					Slack notifiers require the Pro plan.
+					<a href="/settings/plan" class="underline hover:text-amber-300">Upgrade to enable.</a>
+				</p>
+			{/if}
+		</section>
 	{/if}
 
 	<!-- Create form -->
@@ -132,24 +206,7 @@
 				{/if}
 			</div>
 
-			{#if kind === 'slack'}
-				<div class="grid gap-3 sm:grid-cols-2">
-					<input
-						type="url"
-						name="webhook"
-						required
-						placeholder="https://hooks.slack.com/services/…"
-						class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
-					/>
-					<input
-						type="text"
-						name="channel"
-						required
-						placeholder="#deploys"
-						class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
-					/>
-				</div>
-			{:else if kind === 'telegram'}
+			{#if kind === 'telegram'}
 				<div class="grid gap-3 sm:grid-cols-2">
 					<input
 						type="text"
@@ -264,7 +321,7 @@
 				No notifiers yet. Add one above and your next deployment will ping you.
 			</div>
 		{:else}
-			<div class="overflow-hidden rounded-xl border border-zinc-800">
+			<div class="overflow-x-auto rounded-xl border border-zinc-800">
 				<table class="min-w-full divide-y divide-zinc-800 text-sm">
 					<thead class="bg-zinc-900 text-xs tracking-wider text-zinc-400 uppercase">
 						<tr>
