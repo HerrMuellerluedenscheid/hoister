@@ -5,7 +5,7 @@
 	const me = $derived(data.me);
 </script>
 
-<div class="space-y-8 px-8 py-10">
+<div class="space-y-8 px-4 py-6 sm:px-8 sm:py-10">
 	<header>
 		<h1 class="text-2xl font-bold">Plan</h1>
 		<p class="mt-1 text-sm text-zinc-400">
@@ -22,7 +22,7 @@
 			<div class="flex items-center justify-between">
 				<div>
 					<div class="text-xs tracking-wider text-zinc-400 uppercase">Current plan</div>
-					<div class="mt-1 text-xl font-semibold capitalize text-zinc-100">{me.plan}</div>
+					<div class="mt-1 text-xl font-semibold text-zinc-100 capitalize">{me.plan}</div>
 				</div>
 				{#if me.plan === 'free'}
 					<button
@@ -43,7 +43,7 @@
 
 		<section>
 			<h2 class="mb-3 text-base font-semibold text-zinc-200">Usage</h2>
-			<div class="overflow-hidden rounded-xl border border-zinc-800">
+			<div class="overflow-x-auto rounded-xl border border-zinc-800">
 				<table class="min-w-full divide-y divide-zinc-800 text-sm">
 					<tbody class="divide-y divide-zinc-800 bg-zinc-950">
 						<tr class="text-zinc-300">

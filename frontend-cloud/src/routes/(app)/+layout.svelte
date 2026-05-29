@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { afterNavigate } from '$app/navigation';
 	import { UserButton, useClerkContext } from 'svelte-clerk';
 	import { analyticsConsent } from '$lib/consent.svelte';
 	import { identifyUser, resetUser } from '$lib/posthog';
@@ -14,10 +15,17 @@
 		{ href: '/settings/plan', label: 'Plan' }
 	];
 
+	let mobileOpen = $state(false);
+
 	function isActive(href: string): boolean {
 		const path = page.url.pathname;
 		return path === href || path.startsWith(href + '/');
 	}
+
+	// Close the drawer whenever navigation finishes (e.g. a nav link tap).
+	afterNavigate(() => {
+		mobileOpen = false;
+	});
 
 	const clerk = useClerkContext();
 	let lastIdentified = $state<string | null>(null);
@@ -34,9 +42,27 @@
 	});
 </script>
 
-<div class="flex min-h-screen bg-zinc-950 text-zinc-100">
-	<aside class="flex w-56 flex-shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 px-4 py-5">
-		<a href="/dashboard" class="mb-8 flex items-center gap-2 font-semibold tracking-tight">
+<svelte:window
+	onkeydown={(e) => {
+		if (e.key === 'Escape') mobileOpen = false;
+	}}
+/>
+
+<div class="flex min-h-screen flex-col bg-zinc-950 text-zinc-100 md:flex-row">
+	<!-- Mobile top bar -->
+	<header class="flex items-center justify-between border-b border-zinc-800 px-4 py-3 md:hidden">
+		<button
+			type="button"
+			onclick={() => (mobileOpen = true)}
+			aria-label="Open navigation"
+			aria-expanded={mobileOpen}
+			class="-ml-1 rounded-md p-2 text-zinc-300 transition hover:bg-zinc-900 hover:text-zinc-100"
+		>
+			<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+				<path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+			</svg>
+		</button>
+		<a href="/dashboard" class="flex items-center gap-2 font-semibold tracking-tight">
 			<svg
 				class="h-6 w-6 text-indigo-400"
 				viewBox="0 0 24 24"
@@ -52,6 +78,53 @@
 			</svg>
 			<span>Hoister</span>
 		</a>
+		<UserButton />
+	</header>
+
+	<!-- Backdrop (mobile, when drawer open) -->
+	{#if mobileOpen}
+		<button
+			type="button"
+			aria-label="Close navigation"
+			onclick={() => (mobileOpen = false)}
+			class="fixed inset-0 z-40 bg-black/60 md:hidden"
+		></button>
+	{/if}
+
+	<!-- Sidebar: slide-in drawer on mobile, static column on md+ -->
+	<aside
+		class="fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-zinc-800 bg-zinc-950 px-4 py-5 transition-transform duration-200 ease-out md:static md:z-auto md:w-56 md:shrink-0 md:translate-x-0 md:transition-none {mobileOpen
+			? 'translate-x-0'
+			: '-translate-x-full'}"
+	>
+		<div class="mb-8 flex items-center justify-between">
+			<a href="/dashboard" class="flex items-center gap-2 font-semibold tracking-tight">
+				<svg
+					class="h-6 w-6 text-indigo-400"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+				>
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						d="M5 10l1.5-4.5h11L19 10M5 10h14M5 10l-2 7h18l-2-7M9 17v2m6-2v2m-3-9v4"
+					/>
+				</svg>
+				<span>Hoister</span>
+			</a>
+			<button
+				type="button"
+				onclick={() => (mobileOpen = false)}
+				aria-label="Close navigation"
+				class="rounded-md p-1 text-zinc-400 transition hover:bg-zinc-900 hover:text-zinc-100 md:hidden"
+			>
+				<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6L6 18" />
+				</svg>
+			</button>
+		</div>
 		<nav class="space-y-1">
 			{#each nav as item (item.href)}
 				<a
@@ -80,7 +153,9 @@
 				</svg>
 				<span>GitHub</span>
 			</a>
-			<UserButton />
+			<div class="hidden md:block">
+				<UserButton />
+			</div>
 		</div>
 	</aside>
 
