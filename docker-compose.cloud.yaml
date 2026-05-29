@@ -86,6 +86,11 @@ services:
       # PostHog project key (EU). Optional — unset disables analytics entirely.
       # Captures still require the user to opt in via the cookie banner.
       PUBLIC_POSTHOG_KEY: ${PUBLIC_POSTHOG_KEY:-}
+      # Slack app credentials for the "Add to Slack" button on /notifiers.
+      # Optional — unset hides the button. Redirect URL registered with the
+      # Slack app must be https://${HOISTER_CLOUD_DOMAIN}/slack/oauth/callback.
+      PUBLIC_SLACK_CLIENT_ID: ${PUBLIC_SLACK_CLIENT_ID:-}
+      SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET:-}
     depends_on:
       - hoister-controller
 
