@@ -1,5 +1,8 @@
-# Build stage — use Bun to mirror the dev setup (bun.lock).
-FROM oven/bun:1-alpine AS builder
+# Build stage — use Bun to mirror the dev setup (bun.lock). Use the glibc
+# image (not -alpine): bun on musl intermittently segfaults during `bun run
+# build`. The build output is plain adapter-node JS, so the runtime stage
+# below still runs fine on node:alpine.
+FROM oven/bun:1 AS builder
 
 WORKDIR /app
 
