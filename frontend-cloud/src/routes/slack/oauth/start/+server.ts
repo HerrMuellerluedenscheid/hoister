@@ -2,7 +2,9 @@ import { error, redirect } from '@sveltejs/kit';
 import { env } from '$env/dynamic/public';
 import type { RequestHandler } from './$types';
 
-export const STATE_COOKIE = 'slack_oauth_state';
+// Not exported: SvelteKit +server.ts only allows HTTP-verb / `_`-prefixed
+// exports. The callback route keeps its own copy of this name.
+const STATE_COOKIE = 'slack_oauth_state';
 
 /**
  * Kicks off the Slack "Add to Slack" OAuth flow. Generates a CSRF `state`,
