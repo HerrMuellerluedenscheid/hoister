@@ -260,8 +260,10 @@
 							{#if env.includes('=')}
 								{@const [key, ...valueParts] = env.split('=')}
 								{@const value = valueParts.join('=')}
-								<div class="flex items-start gap-3 py-2">
-									<span class="w-64 flex-shrink-0 font-mono text-xs text-zinc-500">{key}</span>
+								<div class="flex flex-col gap-0.5 py-2 sm:flex-row sm:items-start sm:gap-3">
+									<span class="font-mono text-xs break-all text-zinc-500 sm:w-64 sm:flex-shrink-0"
+										>{key}</span
+									>
 									<span class="font-mono text-xs break-all text-zinc-200">{value}</span>
 								</div>
 							{/if}
@@ -340,8 +342,10 @@
 					<h2 class="mb-3 text-base font-semibold text-zinc-200">Labels</h2>
 					<div class="divide-y divide-zinc-800">
 						{#each Object.entries(container.Config.Labels) as [key, value]}
-							<div class="flex items-start gap-3 py-2">
-								<span class="w-80 flex-shrink-0 font-mono text-xs text-zinc-500">{key}</span>
+							<div class="flex flex-col gap-0.5 py-2 sm:flex-row sm:items-start sm:gap-3">
+								<span class="font-mono text-xs break-all text-zinc-500 sm:w-80 sm:flex-shrink-0"
+									>{key}</span
+								>
 								<span class="font-mono text-xs break-all text-zinc-200">{value}</span>
 							</div>
 						{/each}
