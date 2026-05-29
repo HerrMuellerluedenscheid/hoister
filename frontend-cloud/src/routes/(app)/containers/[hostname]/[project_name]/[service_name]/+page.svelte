@@ -48,7 +48,7 @@
 	}
 </script>
 
-<div class="px-8 py-10">
+<div class="px-4 py-6 sm:px-8 sm:py-10">
 	<div class="mx-auto max-w-6xl space-y-6">
 		{#if data.error || !container}
 			<div class="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-400">
