@@ -17,14 +17,10 @@ function requireString(form: FormData, key: string): string | null {
 }
 
 function parseConfig(form: FormData): NotifierConfig | { error: string } {
+	// Slack is created via the OAuth "Add to Slack" flow (/slack/oauth/*),
+	// not this manual form — so there is intentionally no `slack` case here.
 	const kind = form.get('kind');
 	switch (kind) {
-		case 'slack': {
-			const webhook = requireString(form, 'webhook');
-			const channel = requireString(form, 'channel');
-			if (!webhook || !channel) return { error: 'Slack: webhook and channel are required' };
-			return { kind: 'slack', webhook, channel };
-		}
 		case 'telegram': {
 			const bot_token = requireString(form, 'bot_token');
 			const chat_raw = requireString(form, 'chat_id');
