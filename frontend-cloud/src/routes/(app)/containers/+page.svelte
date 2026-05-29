@@ -36,7 +36,7 @@
 	const grouped = $derived(groupByHostname(data.inspections));
 </script>
 
-<div class="px-8 py-10">
+<div class="px-4 py-6 sm:px-8 sm:py-10">
 	<div class="mx-auto max-w-7xl space-y-8">
 		<div class="flex items-baseline justify-between gap-4">
 			<h1 class="text-2xl font-bold">Containers</h1>
@@ -67,7 +67,8 @@
 			>
 				You've reached the Free plan limit of {data.me.limits.max_projects} compose projects. Any new
 				project reported by an agent will be rejected until you
-				<a href="/settings/plan" class="font-medium underline hover:text-amber-200">upgrade to Pro</a
+				<a href="/settings/plan" class="font-medium underline hover:text-amber-200"
+					>upgrade to Pro</a
 				>.
 			</div>
 		{/if}
@@ -89,7 +90,7 @@
 		{#if data.pendingUpdates.length > 0}
 			<section>
 				<h2 class="mb-3 text-base font-semibold text-amber-300">Pending updates</h2>
-				<div class="overflow-hidden rounded-xl border border-amber-800/50 bg-amber-950/20">
+				<div class="overflow-x-auto rounded-xl border border-amber-800/50 bg-amber-950/20">
 					<table class="min-w-full divide-y divide-amber-800/40 text-sm">
 						<thead class="bg-amber-900/30 text-xs tracking-wider text-amber-300 uppercase">
 							<tr>

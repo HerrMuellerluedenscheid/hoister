@@ -24,7 +24,7 @@
 	}
 </script>
 
-<div class="space-y-8 px-8 py-10">
+<div class="space-y-8 px-4 py-6 sm:px-8 sm:py-10">
 	<header class="flex items-start justify-between gap-4">
 		<div>
 			<h1 class="text-2xl font-bold">Agent tokens</h1>
@@ -126,7 +126,7 @@
 				No tokens yet. Create one above to connect your first agent.
 			</div>
 		{:else}
-			<div class="overflow-hidden rounded-xl border border-zinc-800">
+			<div class="overflow-x-auto rounded-xl border border-zinc-800">
 				<table class="min-w-full divide-y divide-zinc-800 text-sm">
 					<thead class="bg-zinc-900 text-xs tracking-wider text-zinc-400 uppercase">
 						<tr>
