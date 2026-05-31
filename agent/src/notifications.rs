@@ -288,6 +288,9 @@ pub(crate) fn setup_dispatcher(config: &Config) -> Option<Dispatcher> {
         discord,
         gotify,
         email,
+        // Resend is a hosted-controller delivery path; the standalone agent
+        // doesn't expose it as a configurable dispatcher.
+        resend: None,
     };
 
     Some(Dispatcher::new(sender))

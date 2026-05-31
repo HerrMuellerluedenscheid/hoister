@@ -89,10 +89,9 @@ pub struct GotifyConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmailConfig {
-    pub smtp_server: String,
-    pub smtp_user: String,
-    pub smtp_password: String,
-    pub from: Option<String>,
+    /// Destination address only. The sender identity and delivery
+    /// credentials are controller-wide (Resend) and supplied via env, so
+    /// users no longer enter SMTP details per notifier.
     pub recipient: String,
 }
 
@@ -144,11 +143,7 @@ pub enum NotifierSummaryConfig {
         token_set: bool,
     },
     Email {
-        smtp_server: String,
-        smtp_user: String,
         recipient: String,
-        from: Option<String>,
-        smtp_password_set: bool,
     },
 }
 
@@ -172,11 +167,7 @@ impl From<&Notifier> for NotifierSummary {
                 token_set: !c.token.is_empty(),
             },
             NotifierConfig::Email(c) => NotifierSummaryConfig::Email {
-                smtp_server: c.smtp_server.clone(),
-                smtp_user: c.smtp_user.clone(),
                 recipient: c.recipient.clone(),
-                from: c.from.clone(),
-                smtp_password_set: !c.smtp_password.is_empty(),
             },
         };
         Self {

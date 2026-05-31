@@ -359,9 +359,9 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
 name = "chatterbox"
-version = "2.3.1"
+version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30efd62958ebd8b3a6c4dbb0ecf725457ec54e9854b977cd286fece53ea7ebd8"
+checksum = "27a1a2bf3533a84e06adc13f2c08c5a337370787475192da62cff72781854431"
 dependencies = [
  "lettre",
  "log",

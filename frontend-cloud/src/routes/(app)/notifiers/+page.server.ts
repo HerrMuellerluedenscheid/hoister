@@ -46,17 +46,11 @@ function parseConfig(form: FormData): NotifierConfig | { error: string } {
 			return { kind: 'gotify', server, token };
 		}
 		case 'email': {
-			const smtp_server = requireString(form, 'smtp_server');
-			const smtp_user = requireString(form, 'smtp_user');
-			const smtp_password = requireString(form, 'smtp_password');
 			const recipient = requireString(form, 'recipient');
-			const from = requireString(form, 'from');
-			if (!smtp_server || !smtp_user || !smtp_password || !recipient) {
-				return {
-					error: 'Email: smtp_server, smtp_user, smtp_password and recipient are required'
-				};
+			if (!recipient) {
+				return { error: 'Email: a recipient address is required' };
 			}
-			return { kind: 'email', smtp_server, smtp_user, smtp_password, recipient, from };
+			return { kind: 'email', recipient };
 		}
 		default:
 			return { error: `Unknown notifier kind: ${String(kind)}` };
