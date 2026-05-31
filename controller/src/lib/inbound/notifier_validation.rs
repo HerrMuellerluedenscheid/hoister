@@ -10,7 +10,9 @@
 //!   - Slack: webhook URL must be `https://hooks.slack.com/…`.
 //!   - Gotify: server must be `https://`, hostname must resolve to a
 //!     public IP (no loopback, RFC1918, link-local, ULA, etc.).
-//!   - Email: SMTP host must resolve to a public IP.
+//!   - Email: recipient must be a syntactically valid address. Delivery is
+//!     via the controller-wide Resend account, so there is no user-supplied
+//!     host to SSRF-check.
 //!   - Telegram / Discord: kind-fixed to api.telegram.org / discord.com
 //!     inside chatterbox; no user-supplied host to check.
 //!
@@ -52,7 +54,7 @@ pub async fn validate_config(config: &NotifierConfig) -> Result<(), ValidationEr
     match config {
         NotifierConfig::Slack(c) => validate_slack(&c.webhook),
         NotifierConfig::Gotify(c) => validate_gotify(&c.server).await,
-        NotifierConfig::Email(c) => validate_email_smtp(&c.smtp_server).await,
+        NotifierConfig::Email(c) => validate_email_recipient(&c.recipient),
         NotifierConfig::Telegram(_) | NotifierConfig::Discord(_) => Ok(()),
     }
 }
@@ -82,11 +84,21 @@ async fn validate_gotify(server: &str) -> Result<(), ValidationError> {
     ensure_public_host(host, port).await
 }
 
-async fn validate_email_smtp(smtp_server: &str) -> Result<(), ValidationError> {
-    if smtp_server.is_empty() {
-        return Err(ValidationError::Empty("SMTP server"));
+/// Email notifiers deliver through the controller-wide Resend account, so
+/// there is no user-supplied host to SSRF-check — we only confirm the
+/// recipient is a plausible address. Resend does the authoritative
+/// validation at send time.
+fn validate_email_recipient(recipient: &str) -> Result<(), ValidationError> {
+    if recipient.is_empty() {
+        return Err(ValidationError::Empty("Recipient email"));
     }
-    ensure_public_host(smtp_server, 587).await
+    let parts: Vec<&str> = recipient.split('@').collect();
+    if parts.len() != 2 || parts[0].is_empty() || !parts[1].contains('.') {
+        return Err(ValidationError::UnsupportedDomain(
+            "Recipient must be a valid email address",
+        ));
+    }
+    Ok(())
 }
 
 async fn ensure_public_host(host: &str, port: u16) -> Result<(), ValidationError> {

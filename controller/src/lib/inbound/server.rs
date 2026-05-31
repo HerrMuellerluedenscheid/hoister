@@ -28,7 +28,9 @@ use crate::domain::tokens::ports::TokenService;
 use crate::inbound::audit_log::audit_log_middleware;
 use crate::inbound::notifier_validation::validate_config as validate_notifier_config;
 use crate::inbound::rate_limit::{RateLimiter, rate_limit_middleware};
-use crate::outbound::notification_dispatch::{dispatch_one_async, dispatch_to_all};
+use crate::outbound::notification_dispatch::{
+    EmailDispatchConfig, dispatch_one_async, dispatch_to_all,
+};
 use crate::outbound::pending_updates_memory::{PendingUpdate, PendingUpdatesMemory};
 use crate::sse::{ControllerEvent, UserScopedEvent, sse_handler};
 
@@ -73,6 +75,9 @@ pub struct AppState<
     pub api_secret: Option<String>,
     pub event_tx: broadcast::Sender<UserScopedEvent>,
     pub pending_updates: PendingUpdatesMemory,
+    /// Controller-wide email (Resend) delivery settings, or `None` when not
+    /// configured. Email notifiers can't dispatch without this.
+    pub email: Option<EmailDispatchConfig>,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -555,7 +560,7 @@ async fn test_notifier<
             "If you see this, the {kind:?} notifier on your hoister account is configured correctly."
         ),
     );
-    match dispatch_one_async(notifier, msg).await {
+    match dispatch_one_async(notifier, msg, state.email.clone()).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             // Full chatterbox error goes to the server log only. We
@@ -700,6 +705,7 @@ async fn create_deployment<
                         state.billing_service.clone(),
                         user_id.clone(),
                         message,
+                        state.email.clone(),
                     );
                 }
                 Json(ApiResponse::success(deployment)).into_response()
@@ -737,6 +743,7 @@ fn notify_user<NS: NotifierService, BS: BillingService>(
     billing_service: Arc<BS>,
     user_id: String,
     message: Message,
+    email: Option<EmailDispatchConfig>,
 ) {
     tokio::spawn(async move {
         let plan = match billing_service.get_plan(&user_id).await {
@@ -756,7 +763,7 @@ fn notify_user<NS: NotifierService, BS: BillingService>(
                 if allowed.is_empty() {
                     return;
                 }
-                dispatch_to_all(allowed, message).await;
+                dispatch_to_all(allowed, message, email).await;
             }
             Ok(_) => {}
             Err(e) => error!("Failed to load notifiers for {user_id}: {e:?}"),
@@ -968,6 +975,7 @@ async fn post_pending_update<
         state.billing_service.clone(),
         user_id,
         message,
+        state.email.clone(),
     );
     StatusCode::OK.into_response()
 }

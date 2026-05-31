@@ -11,18 +11,33 @@ use chatterbox::dispatcher::Sender;
 use chatterbox::message::{Dispatcher, Message};
 use log::warn;
 
+/// Controller-wide email delivery settings (Resend). Sourced from env at
+/// startup — email notifiers store only the recipient, never SMTP/API
+/// credentials. When `None`, dispatching an email notifier is an error.
+#[derive(Clone, Debug)]
+pub struct EmailDispatchConfig {
+    pub resend_api_key: String,
+    pub from: String,
+}
+
 /// Dispatch `message` to every enabled notifier. Synchronous chatterbox
 /// calls are run in a `spawn_blocking` so an unresponsive notifier
 /// endpoint doesn't tie up the tokio worker — caller stays in async
 /// context.
-pub async fn dispatch_to_all(notifiers: Vec<Notifier>, message: Message) {
+pub async fn dispatch_to_all(
+    notifiers: Vec<Notifier>,
+    message: Message,
+    email: Option<EmailDispatchConfig>,
+) {
     for notifier in notifiers {
         if !notifier.enabled {
             continue;
         }
         let kind = notifier.kind;
         let msg = message.clone();
-        let res = tokio::task::spawn_blocking(move || dispatch_one(notifier, msg)).await;
+        let email = email.clone();
+        let res =
+            tokio::task::spawn_blocking(move || dispatch_one(notifier, msg, email.as_ref())).await;
         match res {
             Ok(Ok(())) => {}
             Ok(Err(e)) => warn!("notifier {kind:?} dispatch failed: {e}"),
@@ -31,8 +46,12 @@ pub async fn dispatch_to_all(notifiers: Vec<Notifier>, message: Message) {
     }
 }
 
-fn dispatch_one(notifier: Notifier, message: Message) -> Result<(), String> {
-    let sender = sender_for(notifier.config)?;
+fn dispatch_one(
+    notifier: Notifier,
+    message: Message,
+    email: Option<&EmailDispatchConfig>,
+) -> Result<(), String> {
+    let sender = sender_for(notifier.config, email)?;
     let dispatcher = Dispatcher::new(sender);
     dispatcher.dispatch(&message).map_err(|e| e.to_string())
 }
@@ -42,19 +61,27 @@ fn dispatch_one(notifier: Notifier, message: Message) -> Result<(), String> {
 /// "test notifier" handler so the user sees why a misconfigured channel
 /// failed; not used by deployment-event dispatch, which still fans out
 /// fire-and-forget via [`dispatch_to_all`].
-pub async fn dispatch_one_async(notifier: Notifier, message: Message) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || dispatch_one(notifier, message))
+pub async fn dispatch_one_async(
+    notifier: Notifier,
+    message: Message,
+    email: Option<EmailDispatchConfig>,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || dispatch_one(notifier, message, email.as_ref()))
         .await
         .map_err(|e| format!("dispatch task panicked: {e}"))?
 }
 
-fn sender_for(config: NotifierConfig) -> Result<Sender, String> {
+fn sender_for(
+    config: NotifierConfig,
+    email: Option<&EmailDispatchConfig>,
+) -> Result<Sender, String> {
     let mut sender = Sender {
         slack: None,
         telegram: None,
         discord: None,
         gotify: None,
         email: None,
+        resend: None,
     };
     match config {
         NotifierConfig::Slack(s) => {
@@ -84,14 +111,16 @@ fn sender_for(config: NotifierConfig) -> Result<Sender, String> {
             });
         }
         NotifierConfig::Email(e) => {
-            sender.email = Some(chatterbox::dispatcher::email::Email {
-                smtp_user: e.smtp_user.clone(),
-                smtp_password: e.smtp_password,
-                smtp_server: e.smtp_server,
-                smtp_port: 587,
-                receiver_address: e.recipient,
-                sender_address: e.smtp_user,
-                sender_name: e.from.unwrap_or_else(|| "hoister".to_string()),
+            let cfg = email.ok_or_else(|| {
+                "email notifier configured but the controller has no Resend \
+                 credentials (HOISTER_CONTROLLER_RESEND_API_KEY / \
+                 HOISTER_CONTROLLER_EMAIL_FROM)"
+                    .to_string()
+            })?;
+            sender.resend = Some(chatterbox::dispatcher::resend::Resend {
+                api_key: cfg.resend_api_key.clone(),
+                from: cfg.from.clone(),
+                to: e.recipient,
             });
         }
     }

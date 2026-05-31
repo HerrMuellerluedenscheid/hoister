@@ -38,6 +38,15 @@ pub struct Config {
     /// for cloud / multi-tenant deployments. See `outbound::secrets`.
     #[serde(default)]
     pub notifier_key: Option<String>,
+    /// Resend API key for outbound email notifications. Together with
+    /// `email_from` this enables the Email notifier kind; both must be set.
+    /// Env: `HOISTER_CONTROLLER_RESEND_API_KEY`.
+    #[serde(default)]
+    pub resend_api_key: Option<String>,
+    /// Sender identity for outbound email (e.g. `Hoister <alerts@hoister.io>`),
+    /// on a Resend-verified domain. Env: `HOISTER_CONTROLLER_EMAIL_FROM`.
+    #[serde(default)]
+    pub email_from: Option<String>,
     pub database_path: String,
     #[serde(default)]
     pub tls_cert_path: Option<PathBuf>,

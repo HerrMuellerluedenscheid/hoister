@@ -260,41 +260,18 @@
 					/>
 				</div>
 			{:else if kind === 'email'}
-				<div class="grid gap-3 sm:grid-cols-2">
-					<input
-						type="text"
-						name="smtp_server"
-						required
-						placeholder="smtp.example.com"
-						class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
-					/>
+				<div class="space-y-2">
 					<input
 						type="email"
 						name="recipient"
 						required
 						placeholder="you@example.com"
-						class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+						class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
 					/>
-					<input
-						type="text"
-						name="smtp_user"
-						required
-						placeholder="SMTP user"
-						class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
-					/>
-					<input
-						type="password"
-						name="smtp_password"
-						required
-						placeholder="SMTP password"
-						class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
-					/>
-					<input
-						type="text"
-						name="from"
-						placeholder="Sender display name (optional)"
-						class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 sm:col-span-2"
-					/>
+					<p class="text-xs text-zinc-500">
+						Deployment alerts are sent to this address from Hoister's mail server — no SMTP
+						credentials needed.
+					</p>
 				</div>
 			{/if}
 
