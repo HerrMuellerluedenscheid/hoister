@@ -63,6 +63,11 @@ services:
       # without this value, so a DB dump alone is insufficient.
       HOISTER_CONTROLLER_TOKEN_PEPPER: ${HOISTER_CONTROLLER_TOKEN_PEPPER:?HOISTER_CONTROLLER_TOKEN_PEPPER is required}
       HOISTER_CONTROLLER_NOTIFIER_KEY: ${HOISTER_CONTROLLER_NOTIFIER_KEY:?HOISTER_CONTROLLER_NOTIFIER_KEY is required}
+      # Email notifications via Resend (https://resend.com). Both must be set to
+      # enable the Email notifier kind; unset disables it. EMAIL_FROM must be on
+      # a Resend-verified domain, e.g. "Hoister <alerts@hoister.io>".
+      HOISTER_CONTROLLER_RESEND_API_KEY: ${HOISTER_CONTROLLER_RESEND_API_KEY:-}
+      HOISTER_CONTROLLER_EMAIL_FROM: ${HOISTER_CONTROLLER_EMAIL_FROM:-}
       RUST_LOG: "info,bollard=warn,hyper_util=warn"
     depends_on:
       - backend-db

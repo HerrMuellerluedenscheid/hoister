@@ -11,14 +11,7 @@ export type NotifierConfig =
 	| { kind: 'telegram'; bot_token: string; chat_id: number }
 	| { kind: 'discord'; bot_token: string; channel_id: number }
 	| { kind: 'gotify'; server: string; token: string }
-	| {
-			kind: 'email';
-			smtp_server: string;
-			smtp_user: string;
-			smtp_password: string;
-			from: string | null;
-			recipient: string;
-	  };
+	| { kind: 'email'; recipient: string };
 
 /**
  * What the controller actually returns. Secret-bearing fields (webhook,
@@ -31,14 +24,7 @@ export type NotifierSummaryConfig =
 	| { kind: 'telegram'; chat_id: number; bot_token_set: boolean }
 	| { kind: 'discord'; channel_id: number; bot_token_set: boolean }
 	| { kind: 'gotify'; server_host: string; token_set: boolean }
-	| {
-			kind: 'email';
-			smtp_server: string;
-			smtp_user: string;
-			recipient: string;
-			from: string | null;
-			smtp_password_set: boolean;
-	  };
+	| { kind: 'email'; recipient: string };
 
 export interface Notifier {
 	id: number;

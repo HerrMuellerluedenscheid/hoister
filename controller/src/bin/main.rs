@@ -49,6 +49,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = Database::connect(&config.database_path, token_pepper.into_bytes(), aead).await?;
 
     let pending_updates = PendingUpdatesMemory::default();
+
+    // Email (Resend) delivery is controller-wide: users supply only a
+    // recipient. Both the API key and the From identity must be present; a
+    // half-configured pair disables email rather than failing at dispatch.
+    let email = match (config.resend_api_key.clone(), config.email_from.clone()) {
+        (Some(api_key), Some(from)) if !api_key.is_empty() && !from.is_empty() => Some(
+            controller::outbound::notification_dispatch::EmailDispatchConfig {
+                resend_api_key: api_key,
+                from,
+            },
+        ),
+        (None, None) => None,
+        _ => {
+            warn!(
+                "Email notifier delivery is disabled: set BOTH \
+                 HOISTER_CONTROLLER_RESEND_API_KEY and \
+                 HOISTER_CONTROLLER_EMAIL_FROM to enable it."
+            );
+            None
+        }
+    };
+
     let state = AppState {
         deployments_service: Arc::new(DeploymentsService::new(db.clone())),
         container_state_service: Arc::new(ContainerStateService::new(db.clone())),
@@ -59,6 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         api_secret: config.api_secret.clone(),
         event_tx,
         pending_updates,
+        email,
     };
     let internal_secret = InternalSecret(config.internal_secret.clone());
     let agent_app = create_agent_router(state.clone()).await;
