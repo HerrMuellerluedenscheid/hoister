@@ -2,7 +2,11 @@ name: Build All Services
 
 on:
   push:
-    branches: [ "main" ]
+    # Build on every branch. main and tags get the semver/latest tags (see
+    # docker-build-reusable.yml); other branches are published under their
+    # branch name slugified into a valid Docker tag (e.g. feat/cloud ->
+    # feat-cloud) via docker/metadata-action's `type=ref,event=branch`.
+    branches: [ "**" ]
     tags:
       - 'v*.*.*'
 
