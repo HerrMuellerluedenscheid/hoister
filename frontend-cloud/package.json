@@ -39,6 +39,7 @@
 	},
 	"dependencies": {
 		"posthog-js": "^1.376.2",
+		"stripe": "^17.0.0",
 		"svelte-clerk": "^1.1.1"
 	}
 }

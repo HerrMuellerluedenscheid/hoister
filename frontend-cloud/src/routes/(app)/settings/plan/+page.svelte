@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { PageProps } from './$types';
 
-	let { data }: PageProps = $props();
+	let { data, form }: PageProps = $props();
 	const me = $derived(data.me);
 </script>
 
@@ -13,30 +13,62 @@
 		</p>
 	</header>
 
+	{#if data.checkout === 'success'}
+		<div
+			class="rounded-xl border border-emerald-800 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-300"
+		>
+			Subscription started — welcome to Pro! It can take a moment for the status to update here.
+		</div>
+	{:else if data.checkout === 'cancelled'}
+		<div class="rounded-xl border border-amber-800 bg-amber-950/30 px-4 py-3 text-sm text-amber-300">
+			Checkout cancelled — no charge was made.
+		</div>
+	{/if}
+
+	{#if form?.error}
+		<div class="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-400">
+			{form.error}
+		</div>
+	{/if}
+
 	{#if data.meError}
 		<div class="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-400">
 			{data.meError}
 		</div>
 	{:else if me}
 		<section class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-			<div class="flex items-center justify-between">
+			<div class="flex items-center justify-between gap-4">
 				<div>
 					<div class="text-xs tracking-wider text-zinc-400 uppercase">Current plan</div>
 					<div class="mt-1 text-xl font-semibold text-zinc-100 capitalize">{me.plan}</div>
+					{#if me.plan === 'pro' && data.subscriptionStatus}
+						<div class="mt-1 text-xs text-zinc-500">
+							Subscription status: <span class="text-zinc-300">{data.subscriptionStatus}</span>
+						</div>
+					{/if}
 				</div>
+
 				{#if me.plan === 'free'}
-					<button
-						type="button"
-						disabled
-						title="Stripe checkout not wired yet"
-						class="rounded-md bg-indigo-500 px-4 py-2 text-sm font-semibold text-white opacity-50"
-					>
-						Upgrade to Pro
-					</button>
+					<form method="POST" action="?/upgrade">
+						<button
+							type="submit"
+							disabled={!data.stripeReady}
+							title={data.stripeReady ? '' : 'Billing is not configured yet'}
+							class="rounded-md bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
+						>
+							Upgrade to Pro
+						</button>
+					</form>
 				{:else}
-					<span class="rounded-full bg-indigo-500/15 px-3 py-1 text-xs font-medium text-indigo-300">
-						Pro
-					</span>
+					<form method="POST" action="?/manage">
+						<button
+							type="submit"
+							disabled={!data.stripeReady || !data.hasCustomer}
+							class="rounded-md border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+						>
+							Manage subscription
+						</button>
+					</form>
 				{/if}
 			</div>
 		</section>
@@ -84,9 +116,6 @@
 					<li>Slack, Gotify, and Email notifiers</li>
 					<li>Same controller, same agent — just lift the caps</li>
 				</ul>
-				<p class="mt-3 text-xs text-zinc-500">
-					Billing through Stripe is not wired yet. Upgrade button will activate once it lands.
-				</p>
 			</section>
 		{/if}
 	{/if}

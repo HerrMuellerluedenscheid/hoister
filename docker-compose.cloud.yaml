@@ -96,6 +96,12 @@ services:
       # Slack app must be https://${HOISTER_CLOUD_DOMAIN}/slack/oauth/callback.
       PUBLIC_SLACK_CLIENT_ID: ${PUBLIC_SLACK_CLIENT_ID:-}
       SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET:-}
+      # Stripe billing (test or live keys). All optional — unset hides the
+      # Upgrade button. Webhook endpoint: https://${HOISTER_CLOUD_DOMAIN}/api/stripe/webhook
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
+      STRIPE_TRIAL_DAYS: ${STRIPE_TRIAL_DAYS:-30}
     depends_on:
       - hoister-controller
 
