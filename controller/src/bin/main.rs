@@ -2,6 +2,7 @@ use controller::config::get_config;
 use controller::domain::billing::service::Service as BillingServiceImpl;
 use controller::domain::container_state::service::Service as ContainerStateService;
 use controller::domain::deployments::service::Service as DeploymentsService;
+use controller::domain::metrics::service::Service as MetricsService;
 use controller::domain::notifiers::service::Service as NotifierService;
 use controller::domain::tokens::service::Service as TokenService;
 use controller::inbound::server::{
@@ -76,7 +77,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         container_state_service: Arc::new(ContainerStateService::new(db.clone())),
         token_service: Arc::new(TokenService::new(db.clone())),
         notifier_service: Arc::new(NotifierService::new(db.clone())),
-        billing_service: Arc::new(BillingServiceImpl::new(db)),
+        billing_service: Arc::new(BillingServiceImpl::new(db.clone())),
+        metrics_service: Arc::new(MetricsService::new(db)),
         #[cfg(feature = "self-hosted")]
         api_secret: config.api_secret.clone(),
         event_tx,
@@ -205,6 +207,7 @@ fn log_endpoints(config: &controller::config::Config) {
     info!("  GET    /sse                    - server-sent events");
     info!("  POST   /deployments            - create deployment");
     info!("  POST   /container/state/...    - update container state");
+    info!("  POST   /container/metrics/...  - report container metrics (opt-in)");
     info!(
         "Internal router endpoints (VPC-only, http://0.0.0.0:{}, X-User-Id header):",
         config.internal_port
@@ -215,4 +218,6 @@ fn log_endpoints(config: &controller::config::Config) {
     info!("  GET    /deployments/:p/:s      - list deployments by service");
     info!("  GET    /container/state        - all container states");
     info!("  GET    /container/state/...    - container state by service");
+    info!("  GET    /container/metrics      - latest metrics per container");
+    info!("  GET    /container/metrics/...  - metric time series by service");
 }

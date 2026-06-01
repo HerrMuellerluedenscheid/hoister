@@ -17,6 +17,7 @@ mod tests {
     };
     use controller::domain::deployments::ports::DeploymentsService as _;
     use controller::domain::deployments::service::Service as DeploymentsService;
+    use controller::domain::metrics::service::Service as MetricsService;
     use controller::domain::notifiers::service::Service as NotifierService;
     use controller::domain::tokens::service::Service as TokenService;
     use controller::inbound::server::{
@@ -63,11 +64,13 @@ mod tests {
             container_state_service: Arc::new(ContainerStateService::new(db.clone())),
             token_service: Arc::new(TokenService::new(db.clone())),
             notifier_service: Arc::new(NotifierService::new(db.clone())),
-            billing_service: Arc::new(BillingService::new(db)),
+            billing_service: Arc::new(BillingService::new(db.clone())),
+            metrics_service: Arc::new(MetricsService::new(db)),
             #[cfg(feature = "self-hosted")]
             api_secret: Some("tests-secret".to_string()),
             event_tx,
             pending_updates: Default::default(),
+            email: None,
         };
         let agent = create_agent_router(state.clone()).await;
         let internal = create_internal_router(state, InternalSecret(None)).await;
