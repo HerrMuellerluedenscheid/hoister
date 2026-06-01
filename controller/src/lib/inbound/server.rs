@@ -301,6 +301,40 @@ async fn get_me<
     })))
 }
 
+#[derive(Deserialize)]
+struct SetPlanRequest {
+    plan: String,
+}
+
+/// Set a user's billing plan. Internal-only: called by the BFF's Stripe
+/// webhook handler after it has verified the Stripe signature. The target
+/// user comes from the `X-User-Id` header (the BFF sets it to the user the
+/// Stripe event belongs to), never from the request body — so a bug in the
+/// body can't move the wrong account between tiers.
+async fn set_plan<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+    BS: BillingService,
+    MS: MetricsService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+    Json(req): Json<SetPlanRequest>,
+) -> Result<StatusCode, StatusCode> {
+    let Some(plan) = Plan::parse(&req.plan) else {
+        return Err(StatusCode::BAD_REQUEST);
+    };
+    match state.billing_service.set_plan(&user_id, plan).await {
+        Ok(()) => Ok(StatusCode::NO_CONTENT),
+        Err(e) => {
+            error!("set_plan failed for {user_id}: {e:?}");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
 async fn list_tokens<
     DS: DeploymentsService,
     CS: ContainerStateService,
@@ -1291,6 +1325,10 @@ pub async fn create_internal_router<
         .route(
             "/deployments",
             get(get_deployments::<DS, CS, TS, NS, BS, MS>),
+        )
+        .route(
+            "/billing/plan",
+            post(set_plan::<DS, CS, TS, NS, BS, MS>),
         )
         .route(
             "/deployments/{project_name}/{service_name}",
