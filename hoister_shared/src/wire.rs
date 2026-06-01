@@ -25,6 +25,28 @@ pub struct PostContainerStateRequest {
     pub payload: HashMap<ServiceName, ServiceState>,
 }
 
+/// A single resource-usage sample for one service, captured by the agent
+/// from Docker's `stats` endpoint. Only shipped when the operator opts in
+/// via `HOISTER_REPORT_METRICS=true`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ContainerMetricSample {
+    /// CPU usage as a percentage. Ranges 0..(100 * number_of_cpus), matching
+    /// the figure `docker stats` reports.
+    pub cpu_pct: f64,
+    /// Current memory usage in bytes (page cache subtracted when available,
+    /// so it reflects RSS-like usage like `docker stats`).
+    pub mem_bytes: u64,
+    /// Memory limit in bytes. `0` means unlimited.
+    pub mem_limit_bytes: u64,
+}
+
+/// Body of POST /container/metrics/{hostname}/{project_name}.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PostContainerMetricsRequest {
+    pub project_name: ProjectName,
+    pub payload: HashMap<ServiceName, ContainerMetricSample>,
+}
+
 /// SSE events the controller broadcasts to subscribed agents.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum ControllerEvent {

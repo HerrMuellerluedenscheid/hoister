@@ -10,6 +10,10 @@ use crate::domain::deployments::models::deployment::{
 };
 use crate::domain::deployments::models::service::{Service, ServiceId};
 use crate::domain::deployments::ports::DeploymentsRepository;
+use crate::domain::metrics::models::{
+    AddMetricsRequest, LatestMetric, MetricPoint, RETENTION_DAYS,
+};
+use crate::domain::metrics::port::MetricsRepository;
 use crate::domain::notifiers::models::{Notifier, NotifierConfig, NotifierError, NotifierKind};
 use crate::domain::notifiers::ports::NotifierRepository;
 use crate::domain::tokens::models::{ApiToken, TokenError};
@@ -740,5 +744,169 @@ impl ContainerStateRepository for Sqlite {
         {
             error!("add_container_state failed: {e:?}");
         }
+    }
+}
+
+/// Parse a timestamp stored either as RFC3339 (our writes) or SQLite's
+/// `CURRENT_TIMESTAMP` (`%Y-%m-%d %H:%M:%S`) default. Mirrors the fallback
+/// used by the container_state reads above.
+fn parse_ts(s: &str) -> chrono::DateTime<chrono::Utc> {
+    chrono::DateTime::parse_from_rfc3339(s)
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .or_else(|_| {
+            chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
+                .map(|dt| dt.and_utc().fixed_offset())
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+        })
+        .unwrap_or_else(|_| chrono::Utc::now())
+}
+
+impl MetricsRepository for Sqlite {
+    async fn add_metrics(&self, req: AddMetricsRequest) {
+        let now = chrono::Utc::now();
+        let now_str = now.to_rfc3339();
+        let mut tx = match self.pool.begin().await {
+            Ok(tx) => tx,
+            Err(e) => {
+                error!("add_metrics begin tx failed: {e:?}");
+                return;
+            }
+        };
+        for (service_name, sample) in &req.samples {
+            if let Err(e) = sqlx::query(
+                "INSERT INTO container_metrics
+                    (user_id, hostname, project_name, service_name, recorded_at,
+                     cpu_pct, mem_bytes, mem_limit_bytes)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(&req.user_id)
+            .bind(req.hostname.as_str())
+            .bind(req.project_name.as_str())
+            .bind(service_name.as_str())
+            .bind(&now_str)
+            .bind(sample.cpu_pct)
+            .bind(sample.mem_bytes as i64)
+            .bind(sample.mem_limit_bytes as i64)
+            .execute(&mut *tx)
+            .await
+            {
+                error!("add_metrics insert failed: {e:?}");
+            }
+        }
+
+        // Opportunistic retention: keep at most RETENTION_DAYS of samples for
+        // this user. Runs at most once per agent report (~per minute).
+        let cutoff = (now - chrono::Duration::days(RETENTION_DAYS)).to_rfc3339();
+        if let Err(e) =
+            sqlx::query("DELETE FROM container_metrics WHERE user_id = ? AND recorded_at < ?")
+                .bind(&req.user_id)
+                .bind(&cutoff)
+                .execute(&mut *tx)
+                .await
+        {
+            error!("add_metrics prune failed: {e:?}");
+        }
+
+        if let Err(e) = tx.commit().await {
+            error!("add_metrics commit failed: {e:?}");
+        }
+    }
+
+    async fn get_service_metrics(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+        service_name: &ServiceName,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Vec<MetricPoint> {
+        let rows: Vec<(String, f64, i64, i64)> = match sqlx::query_as(
+            "SELECT recorded_at, cpu_pct, mem_bytes, mem_limit_bytes
+                FROM container_metrics
+                WHERE user_id = ? AND hostname = ? AND project_name = ?
+                  AND service_name = ? AND recorded_at >= ?
+                ORDER BY recorded_at ASC",
+        )
+        .bind(user_id)
+        .bind(hostname.as_str())
+        .bind(project_name.as_str())
+        .bind(service_name.as_str())
+        .bind(since.to_rfc3339())
+        .fetch_all(&self.pool)
+        .await
+        {
+            Ok(rs) => rs,
+            Err(e) => {
+                error!("get_service_metrics failed: {e:?}");
+                return Vec::new();
+            }
+        };
+
+        rows.into_iter()
+            .map(
+                |(recorded_at, cpu_pct, mem_bytes, mem_limit_bytes)| MetricPoint {
+                    recorded_at: parse_ts(&recorded_at),
+                    cpu_pct,
+                    mem_bytes: mem_bytes.max(0) as u64,
+                    mem_limit_bytes: mem_limit_bytes.max(0) as u64,
+                },
+            )
+            .collect()
+    }
+
+    async fn get_latest_metrics(&self, user_id: &str) -> Vec<LatestMetric> {
+        let rows: Vec<(String, String, String, String, f64, i64, i64)> = match sqlx::query_as(
+            "SELECT m.hostname, m.project_name, m.service_name, m.recorded_at,
+                    m.cpu_pct, m.mem_bytes, m.mem_limit_bytes
+                FROM container_metrics m
+                JOIN (
+                    SELECT hostname, project_name, service_name, MAX(recorded_at) AS mx
+                    FROM container_metrics
+                    WHERE user_id = ?
+                    GROUP BY hostname, project_name, service_name
+                ) latest
+                  ON m.hostname = latest.hostname
+                 AND m.project_name = latest.project_name
+                 AND m.service_name = latest.service_name
+                 AND m.recorded_at = latest.mx
+                WHERE m.user_id = ?",
+        )
+        .bind(user_id)
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        {
+            Ok(rs) => rs,
+            Err(e) => {
+                error!("get_latest_metrics failed: {e:?}");
+                return Vec::new();
+            }
+        };
+
+        rows.into_iter()
+            .map(
+                |(
+                    hostname,
+                    project_name,
+                    service_name,
+                    recorded_at,
+                    cpu_pct,
+                    mem_bytes,
+                    mem_limit_bytes,
+                )| {
+                    LatestMetric {
+                        hostname: HostName::new(hostname),
+                        project_name: ProjectName::new(project_name),
+                        service_name: ServiceName::new(service_name),
+                        point: MetricPoint {
+                            recorded_at: parse_ts(&recorded_at),
+                            cpu_pct,
+                            mem_bytes: mem_bytes.max(0) as u64,
+                            mem_limit_bytes: mem_limit_bytes.max(0) as u64,
+                        },
+                    }
+                },
+            )
+            .collect()
     }
 }

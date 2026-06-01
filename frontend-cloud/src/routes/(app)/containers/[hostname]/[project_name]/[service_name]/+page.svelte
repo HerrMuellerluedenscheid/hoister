@@ -2,12 +2,34 @@
 	import { invalidateAll } from '$app/navigation';
 	import { onDestroy, onMount } from 'svelte';
 	import Deployments from '$lib/components/Deployments.svelte';
+	import TimeSeriesChart from '$lib/components/TimeSeriesChart.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 
 	const container = $derived(data.inspections?.container_inspections);
 	const deployments = $derived(data.deployments.slice(0, 8));
+
+	const metricPoints = $derived(data.metrics?.points ?? []);
+	const cpuSeries = $derived(
+		metricPoints.map((p) => ({ t: Date.parse(p.recorded_at), v: p.cpu_pct }))
+	);
+	const memSeries = $derived(
+		metricPoints.map((p) => ({ t: Date.parse(p.recorded_at), v: p.mem_bytes }))
+	);
+	// Cap the memory chart at the container's limit when one is set, so the
+	// graph reflects headroom rather than auto-scaling to the peak.
+	const memLimit = $derived(
+		metricPoints.length > 0 ? metricPoints[metricPoints.length - 1].mem_limit_bytes : 0
+	);
+
+	function formatBytes(bytes: number): string {
+		if (bytes <= 0) return '0 B';
+		const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+		const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+		return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+	}
+
 	const hostname = $derived(data.inspections?.hostname);
 	const service_name = $derived(data.inspections?.service_name);
 	const project_name = $derived(data.inspections?.project_name);
@@ -123,6 +145,35 @@
 						<p class="mt-1 font-mono text-sm">{container.State?.Pid ?? '—'}</p>
 					</div>
 				</div>
+			</section>
+
+			<!-- Resource usage -->
+			<section class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
+				<h2 class="mb-1 text-base font-semibold text-zinc-200">Resource usage (last 7 days)</h2>
+				{#if metricPoints.length > 0}
+					<p class="mb-4 text-xs text-zinc-500">Sampled roughly once a minute by the agent.</p>
+					<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+						<TimeSeriesChart
+							points={cpuSeries}
+							label="CPU"
+							color="#818cf8"
+							formatValue={(v) => `${v.toFixed(1)}%`}
+						/>
+						<TimeSeriesChart
+							points={memSeries}
+							label="Memory"
+							color="#34d399"
+							formatValue={formatBytes}
+							max={memLimit > 0 ? memLimit : undefined}
+						/>
+					</div>
+				{:else}
+					<p class="mt-2 text-sm text-zinc-500">
+						No metrics recorded yet. Enable <code class="rounded bg-zinc-800 px-1 py-0.5 font-mono"
+							>HOISTER_REPORT_METRICS=true</code
+						> on the agent to collect CPU and memory usage over time.
+					</p>
+				{/if}
 			</section>
 
 			<!-- Exit reason -->
