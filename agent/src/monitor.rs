@@ -39,11 +39,14 @@ const SENSITIVE_KEYWORDS: &[&str] = &[
 const MAX_LOG_BYTES: usize = 16 * 1024;
 const LOG_TAIL_LINES: &str = "50";
 
-async fn fetch_container_info(
+/// List the containers this agent should report on: scoped to the compose
+/// project (in release builds) and with any `hoister.hide=true` containers
+/// excluded. Shared by the state monitor and the metrics collector so the
+/// two always observe the same set of containers.
+pub(crate) async fn list_tracked_containers(
     #[allow(unused_variables)] project_name: &ProjectName,
     docker: &Docker,
-    report_logs: bool,
-) -> Result<HashMap<ServiceName, ServiceState>, HoisterError> {
+) -> Result<Vec<ContainerSummary>, HoisterError> {
     #[allow(unused_mut, unused_variables)]
     let mut filters = HashMap::new();
     #[cfg(not(debug_assertions))]
@@ -61,7 +64,7 @@ async fn fetch_container_info(
 
     let containers = docker.list_containers(Some(options)).await?;
 
-    let containers = containers
+    Ok(containers
         .into_iter()
         .filter(|container| {
             if let Some(labels) = &container.labels {
@@ -71,7 +74,15 @@ async fn fetch_container_info(
                 true
             }
         })
-        .collect::<Vec<ContainerSummary>>();
+        .collect::<Vec<ContainerSummary>>())
+}
+
+async fn fetch_container_info(
+    project_name: &ProjectName,
+    docker: &Docker,
+    report_logs: bool,
+) -> Result<HashMap<ServiceName, ServiceState>, HoisterError> {
+    let containers = list_tracked_containers(project_name, docker).await?;
 
     let mut states = HashMap::new();
 

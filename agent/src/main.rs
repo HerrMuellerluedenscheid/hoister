@@ -2,6 +2,7 @@
 mod config;
 mod docker;
 mod ecr;
+mod metrics;
 mod monitor;
 mod notifications;
 mod sse;
@@ -137,23 +138,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         let sse_client = http_client.clone();
         let monitor_client = http_client.clone();
         let report_logs = config.report_logs;
+        let report_metrics = config.report_metrics;
         let token_sse = controller_config.token.clone();
         let token_monitor = controller_config.token.clone();
         tokio::spawn(async move {
             sse::consume_sse(url_sse.as_str(), token_sse, tx_sse, sse_client).await
         });
+        let metrics_state = url_state.clone();
+        let pn_state = pn.clone();
+        let hn_state = hn.clone();
         tokio::spawn(async move {
             monitor::start(
                 &url_state,
                 token_monitor,
-                pn,
-                hn,
+                pn_state,
+                hn_state,
                 monitor_client,
                 report_logs,
             )
             .await
             .expect("Failed to start monitor");
         });
+        // Resource-usage collection is opt-in: it adds a per-minute stats call
+        // per container and ships CPU/memory figures the operator may not want
+        // leaving the host.
+        if report_metrics {
+            let metrics_client = http_client.clone();
+            let token_metrics = controller_config.token.clone();
+            tokio::spawn(async move {
+                metrics::start(&metrics_state, token_metrics, pn, hn, metrics_client)
+                    .await
+                    .expect("Failed to start metrics collector");
+            });
+        }
     } else {
         info!(
             "Mode: standalone — no controller configured, container state is not reported. Set HOISTER_CONTROLLER_TOKEN to enable the hosted dashboard."

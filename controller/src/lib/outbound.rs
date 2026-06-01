@@ -16,6 +16,8 @@ use crate::domain::deployments::models::deployment::{
     GetProjectError, Project,
 };
 use crate::domain::deployments::ports::DeploymentsRepository;
+use crate::domain::metrics::models::{AddMetricsRequest, LatestMetric, MetricPoint};
+use crate::domain::metrics::port::MetricsRepository;
 use crate::domain::notifiers::models::{Notifier, NotifierConfig, NotifierError};
 use crate::domain::notifiers::ports::NotifierRepository;
 use crate::domain::tokens::models::{ApiToken, TokenError};
@@ -308,6 +310,60 @@ impl ContainerStateRepository for Database {
             }
             Self::Postgresql(db) => {
                 <Postgresql as ContainerStateRepository>::add_container_state(db, req).await
+            }
+        }
+    }
+}
+
+impl MetricsRepository for Database {
+    async fn add_metrics(&self, req: AddMetricsRequest) {
+        match self {
+            Self::Sqlite(db) => <Sqlite as MetricsRepository>::add_metrics(db, req).await,
+            Self::Postgresql(db) => <Postgresql as MetricsRepository>::add_metrics(db, req).await,
+        }
+    }
+
+    async fn get_service_metrics(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+        service_name: &ServiceName,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Vec<MetricPoint> {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as MetricsRepository>::get_service_metrics(
+                    db,
+                    user_id,
+                    hostname,
+                    project_name,
+                    service_name,
+                    since,
+                )
+                .await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as MetricsRepository>::get_service_metrics(
+                    db,
+                    user_id,
+                    hostname,
+                    project_name,
+                    service_name,
+                    since,
+                )
+                .await
+            }
+        }
+    }
+
+    async fn get_latest_metrics(&self, user_id: &str) -> Vec<LatestMetric> {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as MetricsRepository>::get_latest_metrics(db, user_id).await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as MetricsRepository>::get_latest_metrics(db, user_id).await
             }
         }
     }

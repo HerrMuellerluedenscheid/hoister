@@ -10,6 +10,10 @@ use crate::domain::deployments::models::deployment::{
 };
 use crate::domain::deployments::models::service::{Service, ServiceId};
 use crate::domain::deployments::ports::DeploymentsRepository;
+use crate::domain::metrics::models::{
+    AddMetricsRequest, LatestMetric, MetricPoint, RETENTION_DAYS,
+};
+use crate::domain::metrics::port::MetricsRepository;
 use crate::domain::notifiers::models::{Notifier, NotifierConfig, NotifierError, NotifierKind};
 use crate::domain::notifiers::ports::NotifierRepository;
 use crate::domain::tokens::models::{ApiToken, TokenError};
@@ -740,5 +744,147 @@ impl ContainerStateRepository for Postgresql {
         {
             error!("add_container_state failed: {e:?}");
         }
+    }
+}
+
+impl MetricsRepository for Postgresql {
+    async fn add_metrics(&self, req: AddMetricsRequest) {
+        let now = chrono::Utc::now();
+        let now_str = now.to_rfc3339();
+        let mut tx = match self.pool.begin().await {
+            Ok(tx) => tx,
+            Err(e) => {
+                error!("add_metrics begin tx failed: {e:?}");
+                return;
+            }
+        };
+        for (service_name, sample) in &req.samples {
+            if let Err(e) = sqlx::query(
+                "INSERT INTO container_metrics
+                    (user_id, hostname, project_name, service_name, recorded_at,
+                     cpu_pct, mem_bytes, mem_limit_bytes)
+                 VALUES ($1, $2, $3, $4, $5::timestamptz, $6, $7, $8)",
+            )
+            .bind(&req.user_id)
+            .bind(req.hostname.as_str())
+            .bind(req.project_name.as_str())
+            .bind(service_name.as_str())
+            .bind(&now_str)
+            .bind(sample.cpu_pct)
+            .bind(sample.mem_bytes as i64)
+            .bind(sample.mem_limit_bytes as i64)
+            .execute(&mut *tx)
+            .await
+            {
+                error!("add_metrics insert failed: {e:?}");
+            }
+        }
+
+        // Opportunistic retention: keep at most RETENTION_DAYS of samples for
+        // this user. Runs at most once per agent report (~per minute).
+        let cutoff = (now - chrono::Duration::days(RETENTION_DAYS)).to_rfc3339();
+        if let Err(e) = sqlx::query(
+            "DELETE FROM container_metrics WHERE user_id = $1 AND recorded_at < $2::timestamptz",
+        )
+        .bind(&req.user_id)
+        .bind(&cutoff)
+        .execute(&mut *tx)
+        .await
+        {
+            error!("add_metrics prune failed: {e:?}");
+        }
+
+        if let Err(e) = tx.commit().await {
+            error!("add_metrics commit failed: {e:?}");
+        }
+    }
+
+    async fn get_service_metrics(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+        service_name: &ServiceName,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Vec<MetricPoint> {
+        let rows: Vec<(String, f64, i64, i64)> = match sqlx::query_as(
+            "SELECT recorded_at::text, cpu_pct, mem_bytes, mem_limit_bytes
+                FROM container_metrics
+                WHERE user_id = $1 AND hostname = $2 AND project_name = $3
+                  AND service_name = $4 AND recorded_at >= $5::timestamptz
+                ORDER BY recorded_at ASC",
+        )
+        .bind(user_id)
+        .bind(hostname.as_str())
+        .bind(project_name.as_str())
+        .bind(service_name.as_str())
+        .bind(since.to_rfc3339())
+        .fetch_all(&self.pool)
+        .await
+        {
+            Ok(rs) => rs,
+            Err(e) => {
+                error!("get_service_metrics failed: {e:?}");
+                return Vec::new();
+            }
+        };
+
+        rows.into_iter()
+            .map(
+                |(recorded_at, cpu_pct, mem_bytes, mem_limit_bytes)| MetricPoint {
+                    recorded_at: parse_pg_timestamp(&recorded_at),
+                    cpu_pct,
+                    mem_bytes: mem_bytes.max(0) as u64,
+                    mem_limit_bytes: mem_limit_bytes.max(0) as u64,
+                },
+            )
+            .collect()
+    }
+
+    async fn get_latest_metrics(&self, user_id: &str) -> Vec<LatestMetric> {
+        let rows: Vec<(String, String, String, String, f64, i64, i64)> = match sqlx::query_as(
+            "SELECT DISTINCT ON (hostname, project_name, service_name)
+                    hostname, project_name, service_name, recorded_at::text,
+                    cpu_pct, mem_bytes, mem_limit_bytes
+                FROM container_metrics
+                WHERE user_id = $1
+                ORDER BY hostname, project_name, service_name, recorded_at DESC",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        {
+            Ok(rs) => rs,
+            Err(e) => {
+                error!("get_latest_metrics failed: {e:?}");
+                return Vec::new();
+            }
+        };
+
+        rows.into_iter()
+            .map(
+                |(
+                    hostname,
+                    project_name,
+                    service_name,
+                    recorded_at,
+                    cpu_pct,
+                    mem_bytes,
+                    mem_limit_bytes,
+                )| {
+                    LatestMetric {
+                        hostname: HostName::new(hostname),
+                        project_name: ProjectName::new(project_name),
+                        service_name: ServiceName::new(service_name),
+                        point: MetricPoint {
+                            recorded_at: parse_pg_timestamp(&recorded_at),
+                            cpu_pct,
+                            mem_bytes: mem_bytes.max(0) as u64,
+                            mem_limit_bytes: mem_limit_bytes.max(0) as u64,
+                        },
+                    }
+                },
+            )
+            .collect()
     }
 }

@@ -169,6 +169,12 @@ pub(crate) struct Config {
     /// setting `HOISTER_REPORT_LOGS=true`.
     #[serde(default)]
     pub(crate) report_logs: bool,
+    /// Collect per-container CPU/memory usage and forward it to the controller
+    /// for time-series graphing. Disabled by default — it adds a per-minute
+    /// stats call per container and ships resource figures off the host. Opt
+    /// in by setting `HOISTER_REPORT_METRICS=true`.
+    #[serde(default)]
+    pub(crate) report_metrics: bool,
     pub(crate) schedule: Schedule,
     pub(crate) registry: Option<Registry>,
     pub(crate) controller: Option<Controller>,
@@ -206,11 +212,16 @@ pub(crate) async fn load_config(config_path: &Path) -> Config {
         controller.ca_cert_path = std::env::var("HOISTER_CONTROLLER_CA_CERT_PATH").ok();
     }
 
-    // Same quirk for the top-level snake_case flag.
+    // Same quirk for the top-level snake_case flags.
     if !config.report_logs
         && let Ok(v) = std::env::var("HOISTER_REPORT_LOGS")
     {
         config.report_logs = matches!(v.as_str(), "true" | "1" | "yes");
+    }
+    if !config.report_metrics
+        && let Ok(v) = std::env::var("HOISTER_REPORT_METRICS")
+    {
+        config.report_metrics = matches!(v.as_str(), "true" | "1" | "yes");
     }
 
     config
