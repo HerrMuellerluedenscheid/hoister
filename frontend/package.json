@@ -27,7 +27,7 @@
     "@tailwindcss/vite": "^4.1.13",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22",
-    "@vitest/browser": "^3.2.4",
+    "@vitest/browser": "^4.1.8",
     "bits-ui": "^2.14.4",
     "clsx": "^2.1.1",
     "eslint": "^9.36.0",
@@ -47,7 +47,7 @@
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.44.1",
     "vite": "^7.3.2",
-    "vitest": "^3.2.4",
+    "vitest": "^4.1.8",
     "vitest-browser-svelte": "^1.1.0"
   },
   "dependencies": {
