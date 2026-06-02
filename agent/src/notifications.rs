@@ -36,6 +36,7 @@ impl DeploymentResultHandler {
         service: ServiceName,
         image: ImageName,
         digest: ImageDigest,
+        logs: Option<String>,
     ) {
         self.send(CreateDeployment {
             project,
@@ -44,6 +45,7 @@ impl DeploymentResultHandler {
             digest,
             status: DeploymentStatus::Failed,
             hostname: self.hostname.clone(),
+            logs,
         })
         .await;
     }
@@ -54,6 +56,7 @@ impl DeploymentResultHandler {
         service: ServiceName,
         image: ImageName,
         digest: ImageDigest,
+        logs: Option<String>,
     ) {
         self.send(CreateDeployment {
             project,
@@ -62,6 +65,7 @@ impl DeploymentResultHandler {
             digest,
             status: DeploymentStatus::RollbackFinished,
             hostname: self.hostname.clone(),
+            logs,
         })
         .await;
     }
@@ -80,6 +84,7 @@ impl DeploymentResultHandler {
             digest,
             status: DeploymentStatus::Success,
             hostname: self.hostname.clone(),
+            logs: None,
         })
         .await;
     }
@@ -344,10 +349,10 @@ mod tests {
 
         let (p, s, i, d) = sample_args();
         handler
-            .inform_container_failed(p.clone(), s.clone(), i.clone(), d.clone())
+            .inform_container_failed(p.clone(), s.clone(), i.clone(), d.clone(), None)
             .await;
         handler
-            .inform_rollback_complete(p.clone(), s.clone(), i.clone(), d.clone())
+            .inform_rollback_complete(p.clone(), s.clone(), i.clone(), d.clone(), None)
             .await;
         handler.inform_update_success(p, s, i, d).await;
         handler.test_message().await;
@@ -367,6 +372,7 @@ mod tests {
             digest: d,
             status: DeploymentStatus::Success,
             hostname: HostName::default(),
+            logs: None,
         };
         assert!(send_to_chatterbox(&msg, None).await.is_ok());
     }

@@ -125,6 +125,13 @@ pub struct CreateDeployment {
     pub digest: ImageDigest,
     pub status: DeploymentStatus,
     pub hostname: HostName,
+    /// Redacted log tail of the failed container, attached on rollback/failure
+    /// so the dashboard can show why an update was rolled back. `None` for
+    /// successful deployments and when the agent has not opted into log
+    /// forwarding (`HOISTER_REPORT_LOGS`). `#[serde(default)]` keeps older
+    /// agents that don't send this field wire-compatible.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logs: Option<String>,
 }
 
 impl Display for CreateDeployment {
@@ -152,6 +159,7 @@ impl CreateDeployment {
             digest: ImageDigest::new("sha256:tests"),
             status: DeploymentStatus::TestMessage,
             hostname: HostName::default(),
+            logs: None,
         }
     }
 

@@ -37,6 +37,10 @@ pub(crate) struct DockerHandler {
     deployment_handler: DeploymentResultHandler,
     registries: Option<Registry>,
     http_client: reqwest::Client,
+    /// Mirror of the `report_logs` config flag. When set, the rollback path
+    /// captures the failed container's log tail so it can be shown in the
+    /// deployments dashboard. Off by default — logs may contain secrets.
+    report_logs: bool,
 }
 
 struct VolumeBackup {
@@ -49,6 +53,7 @@ impl DockerHandler {
         deployment_handler: DeploymentResultHandler,
         registries: Option<Registry>,
         http_client: reqwest::Client,
+        report_logs: bool,
     ) -> Self {
         let docker = Docker::connect_with_local_defaults().unwrap();
         Self {
@@ -56,6 +61,7 @@ impl DockerHandler {
             deployment_handler,
             registries,
             http_client,
+            report_logs,
         }
     }
 
@@ -518,7 +524,10 @@ impl DockerHandler {
             .rename_container(container_id, rename_options)
             .await?;
 
-        let container = create_container(&self.docker, container_details).await?;
+        // Clone here so the inspect payload survives for log redaction if the
+        // new container fails its health check below (create_container consumes
+        // it).
+        let container = create_container(&self.docker, container_details.clone()).await?;
         debug!("Container created with ID: {}", container.id);
 
         self.docker
@@ -527,12 +536,36 @@ impl DockerHandler {
         info!("Container started");
 
         if let Err(_e) = check_container_health(&self.docker, &container.id).await {
+            // Capture the failed container's logs before we tear it down — once
+            // it's removed during rollback they're gone for good. Gated behind
+            // report_logs since logs can leak secrets. `container_details` holds
+            // the same config the new container was created from, so it carries
+            // the env values we redact against.
+            let failed_logs = if self.report_logs {
+                match crate::monitor::fetch_log_tail(
+                    &self.docker,
+                    &container.id,
+                    &container_details,
+                )
+                .await
+                {
+                    Ok(logs) => logs,
+                    Err(e) => {
+                        warn!("Failed to capture logs for rolled-back container: {e}");
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
             self.deployment_handler
                 .inform_container_failed(
                     project.clone(),
                     service_identifier.clone(),
                     old_image_name.clone(),
                     new_image_digest.clone(),
+                    failed_logs.clone(),
                 )
                 .await;
             warn!("New container failed, rolling back to previous version");
@@ -573,6 +606,7 @@ impl DockerHandler {
                     service_identifier.clone(),
                     old_image_name.clone(),
                     new_image_digest.clone(),
+                    failed_logs,
                 )
                 .await;
         } else {

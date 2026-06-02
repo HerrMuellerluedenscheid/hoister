@@ -148,7 +148,10 @@ fn should_fetch_logs(inspect: &ContainerInspectResponse) -> bool {
     )
 }
 
-async fn fetch_log_tail(
+/// Tail a container's logs (≤16 KB / 50 lines) and redact any values of
+/// sensitive env vars from `inspect`. Shared with the rollback path in
+/// `docker.rs`, which captures the failed container's logs before removing it.
+pub(crate) async fn fetch_log_tail(
     docker: &Docker,
     container_id: &str,
     inspect: &ContainerInspectResponse,
