@@ -2,10 +2,11 @@
 	import { invalidateAll } from '$app/navigation';
 	import { onDestroy, onMount } from 'svelte';
 	import Deployments from '$lib/components/Deployments.svelte';
+	import PendingUpdates from '$lib/components/PendingUpdates.svelte';
 	import TimeSeriesChart from '$lib/components/TimeSeriesChart.svelte';
 	import type { PageProps } from './$types';
 
-	let { data }: PageProps = $props();
+	let { data, form }: PageProps = $props();
 
 	const container = $derived(data.inspections?.container_inspections);
 	const deployments = $derived(data.deployments.slice(0, 8));
@@ -88,6 +89,15 @@
 				<p class="font-mono text-xs text-zinc-500">{container.Id}</p>
 				<p class="text-xs text-zinc-600">Last updated: {formatDate(last_updated)}</p>
 			</div>
+
+			{#if form?.applyError}
+				<div class="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-400">
+					<span class="font-medium">Deploy failed:</span>
+					{form.applyError}
+				</div>
+			{/if}
+
+			<PendingUpdates updates={data.pendingUpdate} compact />
 
 			{#if stale}
 				<div
