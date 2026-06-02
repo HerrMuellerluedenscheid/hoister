@@ -1,8 +1,9 @@
 <script lang="ts">
 	import Deployments from '$lib/components/Deployments.svelte';
+	import PendingUpdates from '$lib/components/PendingUpdates.svelte';
 	import type { PageProps } from './$types';
 
-	let { data }: PageProps = $props();
+	let { data, form }: PageProps = $props();
 
 	// Busiest containers first so the panel surfaces what's under load.
 	const metrics = $derived([...(data.latestMetrics ?? [])].sort((a, b) => b.cpu_pct - a.cpu_pct));
@@ -21,6 +22,15 @@
 
 <div class="space-y-10 px-4 py-6 sm:px-8 sm:py-10">
 	<h1 class="text-2xl font-bold">Dashboard</h1>
+
+	{#if form?.applyError}
+		<div class="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-400">
+			<span class="font-medium">Deploy failed:</span>
+			{form.applyError}
+		</div>
+	{/if}
+
+	<PendingUpdates updates={data.pendingUpdates} />
 
 	{#if data.tokenCount === 0}
 		<section class="rounded-xl border border-indigo-500/40 bg-indigo-500/10 p-5">
