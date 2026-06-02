@@ -28,3 +28,12 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+
+      # Catch new source files that `git commit -a` would silently skip
+      # (it stages tracked modifications only), which has broken CI builds.
+      - id: check-untracked-sources
+        name: check for untracked source files
+        entry: scripts/check-untracked-sources.sh
+        language: system
+        always_run: true
+        pass_filenames: false
