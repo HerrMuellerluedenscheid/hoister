@@ -37,3 +37,35 @@ export async function applyUpdate(
 	);
 	return response.ok;
 }
+
+export type ApplyActionResult =
+	| { ok: true; applied: { hostname: string; project_name: string; service_name: string } }
+	| { ok: false; status: number; error: string };
+
+/**
+ * Shared body for the `apply` SvelteKit form action used by the dashboard,
+ * containers list, and container detail pages. Validates the form fields and
+ * triggers the deployment on the controller.
+ */
+export async function applyActionFromForm(
+	userId: string,
+	formData: FormData
+): Promise<ApplyActionResult> {
+	const hostname = formData.get('hostname');
+	const project_name = formData.get('project_name');
+	const service_name = formData.get('service_name');
+
+	if (
+		typeof hostname !== 'string' ||
+		typeof project_name !== 'string' ||
+		typeof service_name !== 'string'
+	) {
+		return { ok: false, status: 400, error: 'Missing hostname / project / service' };
+	}
+
+	const applied = await applyUpdate(userId, hostname, project_name, service_name);
+	if (!applied) {
+		return { ok: false, status: 502, error: 'Controller rejected the deploy request' };
+	}
+	return { ok: true, applied: { hostname, project_name, service_name } };
+}
