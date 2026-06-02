@@ -19,6 +19,8 @@ pub struct CreateDeploymentRequest {
     pub image_digest: ImageDigest,
     pub deployment_status: DeploymentStatus,
     pub hostname: HostName,
+    /// Redacted log tail of the failed container on rollback/failure.
+    pub logs: Option<String>,
     /// Owning tenant. Always resolved by the auth middleware before the
     /// handler sees the request, so this is never `None`.
     pub user_id: String,
@@ -33,6 +35,7 @@ impl CreateDeploymentRequest {
             project_name: payload.project,
             deployment_status: payload.status,
             hostname: payload.hostname,
+            logs: payload.logs,
             user_id,
         }
     }
@@ -49,6 +52,8 @@ pub struct Deployment {
     pub service_name: ServiceName,
     pub project_name: ProjectName,
     pub hostname: HostName,
+    /// Redacted log tail captured on rollback/failure; `None` otherwise.
+    pub logs: Option<String>,
 }
 
 #[derive(Debug, Error)]

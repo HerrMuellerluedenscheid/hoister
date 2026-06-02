@@ -92,6 +92,7 @@ impl Postgresql {
                     d.status,
                     d.service_id,
                     d.created_at::text as created_at,
+                    d.logs,
                     s.name as service_name,
                     p.name as project_name,
                     COALESCE(h.hostname, 'unknown') as hostname
@@ -118,6 +119,7 @@ impl Postgresql {
                 service_name: ServiceName(row.get("service_name")),
                 project_name: ProjectName(row.get("project_name")),
                 hostname: HostName::new(row.get::<String, _>("hostname")),
+                logs: row.get("logs"),
             })
             .collect();
 
@@ -260,6 +262,7 @@ impl Postgresql {
                     d.status,
                     d.service_id,
                     d.created_at::text as created_at,
+                    d.logs,
                     s.name as service_name,
                     p.name as project_name,
                     COALESCE(h.hostname, 'unknown') as hostname
@@ -283,6 +286,7 @@ impl Postgresql {
             service_name: ServiceName(row.get("service_name")),
             project_name: ProjectName(row.get("project_name")),
             hostname: HostName::new(row.get::<String, _>("hostname")),
+            logs: row.get("logs"),
         };
 
         Ok(deployment)
@@ -304,6 +308,7 @@ impl Postgresql {
                     d.status,
                     d.service_id,
                     d.created_at::text as created_at,
+                    d.logs,
                     s.name as service_name,
                     p.name as project_name,
                     COALESCE(h.hostname, 'unknown') as hostname
@@ -330,6 +335,7 @@ impl Postgresql {
                 service_name: ServiceName(row.get("service_name")),
                 project_name: ProjectName(row.get("project_name")),
                 hostname: HostName::new(row.get::<String, _>("hostname")),
+                logs: row.get("logs"),
             })
             .collect();
 
@@ -357,12 +363,13 @@ impl Postgresql {
         }
 
         let result = sqlx::query(
-            "INSERT INTO deployment (digest, status, service_id, host_id) VALUES ($1, $2, $3, $4) RETURNING id",
+            "INSERT INTO deployment (digest, status, service_id, host_id, logs) VALUES ($1, $2, $3, $4, $5) RETURNING id",
         )
         .bind(req.image_digest.as_str())
         .bind(req.deployment_status.clone() as i16)
         .bind(service_id)
         .bind(&host_id)
+        .bind(req.logs.as_deref())
         .fetch_one(&self.pool)
         .await?;
 

@@ -5,4 +5,8 @@ import type { HostName } from "./HostName";
 import type { ProjectName } from "./ProjectName";
 import type { ServiceName } from "./ServiceName";
 
-export type Deployment = { id: DeploymentId, digest: string, status: DeploymentStatus, service_id: bigint, created_at: string, service_name: ServiceName, project_name: ProjectName, hostname: HostName, };
+export type Deployment = { id: DeploymentId, digest: string, status: DeploymentStatus, service_id: bigint, created_at: string, service_name: ServiceName, project_name: ProjectName, hostname: HostName, 
+/**
+ * Redacted log tail captured on rollback/failure; `None` otherwise.
+ */
+logs: string | null, };
