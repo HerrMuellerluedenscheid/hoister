@@ -108,6 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         result_handler,
         config.registry.clone(),
         http_client.clone(),
+        config.report_logs,
     ));
 
     let mut sse_handler = SSEHandler::new(docker.clone(), rx_sse, config.hostname.clone());

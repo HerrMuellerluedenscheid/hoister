@@ -2,6 +2,16 @@
 	import type { Deployment } from '../../bindings/Deployment';
 
 	let { data }: { data: Deployment[] } = $props();
+
+	// Track which deployments have their captured failed-container logs expanded.
+	let expanded = $state<Set<bigint>>(new Set());
+
+	function toggle(id: bigint) {
+		const next = new Set(expanded);
+		if (next.has(id)) next.delete(id);
+		else next.add(id);
+		expanded = next;
+	}
 </script>
 
 {#if data.length === 0}
@@ -71,11 +81,32 @@
 									<span class="text-zinc-400">{item.status}</span>
 								{/if}
 							</div>
+							{#if item.logs}
+								<button
+									type="button"
+									onclick={() => toggle(item.id)}
+									class="mt-2 text-xs text-indigo-400 hover:text-indigo-300"
+								>
+									{expanded.has(item.id) ? 'Hide logs' : 'View logs'}
+								</button>
+							{/if}
 						</td>
 						<td class="px-6 py-4 text-sm whitespace-nowrap text-zinc-500">
 							{item.created_at}
 						</td>
 					</tr>
+					{#if item.logs && expanded.has(item.id)}
+						<tr class="bg-zinc-950/60">
+							<td colspan="4" class="px-6 pb-4">
+								<p class="mb-2 text-xs text-zinc-500">
+									Failed container logs (tail). Secrets matching known sensitive env-var values are
+									redacted.
+								</p>
+								<pre
+									class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-zinc-200">{item.logs}</pre>
+							</td>
+						</tr>
+					{/if}
 				{/each}
 			</tbody>
 		</table>

@@ -155,6 +155,7 @@ mod tests {
             digest: ImageDigest::new("sha256:abc123"),
             status: DeploymentStatus::Pending,
             hostname: HostName::new("test-host"),
+            logs: None,
         };
 
         let response = agent
@@ -189,6 +190,7 @@ mod tests {
             image_digest: ImageDigest::new("sha256:abc123"),
             deployment_status: DeploymentStatus::Pending,
             hostname: HostName::new("test-host"),
+            logs: None,
             user_id: TEST_USER.to_string(),
         };
         database_service.create_deployment(&req).await.unwrap();

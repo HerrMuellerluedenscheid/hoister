@@ -75,6 +75,7 @@ impl Sqlite {
                     d.status,
                     d.service_id,
                     d.created_at,
+                    d.logs,
                     s.name as service_name,
                     p.name as project_name,
                     COALESCE(h.hostname, 'unknown') as hostname
@@ -101,6 +102,7 @@ impl Sqlite {
                 service_name: ServiceName(row.get("service_name")),
                 project_name: ProjectName(row.get("project_name")),
                 hostname: HostName::new(row.get::<String, _>("hostname")),
+                logs: row.get("logs"),
             })
             .collect();
 
@@ -242,6 +244,7 @@ impl Sqlite {
                     d.status,
                     d.service_id,
                     d.created_at,
+                    d.logs,
                     s.name as service_name,
                     p.name as project_name,
                     COALESCE(h.hostname, 'unknown') as hostname
@@ -265,6 +268,7 @@ impl Sqlite {
             service_name: ServiceName(row.get("service_name")),
             project_name: ProjectName(row.get("project_name")),
             hostname: HostName::new(row.get::<String, _>("hostname")),
+            logs: row.get("logs"),
         };
 
         Ok(deployment)
@@ -286,6 +290,7 @@ impl Sqlite {
                     d.status,
                     d.service_id,
                     d.created_at,
+                    d.logs,
                     s.name as service_name,
                     p.name as project_name,
                     COALESCE(h.hostname, 'unknown') as hostname
@@ -311,6 +316,7 @@ impl Sqlite {
                 service_name: ServiceName(row.get("service_name")),
                 project_name: ProjectName(row.get("project_name")),
                 hostname: HostName::new(row.get::<String, _>("hostname")),
+                logs: row.get("logs"),
             })
             .collect();
 
@@ -338,12 +344,13 @@ impl Sqlite {
         }
 
         let result = sqlx::query(
-            "INSERT INTO deployment (digest, status, service_id, host_id) VALUES (?, ?, ?, ?)",
+            "INSERT INTO deployment (digest, status, service_id, host_id, logs) VALUES (?, ?, ?, ?, ?)",
         )
         .bind(req.image_digest.as_str())
         .bind(&req.deployment_status)
         .bind(service_id)
         .bind(&host_id)
+        .bind(req.logs.as_deref())
         .execute(&self.pool)
         .await
         .expect("Failed to insert deployment");
