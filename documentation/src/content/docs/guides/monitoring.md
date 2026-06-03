@@ -56,12 +56,45 @@ sensitive (e.g. `*_TOKEN`, `*_PASSWORD`, `*_SECRET`) from the captured logs, but
 cannot guarantee that application-logged secrets are removed.
 :::
 
+## Secret redaction
+
+Before anything leaves the host, the agent scrubs sensitive data so it never reaches
+the controller:
+
+- **Environment variables** whose *key* looks sensitive have their value replaced.
+- **Forwarded logs** have any matching secret *values* replaced wherever they appear.
+
+A key is considered sensitive when it contains one of Hoister's built-in keywords —
+`password`, `passwd`, `pwd`, `secret`, `token`, `key`, `auth`, `credential`, `cred`,
+`apikey`, `api_key`, `username`, `user`, `session`, `cookie`, and the chat/webhook
+identifiers used by the notifiers (matching is case-insensitive). Redacted values are
+shown in the dashboard as a small **`🔒 redacted`** badge rather than the raw value.
+
+### Custom redaction keywords
+
+The built-in heuristic can't know about project-specific secrets (a `LICENSE`, a
+`PIN`, an internal `SEED`, …). Add your own keywords — they're loaded at startup and
+extend the built-in list:
+
+```toml title="hoister.toml"
+redact_keywords = ["license", "pin", "seed"]
+```
+
+```dotenv
+HOISTER_REDACT_KEYWORDS=license,pin,seed
+```
+
+Keywords are matched case-insensitively as substrings of the env-var key, so `license`
+also redacts `ACME_LICENSE_KEY`. The environment variable is comma-separated and is
+**added to** any list defined in the TOML file rather than replacing it.
+
 ## Quick reference
 
 | Setting | Default | TOML | Environment variable |
 | --- | --- | --- | --- |
 | Resource metrics | **on** | `report_metrics = false` | `HOISTER_REPORT_METRICS=false` |
 | Log forwarding | **off** | `report_logs = true` | `HOISTER_REPORT_LOGS=true` |
+| Extra redaction keywords | _(built-ins only)_ | `redact_keywords = ["license"]` | `HOISTER_REDACT_KEYWORDS=license` |
 
 Accepted boolean values for the environment variables are `true`/`1`/`yes`/`on` and
 `false`/`0`/`no`/`off`. When set, the environment variable overrides the TOML file.

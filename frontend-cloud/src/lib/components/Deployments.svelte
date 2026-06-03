@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Deployment } from '../../bindings/Deployment';
+	import RedactedText from './RedactedText.svelte';
 
 	let { data }: { data: Deployment[] } = $props();
 
@@ -103,7 +104,9 @@
 									redacted.
 								</p>
 								<pre
-									class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-zinc-200">{item.logs}</pre>
+									class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-zinc-200"><RedactedText
+										text={item.logs}
+									/></pre>
 							</td>
 						</tr>
 					{/if}

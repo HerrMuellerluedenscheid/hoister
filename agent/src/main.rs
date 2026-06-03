@@ -68,6 +68,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let config = Arc::new(config::load_config(config_path.as_ref()).await);
     let http_client = config::build_http_client(&config.controller);
 
+    // Register operator-supplied redaction keywords before any container is
+    // inspected, so custom secrets are scrubbed from the very first report.
+    monitor::init_extra_keywords(config.redact_keywords.clone());
+
     let (tx_notification, rx_notification) = mpsc::channel(32);
     let (tx_sse, rx_sse) = mpsc::channel(32);
 

@@ -186,6 +186,13 @@ pub(crate) struct Config {
     /// `report_metrics = false` in the config file or `HOISTER_REPORT_METRICS=false`.
     #[serde(default = "default_true")]
     pub(crate) report_metrics: bool,
+    /// Extra case-insensitive substrings that mark an env-var key as sensitive,
+    /// on top of the built-in heuristic list. Lets operators redact
+    /// project-specific secrets (e.g. `license`, `pin`) the defaults miss.
+    /// Set as a TOML array (`redact_keywords = ["license", "pin"]`) or as a
+    /// comma-separated `HOISTER_REDACT_KEYWORDS` env var. Loaded at startup.
+    #[serde(default)]
+    pub(crate) redact_keywords: Vec<String>,
     pub(crate) schedule: Schedule,
     pub(crate) registry: Option<Registry>,
     pub(crate) controller: Option<Controller>,
@@ -232,6 +239,17 @@ pub(crate) async fn load_config(config_path: &Path) -> Config {
     }
     if let Some(v) = env_bool("HOISTER_REPORT_METRICS") {
         config.report_metrics = v;
+    }
+
+    // `redact_keywords` is a list, which figment's split("_") env provider can't
+    // populate cleanly, so accept a comma-separated HOISTER_REDACT_KEYWORDS that
+    // extends whatever the config file declared.
+    if let Ok(raw) = std::env::var("HOISTER_REDACT_KEYWORDS") {
+        config.redact_keywords.extend(
+            raw.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
+        );
     }
 
     config

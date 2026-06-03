@@ -9,7 +9,7 @@ kind of setting:
 | Mechanism | Scope | Best for |
 | --- | --- | --- |
 | **Container labels** | Per container | Telling Hoister *which* containers to manage and how to treat each one (`hoister.enable`, `hoister.hide`, `hoister.identifier`, `hoister.backup-volumes`). |
-| **TOML config file** (`/hoister.toml`) | The whole agent | Everything else: update schedule, registries, notifications, controller connection, and behaviour flags like `auto_update`, `report_metrics`, and `report_logs`. |
+| **TOML config file** (`/hoister.toml`) | The whole agent | Everything else: update schedule, registries, notifications, controller connection, and behaviour flags like `auto_update`, `report_metrics`, `report_logs`, and `redact_keywords`. |
 | **Environment variables** (`HOISTER_*`) | The whole agent | The same agent-wide settings as the TOML file — handy for Docker Compose and secrets. |
 
 ## Container labels
