@@ -15,7 +15,10 @@ export default defineConfig({
 					items: [
 						// Each item here is one entry in the navigation menu.
 						{ label: 'Getting Started', slug: 'guides/getting-started' },
+						{ label: 'Configuring the agent', slug: 'guides/configuration' },
 						{ label: 'Operating modes', slug: 'guides/operating-modes' },
+						{ label: 'Metrics & log forwarding', slug: 'guides/monitoring' },
+						{ label: 'Manual rollout', slug: 'guides/manual-rollout' },
 						{ label: 'Notifications', slug: 'guides/notifications' },
 						{ label: 'Registries', slug: 'guides/registries' },
 						{ label: 'Dashboard', slug: 'guides/frontend' },
