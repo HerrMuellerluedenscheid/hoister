@@ -154,6 +154,18 @@ fn default_true() -> bool {
     true
 }
 
+/// Parse a boolean-ish environment variable. Returns `None` when the variable
+/// is unset (so the caller keeps the config-file / default value) and `Some`
+/// when it is set to a recognised truthy/falsy value.
+pub(crate) fn env_bool(name: &str) -> Option<bool> {
+    let raw = std::env::var(name).ok()?;
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => Some(true),
+        "false" | "0" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}
+
 #[derive(Deserialize, Debug, Clone)]
 pub(crate) struct Config {
     pub(crate) project: Option<ProjectName>,
@@ -170,10 +182,9 @@ pub(crate) struct Config {
     #[serde(default)]
     pub(crate) report_logs: bool,
     /// Collect per-container CPU/memory usage and forward it to the controller
-    /// for time-series graphing. Disabled by default — it adds a per-minute
-    /// stats call per container and ships resource figures off the host. Opt
-    /// in by setting `HOISTER_REPORT_METRICS=true`.
-    #[serde(default)]
+    /// for time-series graphing. Enabled by default. Disable it by setting
+    /// `report_metrics = false` in the config file or `HOISTER_REPORT_METRICS=false`.
+    #[serde(default = "default_true")]
     pub(crate) report_metrics: bool,
     pub(crate) schedule: Schedule,
     pub(crate) registry: Option<Registry>,
@@ -212,16 +223,15 @@ pub(crate) async fn load_config(config_path: &Path) -> Config {
         controller.ca_cert_path = std::env::var("HOISTER_CONTROLLER_CA_CERT_PATH").ok();
     }
 
-    // Same quirk for the top-level snake_case flags.
-    if !config.report_logs
-        && let Ok(v) = std::env::var("HOISTER_REPORT_LOGS")
-    {
-        config.report_logs = matches!(v.as_str(), "true" | "1" | "yes");
+    // Same quirk for the top-level snake_case flags: figment's split("_")
+    // mangles HOISTER_REPORT_LOGS / HOISTER_REPORT_METRICS, so read them here.
+    // When present the env var is authoritative (overrides the file/default),
+    // and may turn a setting either on or off.
+    if let Some(v) = env_bool("HOISTER_REPORT_LOGS") {
+        config.report_logs = v;
     }
-    if !config.report_metrics
-        && let Ok(v) = std::env::var("HOISTER_REPORT_METRICS")
-    {
-        config.report_metrics = matches!(v.as_str(), "true" | "1" | "yes");
+    if let Some(v) = env_bool("HOISTER_REPORT_METRICS") {
+        config.report_metrics = v;
     }
 
     config
@@ -288,6 +298,48 @@ mod tests {
                 "channel-name".to_string()
             );
 
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn test_report_metrics_defaults_on_and_can_be_disabled() {
+        use figment2::Jail;
+
+        // Default: metrics on, logs off.
+        Jail::expect_with(|jail: &mut Jail| {
+            jail.create_file("config-test.toml", "[schedule]\ninterval=10\n")?;
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let config = rt.block_on(load_config("config-test.toml".as_ref()));
+            assert!(config.report_metrics, "metrics should default to on");
+            assert!(!config.report_logs, "logs should default to off");
+            Ok(())
+        });
+
+        // Disable metrics via the config file.
+        Jail::expect_with(|jail: &mut Jail| {
+            jail.create_file(
+                "config-test.toml",
+                "report_metrics=false\n[schedule]\ninterval=10\n",
+            )?;
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let config = rt.block_on(load_config("config-test.toml".as_ref()));
+            assert!(
+                !config.report_metrics,
+                "report_metrics=false should disable"
+            );
+            Ok(())
+        });
+
+        // Env var overrides and can disable metrics / enable logs.
+        Jail::expect_with(|jail: &mut Jail| {
+            jail.create_file("config-test.toml", "[schedule]\ninterval=10\n")?;
+            jail.set_env("HOISTER_REPORT_METRICS", "false");
+            jail.set_env("HOISTER_REPORT_LOGS", "true");
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let config = rt.block_on(load_config("config-test.toml".as_ref()));
+            assert!(!config.report_metrics, "env should disable metrics");
+            assert!(config.report_logs, "env should enable logs");
             Ok(())
         });
     }

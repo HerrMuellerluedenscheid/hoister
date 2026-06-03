@@ -21,9 +21,11 @@ services:
     volumes:
       - controller-data:/data
     environment:
-      # Frontend runs in a sibling container, so the internal listener must
-      # accept connections from outside the controller's loopback.
-      HOISTER_CONTROLLER_INTERNAL_BIND_ADDR: "0.0.0.0"
+      # The self-hosted frontend talks to the agent router on :3033 only; the
+      # internal router (:3034) is unused here, so it stays bound to loopback
+      # (the default). If you ever expose it to a sibling container, you MUST
+      # also set HOISTER_CONTROLLER_INTERNAL_SECRET — the controller refuses to
+      # bind the internal listener to a non-loopback address without one.
 #      - ./certs:/certs:ro  # TLS: mount certs directory
 #       HOISTER_CONTROLLER_TLS_CERT_PATH: /certs/server.pem  # TLS: server certificate
 #       HOISTER_CONTROLLER_TLS_KEY_PATH: /certs/server-key.pem  # TLS: server private key
