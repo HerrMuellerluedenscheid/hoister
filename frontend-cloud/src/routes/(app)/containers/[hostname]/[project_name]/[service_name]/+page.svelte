@@ -179,9 +179,10 @@
 					</div>
 				{:else}
 					<p class="mt-2 text-sm text-zinc-500">
-						No metrics recorded yet. Enable <code class="rounded bg-zinc-800 px-1 py-0.5 font-mono"
-							>HOISTER_REPORT_METRICS=true</code
-						> on the agent to collect CPU and memory usage over time.
+						No metrics recorded yet. Metrics are collected by default; make sure the agent can reach
+						the controller and that this container isn't disabled with <code
+							class="rounded bg-zinc-800 px-1 py-0.5 font-mono">HOISTER_REPORT_METRICS=false</code
+						>.
 					</p>
 				{/if}
 			</section>
