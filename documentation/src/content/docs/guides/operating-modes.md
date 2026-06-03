@@ -76,8 +76,7 @@ frontend configuration.
 ## Standalone
 
 No controller, no dashboard, no telemetry. The agent watches its compose
-stack and updates containers locally — exactly the original Hoister
-behaviour.
+stack and updates containers locally.
 
 ```yaml title="docker-compose.yml"
 services:

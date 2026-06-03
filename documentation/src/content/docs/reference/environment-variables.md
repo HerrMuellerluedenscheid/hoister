@@ -3,7 +3,27 @@ title: Environment Variables
 description: How to configure Hoister using environment variables
 ---
 
-You can configure Hoister using environment variables.
+You can configure the agent's behaviour with `HOISTER_`-prefixed environment variables.
+These are one of [three ways to configure Hoister](/guides/configuration/) — alongside the
+[TOML config file](/reference/toml/) and per-container [labels](/reference/labels/). When a
+setting is given both here and in the TOML file, the environment variable wins.
+
+Nested TOML keys map to underscores: `[schedule] interval` becomes `HOISTER_SCHEDULE_INTERVAL`.
+
+## Agent behaviour
+
+```dotenv
+HOISTER_AUTO_UPDATE=true       # false = detect updates but don't apply them (manual rollout)
+HOISTER_REPORT_METRICS=true    # collect per-container CPU/memory metrics (on by default)
+HOISTER_REPORT_LOGS=false      # forward failed-container logs to the controller (off by default)
+```
+
+- `HOISTER_REPORT_METRICS` is **on by default**; set it to `false` to disable metrics collection.
+- `HOISTER_REPORT_LOGS` is **off by default**; set it to `true` to forward crash/rollback logs.
+- Both accept `true`/`1`/`yes`/`on` and `false`/`0`/`no`/`off`, and both require a controller.
+
+See the [Metrics & log forwarding guide](/guides/monitoring/) and the
+[Manual Rollout guide](/guides/manual-rollout/) for details.
 
 ## Slack Webhook Notification
 
@@ -41,7 +61,7 @@ HOISTER_DISPATCHER_EMAIL_RECIPIENT="user-to-be-informed-about-update@gmail.com"
 ## Schedule updates
 
 ```dotenv
-WATCH_INTERVAL=60   # in seconds
+HOISTER_SCHEDULE_INTERVAL=60   # in seconds
 ```
 
 If you want to define the update intervals using cron syntax, you can instead configure hoister using a [toml file](./toml.md).
