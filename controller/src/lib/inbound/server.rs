@@ -1254,7 +1254,7 @@ pub async fn create_internal_router<
     state: AppState<DS, CS, TS, NS, BS, MS>,
     internal_secret: InternalSecret,
 ) -> Router {
-    if internal_secret.0.is_none() {
+    if internal_secret.0.as_deref().unwrap_or_default().is_empty() {
         log::warn!(
             "Internal router has no X-Internal-Auth secret configured \
              (HOISTER_CONTROLLER_INTERNAL_SECRET). Only safe when the \

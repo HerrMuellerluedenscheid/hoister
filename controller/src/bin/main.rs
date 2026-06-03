@@ -24,11 +24,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (event_tx, _) = broadcast::channel::<UserScopedEvent>(100);
 
-    // HOISTER_CONTROLLER_TOKEN_PEPPER is the HMAC key for agent-token
-    // storage. Loud warning if missing — the resulting hashes degrade to
-    // unsalted SHA-256, acceptable only in local dev.
+    // HOISTER_CONTROLLER_TOKEN_PEPPER is the HMAC key for agent-token storage.
+    // Without it, hashes degrade to unsalted SHA-256, so a DB read alone is
+    // enough to verify a stolen token. The cloud build fails closed; the
+    // self-hosted build only warns (single-tenant local dev).
     let token_pepper = config.token_pepper.clone().unwrap_or_default();
     if token_pepper.is_empty() {
+        #[cfg(not(feature = "self-hosted"))]
+        return Err(
+            "Refusing to start: HOISTER_CONTROLLER_TOKEN_PEPPER is unset. Agent \
+             tokens would be stored under an unsalted SHA-256 hash, so a read of \
+             the database alone would be enough to verify a stolen token. Set \
+             the env var to a long random value."
+                .into(),
+        );
+
+        #[cfg(feature = "self-hosted")]
         warn!(
             "HOISTER_CONTROLLER_TOKEN_PEPPER is not set. Agent tokens will be \
              stored under an unsalted SHA-256 hash — a DB read alone is then \
@@ -85,7 +96,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         pending_updates,
         email,
     };
-    let internal_secret = InternalSecret(config.internal_secret.clone());
+    // Treat an empty secret as unset everywhere downstream (the middleware's
+    // X-Internal-Auth gate would otherwise just require an empty, trivially
+    // forged header).
+    let internal_secret = InternalSecret(config.internal_secret.clone().filter(|s| !s.is_empty()));
+
+    // Fail closed: the internal router trusts the caller-supplied X-User-Id
+    // header, so an X-Internal-Auth secret is the ONLY thing protecting it
+    // once it is reachable beyond loopback. If the listener binds to a
+    // non-loopback interface (e.g. 0.0.0.0 for a docker-compose sibling) we
+    // refuse to start without a secret rather than silently exposing every
+    // tenant to anything that can reach the port.
+    let bind_is_loopback = config
+        .internal_bind_addr
+        .parse::<std::net::IpAddr>()
+        .map(|ip| ip.is_loopback())
+        .unwrap_or(false);
+    if !bind_is_loopback && internal_secret.0.as_deref().unwrap_or_default().is_empty() {
+        return Err(format!(
+            "Refusing to start: internal listener binds to {addr} (non-loopback) \
+             but HOISTER_CONTROLLER_INTERNAL_SECRET is unset. Anything that can \
+             reach {addr}:{port} could impersonate any user via the X-User-Id \
+             header. Set a long random secret, or bind internal_bind_addr to \
+             127.0.0.1.",
+            addr = config.internal_bind_addr,
+            port = config.internal_port,
+        )
+        .into());
+    }
+
+    let internal_auth_enabled = internal_secret.0.is_some();
     let agent_app = create_agent_router(state.clone()).await;
     let internal_app = create_internal_router(state, internal_secret).await;
     info!(
@@ -111,8 +151,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })?;
 
     info!(
-        "Internal router on http://{}:{} (VPC-only, no auth)",
-        config.internal_bind_addr, config.internal_port
+        "Internal router on http://{}:{} ({})",
+        config.internal_bind_addr,
+        config.internal_port,
+        if internal_auth_enabled {
+            "X-Internal-Auth required"
+        } else {
+            "loopback-only, no auth"
+        }
     );
 
     let internal_server = async {
