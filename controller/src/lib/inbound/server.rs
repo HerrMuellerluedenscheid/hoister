@@ -1326,10 +1326,7 @@ pub async fn create_internal_router<
             "/deployments",
             get(get_deployments::<DS, CS, TS, NS, BS, MS>),
         )
-        .route(
-            "/billing/plan",
-            post(set_plan::<DS, CS, TS, NS, BS, MS>),
-        )
+        .route("/billing/plan", post(set_plan::<DS, CS, TS, NS, BS, MS>))
         .route(
             "/deployments/{project_name}/{service_name}",
             get(get_deployments_by_service::<DS, CS, TS, NS, BS, MS>),

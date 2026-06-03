@@ -12,7 +12,16 @@ use std::collections::HashMap;
 use std::time::Duration;
 use tokio::time;
 
-const SENSITIVE_KEYWORDS: &[&str] = &[
+/// Substring placed in env-var values and log output by the agent before
+/// anything leaves the host. Kept in sync with the frontend's `REDACTION_MARKER`
+/// (frontend/frontend-cloud `src/lib/redaction.ts`) so the UI can render it as a
+/// badge instead of literal asterisks.
+pub(crate) const REDACTION_MARKER: &str = "***REDACTED***";
+
+/// Built-in case-insensitive substrings that mark an env-var key as sensitive.
+/// Operators extend this at runtime via `redact_keywords` in the config; see
+/// [`init_extra_keywords`].
+const DEFAULT_SENSITIVE_KEYWORDS: &[&str] = &[
     "telegram_chat_id",
     "discord_channel_id",
     "slack_webhook",
@@ -32,6 +41,34 @@ const SENSITIVE_KEYWORDS: &[&str] = &[
     "session",
     "cookie",
 ];
+
+/// Operator-supplied extra keywords (already lower-cased), set once at startup
+/// from config. Empty until [`init_extra_keywords`] runs, so redaction always
+/// falls back to the built-in list.
+static EXTRA_SENSITIVE_KEYWORDS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+/// Register the operator-supplied redaction keywords loaded from config. Called
+/// once at startup; later calls are ignored. Entries are trimmed, lower-cased,
+/// and empties dropped so matching stays case-insensitive like the built-ins.
+pub(crate) fn init_extra_keywords(keywords: Vec<String>) {
+    let normalised = keywords
+        .into_iter()
+        .map(|k| k.trim().to_lowercase())
+        .filter(|k| !k.is_empty())
+        .collect();
+    let _ = EXTRA_SENSITIVE_KEYWORDS.set(normalised);
+}
+
+/// True when the (already lower-cased) env-var key contains any sensitive
+/// keyword, built-in or operator-supplied.
+fn key_is_sensitive(key_lower: &str) -> bool {
+    DEFAULT_SENSITIVE_KEYWORDS
+        .iter()
+        .any(|keyword| key_lower.contains(keyword))
+        || EXTRA_SENSITIVE_KEYWORDS
+            .get()
+            .is_some_and(|extra| extra.iter().any(|keyword| key_lower.contains(keyword)))
+}
 
 /// Max bytes of container log tail we ship to the controller. Cap is intentional:
 /// crash-loop logs are usually short, and we don't want a chatty container to
@@ -216,10 +253,7 @@ fn collect_sensitive_env_values(inspect: &ContainerInspectResponse) -> Vec<Strin
                 return None;
             }
             let key_lower = key.to_lowercase();
-            let is_sensitive = SENSITIVE_KEYWORDS
-                .iter()
-                .any(|keyword| key_lower.contains(keyword));
-            is_sensitive.then(|| value.to_string())
+            key_is_sensitive(&key_lower).then(|| value.to_string())
         })
         .collect()
 }
@@ -235,7 +269,7 @@ fn redact_values(haystack: &mut String, needles: &[String]) {
             continue;
         }
         if haystack.contains(needle.as_str()) {
-            *haystack = haystack.replace(needle.as_str(), "***REDACTED***");
+            *haystack = haystack.replace(needle.as_str(), REDACTION_MARKER);
         }
     }
 }
@@ -252,12 +286,8 @@ fn redact_credentials(inspect: &mut ContainerInspectResponse) {
                     let key_lower = key.to_lowercase();
 
                     // Check if the key contains any sensitive keyword
-                    let is_sensitive = SENSITIVE_KEYWORDS
-                        .iter()
-                        .any(|keyword| key_lower.contains(keyword));
-
-                    if is_sensitive {
-                        format!("{key}=***REDACTED***")
+                    if key_is_sensitive(&key_lower) {
+                        format!("{key}={REDACTION_MARKER}")
                     } else {
                         env_var.clone()
                     }
@@ -365,7 +395,7 @@ mod tests {
         );
         redact_values(&mut log, &values);
         assert!(!log.contains("super-secret-token-12345"));
-        assert!(log.contains("***REDACTED***"));
+        assert!(log.contains(REDACTION_MARKER));
     }
 
     #[test]
@@ -382,5 +412,17 @@ mod tests {
     fn collect_sensitive_env_values_ignores_benign_keys() {
         let inspect = inspect_with_env(vec!["PORT=8080", "HOSTNAME=foo"]);
         assert!(collect_sensitive_env_values(&inspect).is_empty());
+    }
+
+    #[test]
+    fn key_is_sensitive_matches_builtin_and_extra_keywords() {
+        // Built-in keyword matches regardless of operator config.
+        assert!(key_is_sensitive("database_password"));
+        // An otherwise-benign key only matches once it's registered as a custom
+        // keyword. `init_extra_keywords` sets a process-global OnceLock, so this
+        // also implicitly covers the case-insensitive normalisation.
+        assert!(!key_is_sensitive("acme_license_serial"));
+        init_extra_keywords(vec!["  LICENSE_Serial ".to_string(), String::new()]);
+        assert!(key_is_sensitive("acme_license_serial"));
     }
 }

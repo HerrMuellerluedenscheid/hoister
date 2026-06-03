@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ContainerPageData } from './+page.server';
   import Deployments from '$lib/components/Deployments.svelte';
+  import RedactedText from '$lib/components/RedactedText.svelte';
   import { invalidateAll } from '$app/navigation';
   import { onDestroy, onMount } from 'svelte';
 
@@ -61,7 +62,9 @@
     {#if stale}
       <div class="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-800">
         <p class="font-semibold">Stale data</p>
-        <p class="text-sm">This container has not reported in over a minute. The information below may be outdated.</p>
+        <p class="text-sm">
+          This container has not reported in over a minute. The information below may be outdated.
+        </p>
       </div>
     {/if}
 
@@ -139,8 +142,8 @@
         </div>
         {#if !container.State.Error && container.State.ExitCode !== 0}
           <p class="mt-3 text-sm text-red-700">
-            Docker did not report a startup error, so the container process exited on its own.
-            Check the container logs on the host for the cause.
+            Docker did not report a startup error, so the container process exited on its own. Check
+            the container logs on the host for the cause.
           </p>
         {/if}
       </div>
@@ -154,7 +157,9 @@
           known sensitive env-var values are redacted.
         </p>
         <pre
-          class="max-h-96 overflow-auto rounded bg-gray-900 p-4 font-mono text-xs leading-relaxed text-gray-100 whitespace-pre-wrap">{last_logs}</pre>
+          class="max-h-96 overflow-auto rounded bg-gray-900 p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-gray-100"><RedactedText
+            text={last_logs}
+          /></pre>
       </div>
     {/if}
 
@@ -173,7 +178,9 @@
             {container.State.Health.Status}
           </span>
           <span class="text-gray-600">
-            Failing streak: <span class="font-mono">{container.State.Health.FailingStreak ?? 0}</span>
+            Failing streak: <span class="font-mono"
+              >{container.State.Health.FailingStreak ?? 0}</span
+            >
           </span>
         </div>
         {#if container.State.Health.Log && container.State.Health.Log.length > 0}
@@ -241,7 +248,9 @@
             {@const value = valueParts.join('=')}
             <div class="flex items-start border-b py-2 last:border-b-0">
               <span class="w-64 flex-shrink-0 font-mono text-sm text-gray-600">{key}</span>
-              <span class="font-mono text-sm break-all text-gray-900">{value}</span>
+              <span class="font-mono text-sm break-all text-gray-900"
+                ><RedactedText text={value} /></span
+              >
             </div>
           {/if}
         {/each}

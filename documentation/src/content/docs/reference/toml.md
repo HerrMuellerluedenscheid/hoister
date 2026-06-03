@@ -10,6 +10,7 @@ Find an example below:
 auto_update = true      # set to false to only detect updates without applying them automatically
 report_metrics = true   # collect per-container CPU/memory metrics (on by default; set false to disable)
 report_logs = false     # forward failed-container logs to the controller (off by default)
+redact_keywords = ["license", "pin"]   # extra env-var key substrings to redact (on top of the built-ins)
 
 [schedule]
 cron="0 * * * * * *"
@@ -56,6 +57,16 @@ report_logs = true       # turn failure-log forwarding on
 ```
 
 Both require a controller to be configured. See the [Metrics & log forwarding guide](/guides/monitoring/) for details and the security note on logs.
+
+## Custom redaction keywords
+
+Hoister redacts environment-variable values whose key looks sensitive (e.g. `*_TOKEN`, `*_PASSWORD`, `*_SECRET`) before they reach the controller, and scrubs the same values out of forwarded logs. `redact_keywords` extends that built-in list with your own project-specific terms, loaded at startup:
+
+```toml title="hoister.toml"
+redact_keywords = ["license", "pin", "seed"]
+```
+
+Keywords are matched case-insensitively as substrings of the env-var key, so `license` also redacts `ACME_LICENSE_KEY`. The equivalent `HOISTER_REDACT_KEYWORDS` environment variable is comma-separated and is *added to* this list rather than replacing it. See the [Secret redaction section](/guides/monitoring/#secret-redaction) for the full built-in keyword list.
 
 ## Container labels
 

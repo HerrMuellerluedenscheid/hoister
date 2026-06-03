@@ -13,14 +13,18 @@ Nested TOML keys map to underscores: `[schedule] interval` becomes `HOISTER_SCHE
 ## Agent behaviour
 
 ```dotenv
-HOISTER_AUTO_UPDATE=true       # false = detect updates but don't apply them (manual rollout)
-HOISTER_REPORT_METRICS=true    # collect per-container CPU/memory metrics (on by default)
-HOISTER_REPORT_LOGS=false      # forward failed-container logs to the controller (off by default)
+HOISTER_AUTO_UPDATE=true              # false = detect updates but don't apply them (manual rollout)
+HOISTER_REPORT_METRICS=true           # collect per-container CPU/memory metrics (on by default)
+HOISTER_REPORT_LOGS=false             # forward failed-container logs to the controller (off by default)
+HOISTER_REDACT_KEYWORDS=license,pin   # extra env-var key substrings to redact (on top of the built-ins)
 ```
 
 - `HOISTER_REPORT_METRICS` is **on by default**; set it to `false` to disable metrics collection.
 - `HOISTER_REPORT_LOGS` is **off by default**; set it to `true` to forward crash/rollback logs.
 - Both accept `true`/`1`/`yes`/`on` and `false`/`0`/`no`/`off`, and both require a controller.
+- `HOISTER_REDACT_KEYWORDS` is a comma-separated list of extra keywords used to redact
+  sensitive env-var values and log secrets. It **adds to** the built-in list (and any
+  `redact_keywords` in the TOML file) rather than replacing it.
 
 See the [Metrics & log forwarding guide](/guides/monitoring/) and the
 [Manual Rollout guide](/guides/manual-rollout/) for details.

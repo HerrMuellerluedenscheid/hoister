@@ -3,6 +3,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import Deployments from '$lib/components/Deployments.svelte';
 	import PendingUpdates from '$lib/components/PendingUpdates.svelte';
+	import RedactedText from '$lib/components/RedactedText.svelte';
 	import TimeSeriesChart from '$lib/components/TimeSeriesChart.svelte';
 	import type { PageProps } from './$types';
 
@@ -232,7 +233,9 @@
 						known sensitive env-var values are redacted.
 					</p>
 					<pre
-						class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-zinc-200">{last_logs}</pre>
+						class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-zinc-200"><RedactedText
+							text={last_logs}
+						/></pre>
 				</section>
 			{/if}
 
@@ -326,7 +329,9 @@
 									<span class="font-mono text-xs break-all text-zinc-500 sm:w-64 sm:flex-shrink-0"
 										>{key}</span
 									>
-									<span class="font-mono text-xs break-all text-zinc-200">{value}</span>
+									<span class="font-mono text-xs break-all text-zinc-200"
+										><RedactedText text={value} /></span
+									>
 								</div>
 							{/if}
 						{/each}
