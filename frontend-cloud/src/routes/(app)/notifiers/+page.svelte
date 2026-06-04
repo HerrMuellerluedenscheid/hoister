@@ -10,7 +10,8 @@
 	// Slack is added via OAuth ("Add to Slack"), not the manual form below.
 	const ALL_KINDS: Array<{ value: NotifierKind; label: string }> = [
 		{ value: 'telegram', label: 'Telegram' },
-		{ value: 'discord', label: 'Discord' },
+		{ value: 'discord', label: 'Discord (bot)' },
+		{ value: 'discord_webhook', label: 'Discord (webhook)' },
 		{ value: 'gotify', label: 'Gotify' },
 		{ value: 'email', label: 'Email' }
 	];
@@ -42,6 +43,8 @@
 				return `chat ${n.config.chat_id}`;
 			case 'discord':
 				return `channel ${n.config.channel_id}`;
+			case 'discord_webhook':
+				return n.config.webhook_set ? 'webhook' : '—';
 			case 'gotify':
 				return n.config.server_host;
 			case 'email':
@@ -241,6 +244,20 @@
 						placeholder="Channel ID"
 						class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
 					/>
+				</div>
+			{:else if kind === 'discord_webhook'}
+				<div class="space-y-2">
+					<input
+						type="url"
+						name="webhook"
+						required
+						placeholder="https://discord.com/api/webhooks/…"
+						class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+					/>
+					<p class="text-xs text-zinc-500">
+						In Discord: Channel Settings → Integrations → Webhooks → New Webhook → Copy Webhook URL.
+						No bot needed; messages post as the webhook.
+					</p>
 				</div>
 			{:else if kind === 'gotify'}
 				<div class="grid gap-3 sm:grid-cols-2">

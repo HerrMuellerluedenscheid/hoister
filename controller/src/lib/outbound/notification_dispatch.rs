@@ -79,6 +79,7 @@ fn sender_for(
         slack: None,
         telegram: None,
         discord: None,
+        discord_webhook: None,
         gotify: None,
         email: None,
         resend: None,
@@ -101,6 +102,14 @@ fn sender_for(
                 bot_token: d.bot_token,
                 channel_id: d.channel_id,
             });
+        }
+        NotifierConfig::DiscordWebhook(d) => {
+            sender.discord_webhook =
+                Some(chatterbox::dispatcher::discord_webhook::DiscordWebhook {
+                    webhook_url: d.webhook,
+                    username: None,
+                    avatar_url: None,
+                });
         }
         NotifierConfig::Gotify(g) => {
             let server_url = url::Url::parse(&g.server)

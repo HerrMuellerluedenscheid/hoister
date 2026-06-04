@@ -4,12 +4,19 @@ import { backendHeaders } from './_headers';
 
 const BACKEND_URL = env.HOISTER_CONTROLLER_URL;
 
-export type NotifierKind = 'slack' | 'telegram' | 'discord' | 'gotify' | 'email';
+export type NotifierKind =
+	| 'slack'
+	| 'telegram'
+	| 'discord'
+	| 'discord_webhook'
+	| 'gotify'
+	| 'email';
 
 export type NotifierConfig =
 	| { kind: 'slack'; webhook: string; channel: string }
 	| { kind: 'telegram'; bot_token: string; chat_id: number }
 	| { kind: 'discord'; bot_token: string; channel_id: number }
+	| { kind: 'discord_webhook'; webhook: string }
 	| { kind: 'gotify'; server: string; token: string }
 	| { kind: 'email'; recipient: string };
 
@@ -23,6 +30,7 @@ export type NotifierSummaryConfig =
 	| { kind: 'slack'; channel: string; webhook_set: boolean }
 	| { kind: 'telegram'; chat_id: number; bot_token_set: boolean }
 	| { kind: 'discord'; channel_id: number; bot_token_set: boolean }
+	| { kind: 'discord_webhook'; webhook_set: boolean }
 	| { kind: 'gotify'; server_host: string; token_set: boolean }
 	| { kind: 'email'; recipient: string };
 

@@ -30,6 +30,14 @@ channel="channel-name"
 [dispatcher.discord]
 token="foo"
 channel="getsoverriddenbyenvvar"
+
+# Alternative to a bot token: post via a Discord incoming webhook. No bot
+# required; the target channel is fixed when you create the webhook. The
+# username/avatar_url overrides are optional.
+[dispatcher.discord_webhook]
+webhook="https://discord.com/api/webhooks/123456789/your-webhook-token"
+username="hoister"
+# avatar_url="https://example.com/icon.png"
 ```
 
 ## Disable automatic rollout
