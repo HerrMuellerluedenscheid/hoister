@@ -64,6 +64,7 @@ pub(crate) struct GcrRegistry {
 pub(crate) struct Dispatcher {
     pub(crate) telegram: Option<Telegram>,
     pub(crate) discord: Option<Discord>,
+    pub(crate) discord_webhook: Option<DiscordWebhook>,
     pub(crate) slack: Option<Slack>,
     pub(crate) gotify: Option<Gotify>,
     pub(crate) email: Option<Email>,
@@ -79,6 +80,17 @@ pub(crate) struct Telegram {
 pub(crate) struct Discord {
     pub(crate) token: BotToken,
     pub(crate) channel: ChannelId,
+}
+
+/// Discord delivery via an incoming webhook
+/// (`https://discord.com/api/webhooks/{id}/{token}`) — no bot token, and the
+/// target channel is fixed when the webhook is created. `username` and
+/// `avatar_url` optionally override the webhook's default identity.
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct DiscordWebhook {
+    pub(crate) webhook: Url,
+    pub(crate) username: Option<String>,
+    pub(crate) avatar_url: Option<Url>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -286,6 +298,10 @@ mod tests {
             [dispatcher.discord]
             token="foo"
             channel="getsoverriddenbyenvvar"
+
+            [dispatcher.discord_webhook]
+            webhook="https://discord.com/api/webhooks/123/abc"
+            username="hoister"
             "#,
             )?;
 
@@ -311,6 +327,12 @@ mod tests {
                 "discord_token".to_string()
             );
             assert_eq!(dispatcher.discord.as_ref().unwrap().channel, 123123,);
+            let webhook = dispatcher.discord_webhook.as_ref().unwrap();
+            assert_eq!(
+                webhook.webhook,
+                "https://discord.com/api/webhooks/123/abc".parse().unwrap()
+            );
+            assert_eq!(webhook.username.as_deref(), Some("hoister"));
             assert_eq!(
                 dispatcher.slack.as_ref().unwrap().channel,
                 "channel-name".to_string()

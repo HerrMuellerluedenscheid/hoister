@@ -30,7 +30,11 @@ impl Plan {
         match self {
             Plan::Free => PlanLimits {
                 max_projects: Some(2),
-                allowed_notifier_kinds: vec![NotifierKind::Telegram, NotifierKind::Discord],
+                allowed_notifier_kinds: vec![
+                    NotifierKind::Telegram,
+                    NotifierKind::Discord,
+                    NotifierKind::DiscordWebhook,
+                ],
             },
             Plan::Pro => PlanLimits {
                 max_projects: None,
@@ -38,6 +42,7 @@ impl Plan {
                     NotifierKind::Slack,
                     NotifierKind::Telegram,
                     NotifierKind::Discord,
+                    NotifierKind::DiscordWebhook,
                     NotifierKind::Gotify,
                     NotifierKind::Email,
                 ],

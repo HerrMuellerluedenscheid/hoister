@@ -39,6 +39,11 @@ function parseConfig(form: FormData): NotifierConfig | { error: string } {
 			}
 			return { kind: 'discord', bot_token, channel_id };
 		}
+		case 'discord_webhook': {
+			const webhook = requireString(form, 'webhook');
+			if (!webhook) return { error: 'Discord webhook: a webhook URL is required' };
+			return { kind: 'discord_webhook', webhook };
+		}
 		case 'gotify': {
 			const server = requireString(form, 'server');
 			const token = requireString(form, 'token');

@@ -265,6 +265,14 @@ pub(crate) fn setup_dispatcher(config: &Config) -> Option<Dispatcher> {
             channel_id: d.channel,
         }
     });
+    let discord_webhook = dispatcher_config.discord_webhook.map(|d| {
+        info!("Using Discord webhook dispatcher");
+        chatterbox::dispatcher::discord_webhook::DiscordWebhook {
+            webhook_url: d.webhook.to_string(),
+            username: d.username,
+            avatar_url: d.avatar_url.map(|u| u.to_string()),
+        }
+    });
 
     let gotify = dispatcher_config.gotify.map(|g| {
         info!("Using Gotify dispatcher");
@@ -291,6 +299,7 @@ pub(crate) fn setup_dispatcher(config: &Config) -> Option<Dispatcher> {
         slack,
         telegram,
         discord,
+        discord_webhook,
         gotify,
         email,
         // Resend is a hosted-controller delivery path; the standalone agent

@@ -10,6 +10,7 @@ pub enum NotifierKind {
     Slack,
     Telegram,
     Discord,
+    DiscordWebhook,
     Gotify,
     Email,
 }
@@ -20,6 +21,7 @@ impl NotifierKind {
             NotifierKind::Slack => "slack",
             NotifierKind::Telegram => "telegram",
             NotifierKind::Discord => "discord",
+            NotifierKind::DiscordWebhook => "discord_webhook",
             NotifierKind::Gotify => "gotify",
             NotifierKind::Email => "email",
         }
@@ -30,6 +32,7 @@ impl NotifierKind {
             "slack" => Some(Self::Slack),
             "telegram" => Some(Self::Telegram),
             "discord" => Some(Self::Discord),
+            "discord_webhook" => Some(Self::DiscordWebhook),
             "gotify" => Some(Self::Gotify),
             "email" => Some(Self::Email),
             _ => None,
@@ -47,6 +50,7 @@ pub enum NotifierConfig {
     Slack(SlackConfig),
     Telegram(TelegramConfig),
     Discord(DiscordConfig),
+    DiscordWebhook(DiscordWebhookConfig),
     Gotify(GotifyConfig),
     Email(EmailConfig),
 }
@@ -57,6 +61,7 @@ impl NotifierConfig {
             NotifierConfig::Slack(_) => NotifierKind::Slack,
             NotifierConfig::Telegram(_) => NotifierKind::Telegram,
             NotifierConfig::Discord(_) => NotifierKind::Discord,
+            NotifierConfig::DiscordWebhook(_) => NotifierKind::DiscordWebhook,
             NotifierConfig::Gotify(_) => NotifierKind::Gotify,
             NotifierConfig::Email(_) => NotifierKind::Email,
         }
@@ -79,6 +84,14 @@ pub struct TelegramConfig {
 pub struct DiscordConfig {
     pub bot_token: String,
     pub channel_id: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscordWebhookConfig {
+    /// Discord incoming-webhook URL
+    /// (`https://discord.com/api/webhooks/{id}/{token}`). The target channel
+    /// is fixed when the webhook is created; no bot token is involved.
+    pub webhook: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,6 +149,9 @@ pub enum NotifierSummaryConfig {
         channel_id: u64,
         bot_token_set: bool,
     },
+    DiscordWebhook {
+        webhook_set: bool,
+    },
     Gotify {
         /// Gotify server host (origin) only — query/path stripped so a
         /// custom auth path in the URL doesn't leak back to the browser.
@@ -161,6 +177,9 @@ impl From<&Notifier> for NotifierSummary {
             NotifierConfig::Discord(c) => NotifierSummaryConfig::Discord {
                 channel_id: c.channel_id,
                 bot_token_set: !c.bot_token.is_empty(),
+            },
+            NotifierConfig::DiscordWebhook(c) => NotifierSummaryConfig::DiscordWebhook {
+                webhook_set: !c.webhook.is_empty(),
             },
             NotifierConfig::Gotify(c) => NotifierSummaryConfig::Gotify {
                 server_host: gotify_host_only(&c.server),
