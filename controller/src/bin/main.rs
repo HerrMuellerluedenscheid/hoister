@@ -11,7 +11,6 @@ use controller::inbound::server::{
 use controller::outbound::Database;
 use controller::outbound::pending_updates_memory::PendingUpdatesMemory;
 use controller::sse::UserScopedEvent;
-use env_logger::Env;
 use log::{info, warn};
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -19,7 +18,17 @@ use tokio::sync::broadcast;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    // tracing-subscriber (not env_logger) so per-request spans propagate their
+    // fields — e.g. user_id from the audit middleware — onto every event logged
+    // while serving that request. `.init()` also installs the tracing-log
+    // bridge, so existing `log::` calls keep flowing. Honours RUST_LOG, default
+    // `info`, same as before.
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
     let config = get_config();
 
     let (event_tx, _) = broadcast::channel::<UserScopedEvent>(100);
