@@ -274,6 +274,13 @@ pub(crate) fn setup_dispatcher(config: &Config) -> Option<Dispatcher> {
         }
     });
 
+    let teams = dispatcher_config.teams.map(|t| {
+        info!("Using Teams webhook dispatcher");
+        chatterbox::dispatcher::teams::Teams {
+            webhook_url: t.webhook.to_string(),
+        }
+    });
+
     let gotify = dispatcher_config.gotify.map(|g| {
         info!("Using Gotify dispatcher");
         chatterbox::dispatcher::gotify::Gotify {
@@ -300,6 +307,7 @@ pub(crate) fn setup_dispatcher(config: &Config) -> Option<Dispatcher> {
         telegram,
         discord,
         discord_webhook,
+        teams,
         gotify,
         email,
         // Resend is a hosted-controller delivery path; the standalone agent

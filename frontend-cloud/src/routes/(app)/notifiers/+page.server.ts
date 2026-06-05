@@ -44,6 +44,11 @@ function parseConfig(form: FormData): NotifierConfig | { error: string } {
 			if (!webhook) return { error: 'Discord webhook: a webhook URL is required' };
 			return { kind: 'discord_webhook', webhook };
 		}
+		case 'teams': {
+			const webhook = requireString(form, 'webhook');
+			if (!webhook) return { error: 'Teams: a webhook URL is required' };
+			return { kind: 'teams', webhook };
+		}
 		case 'gotify': {
 			const server = requireString(form, 'server');
 			const token = requireString(form, 'token');

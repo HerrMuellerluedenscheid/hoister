@@ -80,6 +80,7 @@ fn sender_for(
         telegram: None,
         discord: None,
         discord_webhook: None,
+        teams: None,
         gotify: None,
         email: None,
         resend: None,
@@ -110,6 +111,11 @@ fn sender_for(
                     username: None,
                     avatar_url: None,
                 });
+        }
+        NotifierConfig::Teams(t) => {
+            sender.teams = Some(chatterbox::dispatcher::teams::Teams {
+                webhook_url: t.webhook,
+            });
         }
         NotifierConfig::Gotify(g) => {
             let server_url = url::Url::parse(&g.server)

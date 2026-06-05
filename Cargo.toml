@@ -11,6 +11,11 @@ tokio = { version = "1.44.2", features = ["rt", "rt-multi-thread", "macros", "fu
 log = "0.4.28"
 env_logger = "0.11.8"
 bollard = { version = "0.19.3", features = ["rustls"] }
-chatterbox = { version = "2.5.0" }
+chatterbox = { version = "2.6.0" }
 figment2 = { version = "0.11.4", features = ["toml"] }
 serde = { version = "1.0.228" }
+
+# chatterbox 2.6.0 (Teams dispatcher) is not on crates.io yet; build against
+# the local checkout until it is published. Remove once 2.6.0 is released.
+[patch.crates-io]
+chatterbox = { path = "../chatterbox" }

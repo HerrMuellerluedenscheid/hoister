@@ -12,6 +12,7 @@
 		{ value: 'telegram', label: 'Telegram' },
 		{ value: 'discord', label: 'Discord (bot)' },
 		{ value: 'discord_webhook', label: 'Discord (webhook)' },
+		{ value: 'teams', label: 'Microsoft Teams' },
 		{ value: 'gotify', label: 'Gotify' },
 		{ value: 'email', label: 'Email' }
 	];
@@ -44,6 +45,8 @@
 			case 'discord':
 				return `channel ${n.config.channel_id}`;
 			case 'discord_webhook':
+				return n.config.webhook_set ? 'webhook' : '—';
+			case 'teams':
 				return n.config.webhook_set ? 'webhook' : '—';
 			case 'gotify':
 				return n.config.server_host;
@@ -257,6 +260,21 @@
 					<p class="text-xs text-zinc-500">
 						In Discord: Channel Settings → Integrations → Webhooks → New Webhook → Copy Webhook URL.
 						No bot needed; messages post as the webhook.
+					</p>
+				</div>
+			{:else if kind === 'teams'}
+				<div class="space-y-2">
+					<input
+						type="url"
+						name="webhook"
+						required
+						placeholder="https://….webhook.office.com/webhookb2/…"
+						class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+					/>
+					<p class="text-xs text-zinc-500">
+						In Teams: channel → ⋯ → Workflows → "Post to a channel when a webhook request is
+						received" → copy the generated URL. No app registration needed; messages post as the
+						webhook.
 					</p>
 				</div>
 			{:else if kind === 'gotify'}

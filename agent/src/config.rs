@@ -65,6 +65,7 @@ pub(crate) struct Dispatcher {
     pub(crate) telegram: Option<Telegram>,
     pub(crate) discord: Option<Discord>,
     pub(crate) discord_webhook: Option<DiscordWebhook>,
+    pub(crate) teams: Option<Teams>,
     pub(crate) slack: Option<Slack>,
     pub(crate) gotify: Option<Gotify>,
     pub(crate) email: Option<Email>,
@@ -91,6 +92,14 @@ pub(crate) struct DiscordWebhook {
     pub(crate) webhook: Url,
     pub(crate) username: Option<String>,
     pub(crate) avatar_url: Option<Url>,
+}
+
+/// Microsoft Teams delivery via an incoming webhook — no app registration, and
+/// the target channel is fixed when the webhook is created. Works with both the
+/// Workflows (Power Automate) webhooks and the legacy connector webhooks.
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct Teams {
+    pub(crate) webhook: Url,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -302,6 +311,9 @@ mod tests {
             [dispatcher.discord_webhook]
             webhook="https://discord.com/api/webhooks/123/abc"
             username="hoister"
+
+            [dispatcher.teams]
+            webhook="https://example.webhook.office.com/webhookb2/abc/IncomingWebhook/def/ghi"
             "#,
             )?;
 
@@ -333,6 +345,12 @@ mod tests {
                 "https://discord.com/api/webhooks/123/abc".parse().unwrap()
             );
             assert_eq!(webhook.username.as_deref(), Some("hoister"));
+            assert_eq!(
+                dispatcher.teams.as_ref().unwrap().webhook,
+                "https://example.webhook.office.com/webhookb2/abc/IncomingWebhook/def/ghi"
+                    .parse()
+                    .unwrap()
+            );
             assert_eq!(
                 dispatcher.slack.as_ref().unwrap().channel,
                 "channel-name".to_string()
