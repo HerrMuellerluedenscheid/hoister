@@ -10,10 +10,7 @@ mod sse;
 use bollard::Docker;
 
 use bollard::query_parameters::EventsOptions;
-use log::{debug, info, warn};
-
-#[cfg(target_os = "linux")]
-use log::error;
+use log::{debug, error, info, warn};
 
 use bollard::errors::Error as BollardError;
 
@@ -123,8 +120,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     });
 
     let project_name = match &config.project {
-        None => get_project_name(&docker.docker).await?,
         Some(pn) => pn.clone(),
+        // `get_project_name` already retries in-process with backoff; only bail
+        // out once that is exhausted, with an actionable hint instead of a bare
+        // `ProjectNameDetectionFailed`.
+        None => match get_project_name(&docker.docker).await {
+            Ok(pn) => pn,
+            Err(e) => {
+                error!(
+                    "Could not determine the compose project after retrying: {e}. \
+                     Set HOISTER_PROJECT (or `project` in /hoister.toml) to configure it explicitly."
+                );
+                return Err(e);
+            }
+        },
     };
 
     if let Some(controller_config) = &config.controller {

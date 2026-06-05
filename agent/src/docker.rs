@@ -907,42 +907,143 @@ pub(crate) async fn get_service_identifier(
     unreachable!()
 }
 
+const PROJECT_LABEL: &str = "com.docker.compose.project";
+const AGENT_LABEL: &str = "io.hoister.container";
+
+/// Resolve the compose project the agent belongs to.
+///
+/// `HOISTER_PROJECT` is the deterministic, restart-proof path. When it is not
+/// set we auto-detect, which is inherently racy at startup/boot: the Docker
+/// daemon may not have the just-(re)started container fully indexed yet. To
+/// keep this from turning into a crash loop we retry in-process with a capped
+/// exponential backoff and try two independent strategies each round:
+///   1. identify the agent's *own* container directly (via its container id)
+///      and read the compose-project label off it, and
+///   2. fall back to listing containers carrying the agent label.
 pub(crate) async fn get_project_name(docker: &Docker) -> Result<ProjectName, Box<dyn Error>> {
+    const MAX_ATTEMPTS: u32 = 12;
+    const BASE_DELAY: Duration = Duration::from_millis(500);
+    const MAX_DELAY: Duration = Duration::from_secs(5);
+
     debug!("Detecting project name...");
     if let Ok(project_name) = env::var("HOISTER_PROJECT") {
         info!("Using project name from HOISTER_PROJECT: {project_name}");
         return Ok(ProjectName::new(project_name));
     }
 
+    warn!(
+        "HOISTER_PROJECT not set; auto-detecting the compose project from the agent's own \
+         container. Set HOISTER_PROJECT (or `project` in /hoister.toml) for a deterministic, \
+         restart-proof configuration."
+    );
+
+    for attempt in 0..MAX_ATTEMPTS {
+        // 1. Preferred: inspect our own container directly. Independent of the
+        //    io.hoister.container label being present and of list-query timing.
+        if let Some(project) = detect_project_from_self(docker).await {
+            info!("Detected project name from agent's own container: {project}");
+            return Ok(ProjectName::new(project));
+        }
+
+        // 2. Fallback: find a container carrying the agent label.
+        if let Some(project) = detect_project_from_agent_label(docker).await {
+            info!("Detected project name from hoister agent container: {project}");
+            return Ok(ProjectName::new(project));
+        }
+
+        if attempt + 1 < MAX_ATTEMPTS {
+            let delay = std::cmp::min(BASE_DELAY * 2u32.pow(attempt.min(4)), MAX_DELAY);
+            debug!(
+                "Project name not detected yet, retrying in {:?} ({}/{})...",
+                delay,
+                attempt + 1,
+                MAX_ATTEMPTS
+            );
+            tokio::time::sleep(delay).await;
+        }
+    }
+
+    Err(HoisterError::ProjectNameDetectionFailed.into())
+}
+
+/// Read the compose-project label off the agent's own container, identified by
+/// its container id. Returns `None` if the id can't be resolved, the inspect
+/// fails, or the container carries no compose-project label.
+async fn detect_project_from_self(docker: &Docker) -> Option<String> {
+    let own_id = own_container_id()?;
+    match docker
+        .inspect_container(&own_id, None::<InspectContainerOptions>)
+        .await
+    {
+        Ok(details) => details
+            .config
+            .and_then(|c| c.labels)
+            .and_then(|labels| labels.get(PROJECT_LABEL).cloned()),
+        Err(e) => {
+            debug!("Could not inspect own container {own_id}: {e}");
+            None
+        }
+    }
+}
+
+/// Find a container carrying the agent label and read the compose project off
+/// it. Deliberately lists every container (no status filter): the agent is
+/// alive by definition, and narrowing by status risks missing its own
+/// container during transient states (e.g. `restarting` after a host reboot).
+/// Prefers a match that actually carries the compose-project label over a blind
+/// `first()`, since a self-update can leave a labelled `<id>-backup` around.
+async fn detect_project_from_agent_label(docker: &Docker) -> Option<String> {
     let mut filters = HashMap::new();
-    filters.insert(
-        "label".to_string(),
-        vec!["io.hoister.container=agent".to_string()],
-    );
-    filters.insert(
-        "status".to_string(),
-        vec!["created".to_string(), "running".to_string()],
-    );
+    filters.insert("label".to_string(), vec![format!("{AGENT_LABEL}=agent")]);
     let options = ListContainersOptions {
+        all: true,
         filters: Some(filters),
         ..Default::default()
     };
 
-    let containers = docker.list_containers(Some(options)).await?;
+    let containers = match docker.list_containers(Some(options)).await {
+        Ok(c) => c,
+        Err(e) => {
+            debug!("Listing agent containers failed: {e}");
+            return None;
+        }
+    };
 
-    if let Some(container) = containers.first()
-        && let Some(labels) = &container.labels
-    {
-        debug!("Agent container labels: {labels:?}");
+    containers
+        .iter()
+        .filter_map(|c| c.labels.as_ref())
+        .find_map(|labels| labels.get(PROJECT_LABEL).cloned())
+}
 
-        if let Some(project) = labels.get("com.docker.compose.project") {
-            info!("Detected project name from hoister agent container: {project}");
-            return Ok(ProjectName::new(project));
-        } else {
-            warn!("Agent container found but missing com.docker.compose.project label");
+/// Best-effort resolution of the container id the agent is running in. Docker
+/// sets `HOSTNAME` to the container's short id unless the user overrides the
+/// hostname; `inspect_container` accepts an id prefix. Falls back to parsing
+/// the full id out of the cgroup/mountinfo for the override case.
+fn own_container_id() -> Option<String> {
+    if let Ok(hostname) = env::var("HOSTNAME") {
+        let hostname = hostname.trim();
+        if !hostname.is_empty() {
+            return Some(hostname.to_string());
         }
     }
-    Err(HoisterError::ProjectNameDetectionFailed.into())
+    for path in ["/proc/self/mountinfo", "/proc/self/cgroup"] {
+        if let Ok(content) = std::fs::read_to_string(path)
+            && let Some(id) = extract_container_id(&content)
+        {
+            return Some(id);
+        }
+    }
+    None
+}
+
+/// Scan cgroup/mountinfo text for a 64-hex-char container id. Splitting on
+/// every non-hexdigit isolates the id from surrounding path components
+/// (`/docker/containers/<id>/...`, `docker-<id>.scope`, etc.).
+fn extract_container_id(content: &str) -> Option<String> {
+    content
+        .split(|c: char| !c.is_ascii_hexdigit())
+        .find(|token| token.len() == 64)
+        .map(|s| s.to_string())
 }
 
 async fn create_container(
@@ -1174,6 +1275,35 @@ mod tests {
         .await
         .unwrap();
         assert!(credentials.is_none());
+    }
+
+    #[test]
+    fn extract_container_id_from_cgroup_v1() {
+        let id = "a".repeat(64);
+        let content = format!("12:devices:/docker/{id}\n11:cpu,cpuacct:/docker/{id}\n");
+        assert_eq!(extract_container_id(&content), Some(id));
+    }
+
+    #[test]
+    fn extract_container_id_from_systemd_scope() {
+        let id = "0123456789abcdef".repeat(4); // 64 hex chars
+        let content = format!("0::/system.slice/docker-{id}.scope\n");
+        assert_eq!(extract_container_id(&content), Some(id));
+    }
+
+    #[test]
+    fn extract_container_id_from_mountinfo() {
+        let id = "f".repeat(64);
+        let content =
+            format!("1234 1234 0:50 /docker/containers/{id}/resolv.conf /etc/resolv.conf rw\n");
+        assert_eq!(extract_container_id(&content), Some(id));
+    }
+
+    #[test]
+    fn extract_container_id_none_when_absent() {
+        // cgroup v2 on a plain host has no container id to find.
+        assert_eq!(extract_container_id("0::/\n"), None);
+        assert_eq!(extract_container_id("deadbeef"), None);
     }
 
     #[test]
