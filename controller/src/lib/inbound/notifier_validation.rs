@@ -9,6 +9,8 @@
 //! We validate at *create* time:
 //!   - Slack: webhook URL must be `https://hooks.slack.com/…`.
 //!   - Discord webhook: URL must be `https://discord.com/api/webhooks/…`.
+//!   - Teams webhook: host must be `*.webhook.office.com` or
+//!     `*.logic.azure.com` over `https://`.
 //!   - Gotify: server must be `https://`, hostname must resolve to a
 //!     public IP (no loopback, RFC1918, link-local, ULA, etc.).
 //!   - Email: recipient must be a syntactically valid address. Delivery is
@@ -57,8 +59,34 @@ pub async fn validate_config(config: &NotifierConfig) -> Result<(), ValidationEr
         NotifierConfig::Gotify(c) => validate_gotify(&c.server).await,
         NotifierConfig::Email(c) => validate_email_recipient(&c.recipient),
         NotifierConfig::DiscordWebhook(c) => validate_discord_webhook(&c.webhook),
+        NotifierConfig::Teams(c) => validate_teams_webhook(&c.webhook),
         NotifierConfig::Telegram(_) | NotifierConfig::Discord(_) => Ok(()),
     }
+}
+
+/// Microsoft Teams incoming webhooks come from a fixed set of Microsoft hosts:
+/// `*.webhook.office.com` for the legacy connectors and `*.logic.azure.com`
+/// for the Workflows (Power Automate) replacement. Pinning to those suffixes
+/// keeps the SSRF surface closed without a DNS/private-IP check, the same way
+/// we handle Slack and Discord webhooks. We match on the parsed host (not a
+/// string prefix) so a crafted path like `https://evil.com/.webhook.office.com`
+/// can't slip through.
+fn validate_teams_webhook(webhook: &str) -> Result<(), ValidationError> {
+    if webhook.is_empty() {
+        return Err(ValidationError::Empty("Teams webhook URL"));
+    }
+    let url = url::Url::parse(webhook).map_err(|_| ValidationError::InvalidUrl)?;
+    if url.scheme() != "https" {
+        return Err(ValidationError::NotHttps);
+    }
+    let host = url.host_str().ok_or(ValidationError::InvalidUrl)?;
+    let allowed = host.ends_with(".webhook.office.com") || host.ends_with(".logic.azure.com");
+    if !allowed {
+        return Err(ValidationError::UnsupportedDomain(
+            "Teams webhook must be on *.webhook.office.com or *.logic.azure.com",
+        ));
+    }
+    Ok(())
 }
 
 /// Discord incoming webhooks are always served from `discord.com`, so we
@@ -234,5 +262,26 @@ mod tests {
         assert!(validate_discord_webhook("http://discord.com/api/webhooks/123/abc").is_err());
         assert!(validate_discord_webhook("https://evil.example.com/api/webhooks/1/2").is_err());
         assert!(validate_discord_webhook("").is_err());
+    }
+
+    #[test]
+    fn teams_webhook_requires_microsoft_host() {
+        assert!(
+            validate_teams_webhook(
+                "https://example.webhook.office.com/webhookb2/a/IncomingWebhook/b/c"
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_teams_webhook(
+                "https://prod-12.westus.logic.azure.com/workflows/abc/triggers/x"
+            )
+            .is_ok()
+        );
+        assert!(validate_teams_webhook("http://example.webhook.office.com/webhookb2/a").is_err());
+        // A crafted path must not satisfy the host suffix check.
+        assert!(validate_teams_webhook("https://evil.example.com/.webhook.office.com").is_err());
+        assert!(validate_teams_webhook("https://webhook.office.com.evil.com/x").is_err());
+        assert!(validate_teams_webhook("").is_err());
     }
 }

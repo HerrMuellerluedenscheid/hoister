@@ -38,6 +38,12 @@ channel="getsoverriddenbyenvvar"
 webhook="https://discord.com/api/webhooks/123456789/your-webhook-token"
 username="hoister"
 # avatar_url="https://example.com/icon.png"
+
+# Microsoft Teams via an incoming webhook. No app registration; the target
+# channel is fixed when you create the webhook. Works with both the Workflows
+# (Power Automate) webhooks and the legacy connector webhooks.
+[dispatcher.teams]
+webhook="https://example.webhook.office.com/webhookb2/.../IncomingWebhook/.../..."
 ```
 
 ## Disable automatic rollout

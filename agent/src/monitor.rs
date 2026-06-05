@@ -142,7 +142,7 @@ async fn fetch_container_info(
                     // logs can contain secrets that keyword-based redaction
                     // doesn't catch.
                     let last_logs = if report_logs && should_fetch_logs(&inspect) {
-                        match fetch_log_tail(docker, container_id, &inspect).await {
+                        match fetch_log_tail(docker, container_id, &inspect, 0).await {
                             Ok(logs) => logs,
                             Err(e) => {
                                 warn!("Failed to fetch logs for {container_id}: {e}");
@@ -188,10 +188,18 @@ fn should_fetch_logs(inspect: &ContainerInspectResponse) -> bool {
 /// Tail a container's logs (≤16 KB / 50 lines) and redact any values of
 /// sensitive env vars from `inspect`. Shared with the rollback path in
 /// `docker.rs`, which captures the failed container's logs before removing it.
+///
+/// `since` is a Unix timestamp (seconds, `i32` as bollard requires); when set,
+/// only log lines emitted at
+/// or after it are returned. The rollback path uses this to fetch *only* the
+/// restored container's fresh post-restart output, since that container is the
+/// long-lived original and its tail would otherwise include stale pre-update
+/// lines. `0` returns the full tail.
 pub(crate) async fn fetch_log_tail(
     docker: &Docker,
     container_id: &str,
     inspect: &ContainerInspectResponse,
+    since: i32,
 ) -> Result<Option<String>, HoisterError> {
     let options = LogsOptionsBuilder::new()
         .stdout(true)
@@ -199,6 +207,7 @@ pub(crate) async fn fetch_log_tail(
         .tail(LOG_TAIL_LINES)
         .timestamps(true)
         .follow(false)
+        .since(since)
         .build();
 
     let mut stream = docker.logs(container_id, Some(options));

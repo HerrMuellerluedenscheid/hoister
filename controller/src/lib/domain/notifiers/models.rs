@@ -11,6 +11,7 @@ pub enum NotifierKind {
     Telegram,
     Discord,
     DiscordWebhook,
+    Teams,
     Gotify,
     Email,
 }
@@ -22,6 +23,7 @@ impl NotifierKind {
             NotifierKind::Telegram => "telegram",
             NotifierKind::Discord => "discord",
             NotifierKind::DiscordWebhook => "discord_webhook",
+            NotifierKind::Teams => "teams",
             NotifierKind::Gotify => "gotify",
             NotifierKind::Email => "email",
         }
@@ -33,6 +35,7 @@ impl NotifierKind {
             "telegram" => Some(Self::Telegram),
             "discord" => Some(Self::Discord),
             "discord_webhook" => Some(Self::DiscordWebhook),
+            "teams" => Some(Self::Teams),
             "gotify" => Some(Self::Gotify),
             "email" => Some(Self::Email),
             _ => None,
@@ -51,6 +54,7 @@ pub enum NotifierConfig {
     Telegram(TelegramConfig),
     Discord(DiscordConfig),
     DiscordWebhook(DiscordWebhookConfig),
+    Teams(TeamsConfig),
     Gotify(GotifyConfig),
     Email(EmailConfig),
 }
@@ -62,6 +66,7 @@ impl NotifierConfig {
             NotifierConfig::Telegram(_) => NotifierKind::Telegram,
             NotifierConfig::Discord(_) => NotifierKind::Discord,
             NotifierConfig::DiscordWebhook(_) => NotifierKind::DiscordWebhook,
+            NotifierConfig::Teams(_) => NotifierKind::Teams,
             NotifierConfig::Gotify(_) => NotifierKind::Gotify,
             NotifierConfig::Email(_) => NotifierKind::Email,
         }
@@ -91,6 +96,15 @@ pub struct DiscordWebhookConfig {
     /// Discord incoming-webhook URL
     /// (`https://discord.com/api/webhooks/{id}/{token}`). The target channel
     /// is fixed when the webhook is created; no bot token is involved.
+    pub webhook: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamsConfig {
+    /// Microsoft Teams incoming-webhook URL. The target channel is fixed when
+    /// the webhook is created; no app registration is involved. Works with both
+    /// Workflows (`*.logic.azure.com`) and legacy connector
+    /// (`*.webhook.office.com`) webhooks.
     pub webhook: String,
 }
 
@@ -152,6 +166,9 @@ pub enum NotifierSummaryConfig {
     DiscordWebhook {
         webhook_set: bool,
     },
+    Teams {
+        webhook_set: bool,
+    },
     Gotify {
         /// Gotify server host (origin) only — query/path stripped so a
         /// custom auth path in the URL doesn't leak back to the browser.
@@ -179,6 +196,9 @@ impl From<&Notifier> for NotifierSummary {
                 bot_token_set: !c.bot_token.is_empty(),
             },
             NotifierConfig::DiscordWebhook(c) => NotifierSummaryConfig::DiscordWebhook {
+                webhook_set: !c.webhook.is_empty(),
+            },
+            NotifierConfig::Teams(c) => NotifierSummaryConfig::Teams {
                 webhook_set: !c.webhook.is_empty(),
             },
             NotifierConfig::Gotify(c) => NotifierSummaryConfig::Gotify {

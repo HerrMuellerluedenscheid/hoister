@@ -546,6 +546,7 @@ impl DockerHandler {
                     &self.docker,
                     &container.id,
                     &container_details,
+                    0,
                 )
                 .await
                 {
@@ -596,17 +597,52 @@ impl DockerHandler {
                 .rename_container(&backup_name, rename_back_options)
                 .await?;
 
+            // Timestamp the restart so we can fetch *only* the restored
+            // container's fresh output below. It's the long-lived original
+            // (renamed back, not recreated), so without a `since` filter its
+            // tail would include stale pre-update lines.
+            let rollback_started_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i32)
+                .unwrap_or(0);
             self.docker
                 .start_container(container_id, None::<StartContainerOptions>)
                 .await?;
             info!("Rollback complete, old container restarted");
+
+            // Capture the restored container's fresh post-restart logs and
+            // concatenate them after the failure logs, so the rollback event
+            // tells the whole story: why the update failed, then what the
+            // rollback produced. `container_details` holds the restored
+            // container's config (renamed back, not recreated), so it carries
+            // the env values we redact against.
+            let restored_logs = if self.report_logs {
+                match crate::monitor::fetch_log_tail(
+                    &self.docker,
+                    container_id,
+                    &container_details,
+                    rollback_started_at,
+                )
+                .await
+                {
+                    Ok(logs) => logs,
+                    Err(e) => {
+                        warn!("Failed to capture logs for restored container: {e}");
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+            let rollback_logs = concat_failure_and_rollback(failed_logs, restored_logs);
+
             self.deployment_handler
                 .inform_rollback_complete(
                     project.clone(),
                     service_identifier.clone(),
                     old_image_name.clone(),
                     new_image_digest.clone(),
-                    failed_logs,
+                    rollback_logs,
                 )
                 .await;
         } else {
@@ -768,6 +804,29 @@ impl DockerHandler {
 ///     2) (if) in docker compose -> service name
 ///     3) else container name
 ///
+/// Combine the failed container's logs with the restored container's fresh
+/// post-rollback logs into a single annotated block for the rollback event, so
+/// the user sees why the update failed and what the rollback produced in one
+/// place. Returns `None` when neither section has content (e.g. logging opted
+/// out), and emits only the present sections otherwise.
+fn concat_failure_and_rollback(
+    failure_logs: Option<String>,
+    rollback_logs: Option<String>,
+) -> Option<String> {
+    let mut sections = Vec::new();
+    if let Some(logs) = failure_logs.filter(|l| !l.trim().is_empty()) {
+        sections.push(format!("=== failure ===\n{}", logs.trim_end()));
+    }
+    if let Some(logs) = rollback_logs.filter(|l| !l.trim().is_empty()) {
+        sections.push(format!("=== rollback ===\n{}", logs.trim_end()));
+    }
+    if sections.is_empty() {
+        None
+    } else {
+        Some(sections.join("\n\n"))
+    }
+}
+
 /// Retries inspection a few times to handle race conditions during Docker Compose startup
 /// where labels may not yet be available.
 pub(crate) async fn get_service_identifier(
@@ -1070,5 +1129,34 @@ mod tests {
         .await
         .unwrap();
         assert!(credentials.is_none());
+    }
+
+    #[test]
+    fn concat_includes_both_sections() {
+        let combined =
+            concat_failure_and_rollback(Some("boom".to_string()), Some("recovered".to_string()))
+                .unwrap();
+        assert_eq!(
+            combined,
+            "=== failure ===\nboom\n\n=== rollback ===\nrecovered"
+        );
+    }
+
+    #[test]
+    fn concat_emits_only_present_section() {
+        assert_eq!(
+            concat_failure_and_rollback(Some("boom".to_string()), None).unwrap(),
+            "=== failure ===\nboom"
+        );
+        assert_eq!(
+            concat_failure_and_rollback(None, Some("recovered".to_string())).unwrap(),
+            "=== rollback ===\nrecovered"
+        );
+    }
+
+    #[test]
+    fn concat_treats_blank_as_absent() {
+        assert!(concat_failure_and_rollback(None, None).is_none());
+        assert!(concat_failure_and_rollback(Some("   ".to_string()), None).is_none());
     }
 }

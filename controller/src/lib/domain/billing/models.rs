@@ -43,6 +43,7 @@ impl Plan {
                     NotifierKind::Telegram,
                     NotifierKind::Discord,
                     NotifierKind::DiscordWebhook,
+                    NotifierKind::Teams,
                     NotifierKind::Gotify,
                     NotifierKind::Email,
                 ],
