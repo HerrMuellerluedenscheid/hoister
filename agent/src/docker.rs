@@ -493,6 +493,20 @@ impl DockerHandler {
                         .ok_or(HoisterError::Docker("image id empty".to_string()))?,
                 )
             }
+            Err(e @ HoisterError::ImagePullFailed { .. }) => {
+                // Report the failed pull so the operator sees it in the
+                // dashboard instead of it only living in the agent logs.
+                warn!("{e}");
+                self.deployment_handler
+                    .inform_pull_failed(
+                        project.clone(),
+                        service_identifier.clone(),
+                        old_image_name.clone(),
+                        e.to_string(),
+                    )
+                    .await;
+                return Err(e);
+            }
             Err(e) => return Err(e),
         };
         debug!("Image pulled successfully ({new_image_digest:?})");
@@ -733,16 +747,33 @@ impl DockerHandler {
         );
 
         let (repo, tag) = image_name.split();
-        let digest = download_image(
+        let digest = match download_image(
             &self.docker,
             ImageName::new(repo),
             tag,
             self.registries.as_ref(),
             &self.http_client,
         )
-        .await?;
+        .await
+        {
+            Ok(digest) => digest,
+            Err(e @ HoisterError::ImagePullFailed { .. }) => {
+                // Report the failed pull so the operator sees it in the
+                // dashboard instead of it only living in the agent logs.
+                warn!("{e}");
+                self.deployment_handler
+                    .inform_pull_failed(
+                        project.clone(),
+                        service_name.clone(),
+                        image_name.clone(),
+                        e.to_string(),
+                    )
+                    .await;
+                return Err(e);
+            }
+            Err(e) => return Err(e),
+        };
 
-        let _ = project; // used for context only
         Ok((service_name, image_name, digest))
     }
 
@@ -970,6 +1001,9 @@ async fn download_image(
 
     let credentials = get_credentials(http_client, registries, &image_name).await?;
 
+    let full_image_name = format!("{}:{}", image_name.as_str(), image_tag);
+
+    let mut pull_error: Option<String> = None;
     let mut pull_stream = docker.create_image(Some(options), None, credentials);
     while let Some(result) = pull_stream.next().await {
         match result {
@@ -983,14 +1017,25 @@ async fn download_image(
                     update_available = true;
                 }
             }
-            Err(e) => error!("Error pulling image: {e:?}"),
+            Err(e) => {
+                error!("Error pulling image {full_image_name}: {e:?}");
+                pull_error = Some(e.to_string());
+            }
         }
+    }
+    // Surface a real pull failure (e.g. unauthorized, manifest not found)
+    // instead of masking it as "no update available", so the caller can report
+    // it to the controller/frontend.
+    if let Some(message) = pull_error {
+        return Err(HoisterError::ImagePullFailed {
+            image: full_image_name,
+            message,
+        });
     }
     if !update_available {
         return Err(HoisterError::NoUpdateAvailable);
     }
 
-    let full_image_name = format!("{}:{}", image_name.as_str(), image_tag);
     info!("New image pulled image name image tag: {full_image_name}");
     let image_info = docker
         .inspect_image(&full_image_name)

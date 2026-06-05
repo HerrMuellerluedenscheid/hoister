@@ -70,6 +70,29 @@ impl DeploymentResultHandler {
         .await;
     }
 
+    /// Report that pulling a new image failed (e.g. registry unauthorized,
+    /// manifest not found) so the dashboard can show the operator what went
+    /// wrong when checking for an update. No digest is known at this point, so
+    /// it is left empty and the error text is carried in `logs`.
+    pub(crate) async fn inform_pull_failed(
+        &self,
+        project: ProjectName,
+        service: ServiceName,
+        image: ImageName,
+        error: String,
+    ) {
+        self.send(CreateDeployment {
+            project,
+            service,
+            image,
+            digest: ImageDigest::new(String::new()),
+            status: DeploymentStatus::Failed,
+            hostname: self.hostname.clone(),
+            logs: Some(error),
+        })
+        .await;
+    }
+
     pub(crate) async fn inform_update_success(
         &self,
         project: ProjectName,

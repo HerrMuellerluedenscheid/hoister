@@ -76,6 +76,11 @@
                     <span>{item.status}</span>
                   {/if}
                 </div>
+                {#if item.status === 'Failed' && item.logs}
+                  <p class="mt-1 max-w-md font-mono text-xs break-all whitespace-pre-wrap text-red-700">
+                    {item.logs}
+                  </p>
+                {/if}
               </td>
               <td class="px-6 py-4 text-sm whitespace-nowrap text-gray-500">
                 {item.created_at}

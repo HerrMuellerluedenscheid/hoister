@@ -48,6 +48,8 @@ enum HoisterError {
     NoUpdateAvailable,
     #[error("update failed: {0}")]
     UpdateFailed(String),
+    #[error("failed to pull image {image}: {message}")]
+    ImagePullFailed { image: String, message: String },
     #[error(transparent)]
     BollardError(#[from] BollardError),
     #[error("Docker failed: {0}")]
