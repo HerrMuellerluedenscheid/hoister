@@ -5,9 +5,30 @@ use hoister_shared::{
     CreateDeployment, DeploymentStatus, HostName, ImageDigest, ImageName, ProjectName, ServiceName,
 };
 use log::{debug, error, info, warn};
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tokio::sync::broadcast::error::SendError;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
+
+/// A failed image pull recurs on every scheduled check (often once a minute)
+/// until the operator fixes the credentials or image reference. Reporting each
+/// one would write a `Failed` deployment row and fire every notifier every
+/// minute. Collapse repeated identical pull failures to at most one report per
+/// this interval; a successful update for the same service re-arms reporting.
+const PULL_FAILURE_REPORT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// Throttle key for a pull failure: the (project, service, image) it concerns.
+/// `ImageName` isn't `Hash`/`Eq`, so we fold the parts into one string.
+fn pull_failure_key(project: &ProjectName, service: &ServiceName, image: &ImageName) -> String {
+    format!(
+        "{}\u{0}{}\u{0}{}",
+        project.as_str(),
+        service.as_str(),
+        image.as_str()
+    )
+}
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, thiserror::Error)]
@@ -23,11 +44,19 @@ pub(crate) enum NotificationError {
 pub struct DeploymentResultHandler {
     tx: Sender<CreateDeployment>,
     hostname: HostName,
+    /// Last time a pull failure was reported, keyed by [`pull_failure_key`].
+    /// In-memory only: a restart re-arms reporting, which is acceptable since
+    /// it bounds notifications to roughly one per agent lifetime per failure.
+    pull_failure_last_reported: Mutex<HashMap<String, Instant>>,
 }
 
 impl DeploymentResultHandler {
     pub(crate) fn new(tx: Sender<CreateDeployment>, hostname: HostName) -> Self {
-        Self { tx, hostname }
+        Self {
+            tx,
+            hostname,
+            pull_failure_last_reported: Mutex::new(HashMap::new()),
+        }
     }
 
     pub(crate) async fn inform_container_failed(
@@ -81,6 +110,16 @@ impl DeploymentResultHandler {
         image: ImageName,
         error: String,
     ) {
+        if !self.should_report_pull_failure(&project, &service, &image) {
+            debug!(
+                "Suppressing repeated pull-failure report for {} / {} ({}); already reported within the last {}h",
+                project.as_str(),
+                service.as_str(),
+                image.as_str(),
+                PULL_FAILURE_REPORT_INTERVAL.as_secs() / 3600,
+            );
+            return;
+        }
         self.send(CreateDeployment {
             project,
             service,
@@ -93,6 +132,41 @@ impl DeploymentResultHandler {
         .await;
     }
 
+    /// Returns `true` when a pull failure for this (project, service, image) has
+    /// not been reported within [`PULL_FAILURE_REPORT_INTERVAL`], recording the
+    /// current time when it does. Collapses the per-check failure storm.
+    fn should_report_pull_failure(
+        &self,
+        project: &ProjectName,
+        service: &ServiceName,
+        image: &ImageName,
+    ) -> bool {
+        let key = pull_failure_key(project, service, image);
+        let now = Instant::now();
+        let mut last = self
+            .pull_failure_last_reported
+            .lock()
+            .expect("pull-failure throttle mutex poisoned");
+        match last.get(&key) {
+            Some(prev) if now.duration_since(*prev) < PULL_FAILURE_REPORT_INTERVAL => false,
+            _ => {
+                last.insert(key, now);
+                true
+            }
+        }
+    }
+
+    /// Forget any pull-failure throttle for this (project, service, image) so a
+    /// *new* failure after a recovery is reported promptly instead of being
+    /// silenced for the rest of the interval.
+    fn clear_pull_failure(&self, project: &ProjectName, service: &ServiceName, image: &ImageName) {
+        let key = pull_failure_key(project, service, image);
+        self.pull_failure_last_reported
+            .lock()
+            .expect("pull-failure throttle mutex poisoned")
+            .remove(&key);
+    }
+
     pub(crate) async fn inform_update_success(
         &self,
         project: ProjectName,
@@ -100,6 +174,9 @@ impl DeploymentResultHandler {
         image: ImageName,
         digest: ImageDigest,
     ) {
+        // A successful update means any prior registry/image problem is
+        // resolved; re-arm reporting so the next failure is not throttled.
+        self.clear_pull_failure(&project, &service, &image);
         self.send(CreateDeployment {
             project,
             service,
@@ -396,6 +473,71 @@ mod tests {
             .await;
         handler.inform_update_success(p, s, i, d).await;
         handler.test_message().await;
+    }
+
+    // A failed pull recurs on every scheduled check; only the first within the
+    // interval should be enqueued, otherwise the controller (and every
+    // notifier) is hit once a minute.
+    #[tokio::test]
+    async fn repeated_pull_failure_is_throttled_within_interval() {
+        let (handler, mut rx) = sample_handler();
+        let (p, s, i, _d) = sample_args();
+
+        handler
+            .inform_pull_failed(p.clone(), s.clone(), i.clone(), "unauthorized".into())
+            .await;
+        handler
+            .inform_pull_failed(p.clone(), s.clone(), i.clone(), "unauthorized".into())
+            .await;
+
+        assert!(rx.try_recv().is_ok(), "first failure should be reported");
+        assert!(
+            rx.try_recv().is_err(),
+            "second identical failure within the interval should be suppressed"
+        );
+    }
+
+    // Distinct services failing must each be reported — the throttle is keyed
+    // per (project, service, image), not global.
+    #[tokio::test]
+    async fn pull_failures_for_different_services_are_reported() {
+        let (handler, mut rx) = sample_handler();
+        let (p, _s, i, _d) = sample_args();
+
+        handler
+            .inform_pull_failed(p.clone(), ServiceName::new("a"), i.clone(), "x".into())
+            .await;
+        handler
+            .inform_pull_failed(p.clone(), ServiceName::new("b"), i.clone(), "x".into())
+            .await;
+
+        assert!(rx.try_recv().is_ok());
+        assert!(rx.try_recv().is_ok());
+    }
+
+    // A successful update re-arms reporting so a genuinely new failure after a
+    // recovery is not silenced for the rest of the interval.
+    #[tokio::test]
+    async fn successful_update_rearms_pull_failure_reporting() {
+        let (handler, mut rx) = sample_handler();
+        let (p, s, i, d) = sample_args();
+
+        handler
+            .inform_pull_failed(p.clone(), s.clone(), i.clone(), "unauthorized".into())
+            .await;
+        let _ = rx.try_recv(); // consume the failure
+        handler
+            .inform_update_success(p.clone(), s.clone(), i.clone(), d)
+            .await;
+        let _ = rx.try_recv(); // consume the success
+
+        handler
+            .inform_pull_failed(p, s, i, "unauthorized".into())
+            .await;
+        assert!(
+            rx.try_recv().is_ok(),
+            "a failure after a successful update should be reported again"
+        );
     }
 
     // Regression for the silent break in main.rs: with no chatterbox
