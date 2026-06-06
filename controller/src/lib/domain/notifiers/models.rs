@@ -14,6 +14,10 @@ pub enum NotifierKind {
     Teams,
     Gotify,
     Email,
+    Ntfy,
+    Pushover,
+    Matrix,
+    Webhook,
 }
 
 impl NotifierKind {
@@ -26,6 +30,10 @@ impl NotifierKind {
             NotifierKind::Teams => "teams",
             NotifierKind::Gotify => "gotify",
             NotifierKind::Email => "email",
+            NotifierKind::Ntfy => "ntfy",
+            NotifierKind::Pushover => "pushover",
+            NotifierKind::Matrix => "matrix",
+            NotifierKind::Webhook => "webhook",
         }
     }
 
@@ -38,6 +46,10 @@ impl NotifierKind {
             "teams" => Some(Self::Teams),
             "gotify" => Some(Self::Gotify),
             "email" => Some(Self::Email),
+            "ntfy" => Some(Self::Ntfy),
+            "pushover" => Some(Self::Pushover),
+            "matrix" => Some(Self::Matrix),
+            "webhook" => Some(Self::Webhook),
             _ => None,
         }
     }
@@ -57,6 +69,10 @@ pub enum NotifierConfig {
     Teams(TeamsConfig),
     Gotify(GotifyConfig),
     Email(EmailConfig),
+    Ntfy(NtfyConfig),
+    Pushover(PushoverConfig),
+    Matrix(MatrixConfig),
+    Webhook(WebhookConfig),
 }
 
 impl NotifierConfig {
@@ -69,6 +85,10 @@ impl NotifierConfig {
             NotifierConfig::Teams(_) => NotifierKind::Teams,
             NotifierConfig::Gotify(_) => NotifierKind::Gotify,
             NotifierConfig::Email(_) => NotifierKind::Email,
+            NotifierConfig::Ntfy(_) => NotifierKind::Ntfy,
+            NotifierConfig::Pushover(_) => NotifierKind::Pushover,
+            NotifierConfig::Matrix(_) => NotifierKind::Matrix,
+            NotifierConfig::Webhook(_) => NotifierKind::Webhook,
         }
     }
 }
@@ -120,6 +140,45 @@ pub struct EmailConfig {
     /// credentials are controller-wide (Resend) and supplied via env, so
     /// users no longer enter SMTP details per notifier.
     pub recipient: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NtfyConfig {
+    /// Base URL of the ntfy server (e.g. `https://ntfy.sh`). User-supplied, so
+    /// SSRF-validated at create time.
+    pub server: String,
+    pub topic: String,
+    /// Optional access token for reserved/protected topics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_token: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PushoverConfig {
+    /// Application API token and recipient user/group key. Delivery is to
+    /// Pushover's fixed API host, so there is no user-supplied host to check.
+    pub token: String,
+    pub user: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MatrixConfig {
+    /// Homeserver base URL (e.g. `https://matrix.org`). User-supplied, so
+    /// SSRF-validated at create time.
+    pub homeserver: String,
+    pub access_token: String,
+    pub room_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookConfig {
+    /// Arbitrary HTTP endpoint to POST events to. User-supplied, so
+    /// SSRF-validated at create time. Headers carry auth and are secret.
+    pub url: String,
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub headers: std::collections::HashMap<String, String>,
 }
 
 /// A persisted notifier. The full `config` (with secrets) stays
@@ -178,6 +237,30 @@ pub enum NotifierSummaryConfig {
     Email {
         recipient: String,
     },
+    Ntfy {
+        /// ntfy server host (origin) only — path/query stripped.
+        server_host: String,
+        topic: String,
+        access_token_set: bool,
+    },
+    Pushover {
+        token_set: bool,
+        user_set: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        device: Option<String>,
+    },
+    Matrix {
+        /// Homeserver host (origin) only — path/query stripped.
+        homeserver_host: String,
+        room_id: String,
+        access_token_set: bool,
+    },
+    Webhook {
+        /// Endpoint host (origin) only — path/query stripped so URL-embedded
+        /// secrets don't leak back to the browser.
+        url_host: String,
+        headers_set: bool,
+    },
 }
 
 impl From<&Notifier> for NotifierSummary {
@@ -202,11 +285,30 @@ impl From<&Notifier> for NotifierSummary {
                 webhook_set: !c.webhook.is_empty(),
             },
             NotifierConfig::Gotify(c) => NotifierSummaryConfig::Gotify {
-                server_host: gotify_host_only(&c.server),
+                server_host: url_host_only(&c.server),
                 token_set: !c.token.is_empty(),
             },
             NotifierConfig::Email(c) => NotifierSummaryConfig::Email {
                 recipient: c.recipient.clone(),
+            },
+            NotifierConfig::Ntfy(c) => NotifierSummaryConfig::Ntfy {
+                server_host: url_host_only(&c.server),
+                topic: c.topic.clone(),
+                access_token_set: c.access_token.as_ref().is_some_and(|t| !t.is_empty()),
+            },
+            NotifierConfig::Pushover(c) => NotifierSummaryConfig::Pushover {
+                token_set: !c.token.is_empty(),
+                user_set: !c.user.is_empty(),
+                device: c.device.clone().filter(|d| !d.is_empty()),
+            },
+            NotifierConfig::Matrix(c) => NotifierSummaryConfig::Matrix {
+                homeserver_host: url_host_only(&c.homeserver),
+                room_id: c.room_id.clone(),
+                access_token_set: !c.access_token.is_empty(),
+            },
+            NotifierConfig::Webhook(c) => NotifierSummaryConfig::Webhook {
+                url_host: url_host_only(&c.url),
+                headers_set: !c.headers.is_empty(),
             },
         };
         Self {
@@ -219,7 +321,10 @@ impl From<&Notifier> for NotifierSummary {
     }
 }
 
-fn gotify_host_only(raw: &str) -> String {
+/// Reduce a URL to `scheme://host[:port]`, dropping path/query so a
+/// custom auth path or URL-embedded secret never leaks back to the browser in
+/// a notifier summary. Falls back to the raw string when it doesn't parse.
+fn url_host_only(raw: &str) -> String {
     match url::Url::parse(raw) {
         Ok(u) => {
             let scheme = u.scheme();
@@ -242,4 +347,82 @@ pub enum NotifierError {
     InvalidConfig(String),
     #[error("Unknown error")]
     UnknownError,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn notifier(kind: NotifierKind, config: NotifierConfig) -> Notifier {
+        Notifier {
+            id: 1,
+            user_id: "u".into(),
+            kind,
+            config,
+            enabled: true,
+            created_at: "now".into(),
+        }
+    }
+
+    // The summary is the only notifier shape the browser receives. Secrets
+    // (webhook URL path/query, auth headers, ntfy access token) must never
+    // appear in it — only host + `*_set` markers.
+    #[test]
+    fn webhook_summary_strips_url_path_and_hides_headers() {
+        let mut headers = std::collections::HashMap::new();
+        headers.insert("Authorization".to_string(), "Bearer s3cret".to_string());
+        let n = notifier(
+            NotifierKind::Webhook,
+            NotifierConfig::Webhook(WebhookConfig {
+                url: "https://example.com/hooks/abc?token=s3cret".to_string(),
+                headers,
+            }),
+        );
+        match NotifierSummary::from(&n).config {
+            NotifierSummaryConfig::Webhook {
+                url_host,
+                headers_set,
+            } => {
+                assert_eq!(url_host, "https://example.com");
+                assert!(headers_set);
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ntfy_summary_marks_token_set_without_leaking_it() {
+        let n = notifier(
+            NotifierKind::Ntfy,
+            NotifierConfig::Ntfy(NtfyConfig {
+                server: "https://ntfy.sh/some/path".to_string(),
+                topic: "alerts".to_string(),
+                access_token: Some("tk_secret".to_string()),
+            }),
+        );
+        match NotifierSummary::from(&n).config {
+            NotifierSummaryConfig::Ntfy {
+                server_host,
+                topic,
+                access_token_set,
+            } => {
+                assert_eq!(server_host, "https://ntfy.sh");
+                assert_eq!(topic, "alerts");
+                assert!(access_token_set);
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn kind_roundtrips_through_str_for_new_kinds() {
+        for k in [
+            NotifierKind::Ntfy,
+            NotifierKind::Pushover,
+            NotifierKind::Matrix,
+            NotifierKind::Webhook,
+        ] {
+            assert_eq!(NotifierKind::parse(k.as_str()), Some(k));
+        }
+    }
 }

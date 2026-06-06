@@ -14,7 +14,11 @@
 		{ value: 'discord_webhook', label: 'Discord (webhook)' },
 		{ value: 'teams', label: 'Microsoft Teams' },
 		{ value: 'gotify', label: 'Gotify' },
-		{ value: 'email', label: 'Email' }
+		{ value: 'email', label: 'Email' },
+		{ value: 'ntfy', label: 'ntfy' },
+		{ value: 'pushover', label: 'Pushover' },
+		{ value: 'matrix', label: 'Matrix' },
+		{ value: 'webhook', label: 'Webhook' }
 	];
 	const allowed = $derived<Set<NotifierKind>>(
 		new Set(data.me?.limits.allowed_notifier_kinds ?? ['slack', ...ALL_KINDS.map((k) => k.value)])
@@ -52,6 +56,14 @@
 				return n.config.server_host;
 			case 'email':
 				return n.config.recipient;
+			case 'ntfy':
+				return `${n.config.topic} @ ${n.config.server_host}`;
+			case 'pushover':
+				return n.config.device ? `device ${n.config.device}` : 'pushover';
+			case 'matrix':
+				return `${n.config.room_id} @ ${n.config.homeserver_host}`;
+			case 'webhook':
+				return n.config.url_host;
 		}
 	}
 </script>
@@ -306,6 +318,110 @@
 					<p class="text-xs text-zinc-500">
 						Deployment alerts are sent to this address from Hoister's mail server — no SMTP
 						credentials needed.
+					</p>
+				</div>
+			{:else if kind === 'ntfy'}
+				<div class="space-y-3">
+					<div class="grid gap-3 sm:grid-cols-2">
+						<input
+							type="url"
+							name="server"
+							required
+							placeholder="https://ntfy.sh"
+							class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+						/>
+						<input
+							type="text"
+							name="topic"
+							required
+							placeholder="Topic"
+							class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+						/>
+					</div>
+					<input
+						type="text"
+						name="access_token"
+						placeholder="Access token (optional, for protected topics)"
+						class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+					/>
+					<p class="text-xs text-zinc-500">
+						Server must be reachable over https. Anyone who knows an unprotected topic can read it —
+						treat it like a weak secret.
+					</p>
+				</div>
+			{:else if kind === 'pushover'}
+				<div class="space-y-3">
+					<div class="grid gap-3 sm:grid-cols-2">
+						<input
+							type="text"
+							name="token"
+							required
+							placeholder="Application API token"
+							class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+						/>
+						<input
+							type="text"
+							name="user"
+							required
+							placeholder="User or group key"
+							class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+						/>
+					</div>
+					<input
+						type="text"
+						name="device"
+						placeholder="Device name (optional — defaults to all devices)"
+						class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+					/>
+				</div>
+			{:else if kind === 'matrix'}
+				<div class="space-y-3">
+					<input
+						type="url"
+						name="homeserver"
+						required
+						placeholder="https://matrix.org"
+						class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+					/>
+					<div class="grid gap-3 sm:grid-cols-2">
+						<input
+							type="text"
+							name="access_token"
+							required
+							placeholder="Access token"
+							class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+						/>
+						<input
+							type="text"
+							name="room_id"
+							required
+							placeholder="!roomid:matrix.org"
+							class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+						/>
+					</div>
+					<p class="text-xs text-zinc-500">
+						Use a bot/user access token that has already joined the target room. Homeserver must be
+						reachable over https.
+					</p>
+				</div>
+			{:else if kind === 'webhook'}
+				<div class="space-y-2">
+					<input
+						type="url"
+						name="url"
+						required
+						placeholder="https://example.com/hooks/hoister"
+						class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+					/>
+					<textarea
+						name="headers"
+						rows="2"
+						placeholder="Optional headers, one per line — e.g. Authorization: Bearer xxxxx"
+						class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-100 placeholder:text-zinc-500"
+					></textarea>
+					<p class="text-xs text-zinc-500">
+						Hoister POSTs each event as JSON. The endpoint must be https and resolve to a public
+						address.
 					</p>
 				</div>
 			{/if}

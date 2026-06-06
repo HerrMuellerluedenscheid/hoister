@@ -62,6 +62,55 @@ function parseConfig(form: FormData): NotifierConfig | { error: string } {
 			}
 			return { kind: 'email', recipient };
 		}
+		case 'ntfy': {
+			const server = requireString(form, 'server');
+			const topic = requireString(form, 'topic');
+			if (!server || !topic) return { error: 'ntfy: server URL and topic are required' };
+			const access_token = requireString(form, 'access_token');
+			return access_token
+				? { kind: 'ntfy', server, topic, access_token }
+				: { kind: 'ntfy', server, topic };
+		}
+		case 'pushover': {
+			const token = requireString(form, 'token');
+			const user = requireString(form, 'user');
+			if (!token || !user) {
+				return { error: 'Pushover: application token and user/group key are required' };
+			}
+			const device = requireString(form, 'device');
+			return device ? { kind: 'pushover', token, user, device } : { kind: 'pushover', token, user };
+		}
+		case 'matrix': {
+			const homeserver = requireString(form, 'homeserver');
+			const access_token = requireString(form, 'access_token');
+			const room_id = requireString(form, 'room_id');
+			if (!homeserver || !access_token || !room_id) {
+				return { error: 'Matrix: homeserver URL, access token and room id are required' };
+			}
+			return { kind: 'matrix', homeserver, access_token, room_id };
+		}
+		case 'webhook': {
+			const url = requireString(form, 'url');
+			if (!url) return { error: 'Webhook: a URL is required' };
+			// Optional headers entered one per line as `Name: value`.
+			const headersRaw = form.get('headers');
+			const headers: Record<string, string> = {};
+			if (typeof headersRaw === 'string' && headersRaw.trim()) {
+				for (const line of headersRaw.split('\n')) {
+					const trimmed = line.trim();
+					if (!trimmed) continue;
+					const idx = trimmed.indexOf(':');
+					if (idx === -1) return { error: `Webhook header must be "Name: value": ${trimmed}` };
+					const name = trimmed.slice(0, idx).trim();
+					const value = trimmed.slice(idx + 1).trim();
+					if (!name) return { error: 'Webhook header name cannot be empty' };
+					headers[name] = value;
+				}
+			}
+			return Object.keys(headers).length > 0
+				? { kind: 'webhook', url, headers }
+				: { kind: 'webhook', url };
+		}
 		default:
 			return { error: `Unknown notifier kind: ${String(kind)}` };
 	}

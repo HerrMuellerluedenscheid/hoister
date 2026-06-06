@@ -11,7 +11,11 @@ export type NotifierKind =
 	| 'discord_webhook'
 	| 'teams'
 	| 'gotify'
-	| 'email';
+	| 'email'
+	| 'ntfy'
+	| 'pushover'
+	| 'matrix'
+	| 'webhook';
 
 export type NotifierConfig =
 	| { kind: 'slack'; webhook: string; channel: string }
@@ -20,7 +24,11 @@ export type NotifierConfig =
 	| { kind: 'discord_webhook'; webhook: string }
 	| { kind: 'teams'; webhook: string }
 	| { kind: 'gotify'; server: string; token: string }
-	| { kind: 'email'; recipient: string };
+	| { kind: 'email'; recipient: string }
+	| { kind: 'ntfy'; server: string; topic: string; access_token?: string }
+	| { kind: 'pushover'; token: string; user: string; device?: string }
+	| { kind: 'matrix'; homeserver: string; access_token: string; room_id: string }
+	| { kind: 'webhook'; url: string; headers?: Record<string, string> };
 
 /**
  * What the controller actually returns. Secret-bearing fields (webhook,
@@ -35,7 +43,11 @@ export type NotifierSummaryConfig =
 	| { kind: 'discord_webhook'; webhook_set: boolean }
 	| { kind: 'teams'; webhook_set: boolean }
 	| { kind: 'gotify'; server_host: string; token_set: boolean }
-	| { kind: 'email'; recipient: string };
+	| { kind: 'email'; recipient: string }
+	| { kind: 'ntfy'; server_host: string; topic: string; access_token_set: boolean }
+	| { kind: 'pushover'; token_set: boolean; user_set: boolean; device?: string }
+	| { kind: 'matrix'; homeserver_host: string; room_id: string; access_token_set: boolean }
+	| { kind: 'webhook'; url_host: string; headers_set: boolean };
 
 export interface Notifier {
 	id: number;
@@ -104,7 +116,10 @@ export async function deleteNotifier(userId: string, notifierId: number): Promis
 
 export type TestNotifierResult = { ok: true } | { ok: false; error: string };
 
-export async function testNotifier(userId: string, notifierId: number): Promise<TestNotifierResult> {
+export async function testNotifier(
+	userId: string,
+	notifierId: number
+): Promise<TestNotifierResult> {
 	if (!BACKEND_URL) throw error(500, 'Backend URL not configured');
 	const response = await fetch(`${BACKEND_URL}/notifiers/${notifierId}/test`, {
 		method: 'POST',

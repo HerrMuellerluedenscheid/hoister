@@ -60,8 +60,47 @@ pub async fn validate_config(config: &NotifierConfig) -> Result<(), ValidationEr
         NotifierConfig::Email(c) => validate_email_recipient(&c.recipient),
         NotifierConfig::DiscordWebhook(c) => validate_discord_webhook(&c.webhook),
         NotifierConfig::Teams(c) => validate_teams_webhook(&c.webhook),
+        // ntfy, Matrix and the generic webhook all take a user-supplied host,
+        // so they are the same SSRF surface as Gotify: require https and a
+        // publicly-routable target so a tenant can't aim the controller at
+        // backend-db, the docker bridge, or the cloud metadata service.
+        NotifierConfig::Ntfy(c) => validate_public_https_url(&c.server, "ntfy server URL").await,
+        NotifierConfig::Matrix(c) => {
+            validate_public_https_url(&c.homeserver, "Matrix homeserver URL").await
+        }
+        NotifierConfig::Webhook(c) => validate_public_https_url(&c.url, "Webhook URL").await,
+        // Pushover delivers through its fixed API host (no user-supplied host),
+        // so there is nothing to SSRF-check — only confirm the credentials are
+        // present.
+        NotifierConfig::Pushover(c) => validate_pushover(&c.token, &c.user),
         NotifierConfig::Telegram(_) | NotifierConfig::Discord(_) => Ok(()),
     }
+}
+
+/// Shared guard for notifier kinds whose target host the tenant chooses
+/// (Gotify, ntfy, Matrix, generic webhook): require `https://` and a host that
+/// resolves only to public IPs. See [`ensure_public_host`] for the IP policy.
+async fn validate_public_https_url(raw: &str, field: &'static str) -> Result<(), ValidationError> {
+    if raw.is_empty() {
+        return Err(ValidationError::Empty(field));
+    }
+    let url = url::Url::parse(raw).map_err(|_| ValidationError::InvalidUrl)?;
+    if url.scheme() != "https" {
+        return Err(ValidationError::NotHttps);
+    }
+    let host = url.host_str().ok_or(ValidationError::InvalidUrl)?;
+    let port = url.port_or_known_default().unwrap_or(443);
+    ensure_public_host(host, port).await
+}
+
+fn validate_pushover(token: &str, user: &str) -> Result<(), ValidationError> {
+    if token.is_empty() {
+        return Err(ValidationError::Empty("Pushover application token"));
+    }
+    if user.is_empty() {
+        return Err(ValidationError::Empty("Pushover user/group key"));
+    }
+    Ok(())
 }
 
 /// Microsoft Teams incoming webhooks come from a fixed set of Microsoft hosts:
@@ -119,16 +158,7 @@ fn validate_slack(webhook: &str) -> Result<(), ValidationError> {
 }
 
 async fn validate_gotify(server: &str) -> Result<(), ValidationError> {
-    if server.is_empty() {
-        return Err(ValidationError::Empty("Gotify server URL"));
-    }
-    let url = url::Url::parse(server).map_err(|_| ValidationError::InvalidUrl)?;
-    if url.scheme() != "https" {
-        return Err(ValidationError::NotHttps);
-    }
-    let host = url.host_str().ok_or(ValidationError::InvalidUrl)?;
-    let port = url.port_or_known_default().unwrap_or(443);
-    ensure_public_host(host, port).await
+    validate_public_https_url(server, "Gotify server URL").await
 }
 
 /// Email notifiers deliver through the controller-wide Resend account, so
@@ -262,6 +292,49 @@ mod tests {
         assert!(validate_discord_webhook("http://discord.com/api/webhooks/123/abc").is_err());
         assert!(validate_discord_webhook("https://evil.example.com/api/webhooks/1/2").is_err());
         assert!(validate_discord_webhook("").is_err());
+    }
+
+    #[tokio::test]
+    async fn public_https_url_rejects_empty_non_https_and_unparseable() {
+        // These three branches reject before any DNS lookup, so they cover the
+        // ntfy / Matrix / webhook / Gotify SSRF guard without touching the
+        // network. The public-vs-private IP decision is covered by the
+        // is_disallowed_ip tests above.
+        assert!(matches!(
+            validate_public_https_url("", "x").await,
+            Err(ValidationError::Empty(_))
+        ));
+        assert!(matches!(
+            validate_public_https_url("http://example.com/hook", "x").await,
+            Err(ValidationError::NotHttps)
+        ));
+        assert!(matches!(
+            validate_public_https_url("not a url", "x").await,
+            Err(ValidationError::InvalidUrl)
+        ));
+    }
+
+    #[tokio::test]
+    async fn public_https_url_blocks_loopback_literal() {
+        // A literal private/loopback host must be rejected even though it would
+        // "resolve" — guards the webhook kind against pointing at the host.
+        assert!(matches!(
+            validate_public_https_url("https://127.0.0.1/hook", "x").await,
+            Err(ValidationError::PrivateAddress)
+        ));
+    }
+
+    #[test]
+    fn pushover_requires_token_and_user() {
+        assert!(validate_pushover("tok", "usr").is_ok());
+        assert!(matches!(
+            validate_pushover("", "usr"),
+            Err(ValidationError::Empty(_))
+        ));
+        assert!(matches!(
+            validate_pushover("tok", ""),
+            Err(ValidationError::Empty(_))
+        ));
     }
 
     #[test]

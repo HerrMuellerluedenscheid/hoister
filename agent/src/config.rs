@@ -69,6 +69,10 @@ pub(crate) struct Dispatcher {
     pub(crate) slack: Option<Slack>,
     pub(crate) gotify: Option<Gotify>,
     pub(crate) email: Option<Email>,
+    pub(crate) ntfy: Option<Ntfy>,
+    pub(crate) pushover: Option<Pushover>,
+    pub(crate) matrix: Option<Matrix>,
+    pub(crate) webhook: Option<Webhook>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -112,6 +116,41 @@ pub(crate) struct Slack {
 pub(crate) struct Gotify {
     pub(crate) server: Url,
     pub(crate) token: String,
+}
+
+/// ntfy delivery to a (possibly self-hosted) ntfy server. `access_token` is
+/// only needed for reserved/protected topics.
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct Ntfy {
+    pub(crate) server: Url,
+    pub(crate) topic: String,
+    pub(crate) access_token: Option<String>,
+}
+
+/// Pushover delivery. `token` is the application API token, `user` the
+/// recipient user or group key; `device` optionally targets one device.
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct Pushover {
+    pub(crate) token: String,
+    pub(crate) user: String,
+    pub(crate) device: Option<String>,
+}
+
+/// Matrix delivery via a homeserver access token to a joined room.
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct Matrix {
+    pub(crate) homeserver: Url,
+    pub(crate) access_token: String,
+    pub(crate) room_id: String,
+}
+
+/// Generic webhook delivery — POSTs each event to `url`. `headers` carries any
+/// auth headers and defaults to empty.
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct Webhook {
+    pub(crate) url: Url,
+    #[serde(default)]
+    pub(crate) headers: std::collections::HashMap<String, String>,
 }
 
 #[allow(clippy::upper_case_acronyms)]

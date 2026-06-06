@@ -34,6 +34,12 @@ impl Plan {
                     NotifierKind::Telegram,
                     NotifierKind::Discord,
                     NotifierKind::DiscordWebhook,
+                    NotifierKind::Ntfy,
+                    NotifierKind::Pushover,
+                    NotifierKind::Matrix,
+                    // Webhook is Pro-only: a generic, user-controlled POST
+                    // target is the most abuse-prone notifier (SSRF/relay), so
+                    // we keep it off the free tier.
                 ],
             },
             Plan::Pro => PlanLimits {
@@ -46,6 +52,10 @@ impl Plan {
                     NotifierKind::Teams,
                     NotifierKind::Gotify,
                     NotifierKind::Email,
+                    NotifierKind::Ntfy,
+                    NotifierKind::Pushover,
+                    NotifierKind::Matrix,
+                    NotifierKind::Webhook,
                 ],
             },
         }

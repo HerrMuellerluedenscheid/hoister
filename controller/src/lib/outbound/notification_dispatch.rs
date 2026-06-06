@@ -75,16 +75,7 @@ fn sender_for(
     config: NotifierConfig,
     email: Option<&EmailDispatchConfig>,
 ) -> Result<Sender, String> {
-    let mut sender = Sender {
-        slack: None,
-        telegram: None,
-        discord: None,
-        discord_webhook: None,
-        teams: None,
-        gotify: None,
-        email: None,
-        resend: None,
-    };
+    let mut sender = Sender::default();
     match config {
         NotifierConfig::Slack(s) => {
             sender.slack = Some(chatterbox::dispatcher::slack::Slack {
@@ -136,6 +127,37 @@ fn sender_for(
                 api_key: cfg.resend_api_key.clone(),
                 from: cfg.from.clone(),
                 to: e.recipient,
+            });
+        }
+        NotifierConfig::Ntfy(n) => {
+            let server_url =
+                url::Url::parse(&n.server).map_err(|e| format!("invalid ntfy server url: {e}"))?;
+            sender.ntfy = Some(chatterbox::dispatcher::ntfy::Ntfy {
+                server_url,
+                topic: n.topic,
+                access_token: n.access_token,
+            });
+        }
+        NotifierConfig::Pushover(p) => {
+            sender.pushover = Some(chatterbox::dispatcher::pushover::Pushover {
+                token: p.token,
+                user: p.user,
+                device: p.device,
+            });
+        }
+        NotifierConfig::Matrix(m) => {
+            let homeserver_url = url::Url::parse(&m.homeserver)
+                .map_err(|e| format!("invalid matrix homeserver url: {e}"))?;
+            sender.matrix = Some(chatterbox::dispatcher::matrix::Matrix {
+                homeserver_url,
+                access_token: m.access_token,
+                room_id: m.room_id,
+            });
+        }
+        NotifierConfig::Webhook(w) => {
+            sender.webhook = Some(chatterbox::dispatcher::webhook::Webhook {
+                url: w.url,
+                headers: w.headers,
             });
         }
     }

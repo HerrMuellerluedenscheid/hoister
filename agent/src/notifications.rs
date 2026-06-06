@@ -402,6 +402,41 @@ pub(crate) fn setup_dispatcher(config: &Config) -> Option<Dispatcher> {
         }
     });
 
+    let ntfy = dispatcher_config.ntfy.map(|n| {
+        info!("Using ntfy dispatcher");
+        chatterbox::dispatcher::ntfy::Ntfy {
+            server_url: n.server,
+            topic: n.topic,
+            access_token: n.access_token,
+        }
+    });
+
+    let pushover = dispatcher_config.pushover.map(|p| {
+        info!("Using Pushover dispatcher");
+        chatterbox::dispatcher::pushover::Pushover {
+            token: p.token,
+            user: p.user,
+            device: p.device,
+        }
+    });
+
+    let matrix = dispatcher_config.matrix.map(|m| {
+        info!("Using Matrix dispatcher");
+        chatterbox::dispatcher::matrix::Matrix {
+            homeserver_url: m.homeserver,
+            access_token: m.access_token,
+            room_id: m.room_id,
+        }
+    });
+
+    let webhook = dispatcher_config.webhook.map(|w| {
+        info!("Using webhook dispatcher");
+        chatterbox::dispatcher::webhook::Webhook {
+            url: w.url.to_string(),
+            headers: w.headers,
+        }
+    });
+
     let sender = chatterbox::dispatcher::Sender {
         slack,
         telegram,
@@ -413,6 +448,10 @@ pub(crate) fn setup_dispatcher(config: &Config) -> Option<Dispatcher> {
         // Resend is a hosted-controller delivery path; the standalone agent
         // doesn't expose it as a configurable dispatcher.
         resend: None,
+        ntfy,
+        pushover,
+        matrix,
+        webhook,
     };
 
     Some(Dispatcher::new(sender))
