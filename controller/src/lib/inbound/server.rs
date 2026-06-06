@@ -43,7 +43,10 @@ use crate::sse::{ControllerEvent, UserScopedEvent, sse_handler};
 const AGENT_BODY_LIMIT: usize = 1024 * 1024;
 use chatterbox::message::Message;
 use hoister_shared::wire::PostContainerMetricsRequest;
-use hoister_shared::{CreateDeployment, DeploymentStatus, HostName, ProjectName, ServiceName};
+use hoister_shared::{
+    CreateDeployment, DeploymentStatus, HostName, ProjectName, ServiceName,
+    deployment_email_subject,
+};
 use tokio::sync::broadcast;
 use ts_rs::TS;
 
@@ -1181,7 +1184,13 @@ fn pending_update_message(update: &PendingUpdate) -> Message {
         update.service_name.as_str(),
         update.hostname.as_str(),
     );
-    Message::new(title, body)
+    // Share the per-image thread key with deployment-result notifications so an
+    // "update available" notice and the success/rollback that follow it land in
+    // the same conversation instead of a separate "Update available: …" thread.
+    Message::new(title, body).with_subject(deployment_email_subject(
+        &update.image_name,
+        update.hostname.as_str(),
+    ))
 }
 
 async fn get_pending_updates<

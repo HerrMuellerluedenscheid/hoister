@@ -164,14 +164,26 @@ impl CreateDeployment {
     }
 
     pub fn to_message(&self) -> Message {
-        Message::new(self.status.to_string(), self.to_string())
+        Message::new(self.status.to_string(), self.to_string()).with_subject(
+            deployment_email_subject(self.image.as_str(), self.hostname.as_str()),
+        )
     }
 }
 
 impl From<&CreateDeployment> for Message {
     fn from(val: &CreateDeployment) -> Self {
-        Message::new(val.status.to_string(), val.to_string())
+        val.to_message()
     }
+}
+
+/// Stable email subject / thread key for every notification about one image's
+/// deployment history on a host. Keyed by the deployment target — never the
+/// event type — so a mail client groups update-available notices, successes,
+/// rollbacks and failures for the same image into a single conversation,
+/// instead of bucketing everything by status into a few giant threads. Keeping
+/// the host in the key stops the same image on different machines from merging.
+pub fn deployment_email_subject(image_name: &str, hostname: &str) -> String {
+    format!("Hoister deployment: {image_name} on {hostname}")
 }
 
 #[cfg(test)]
@@ -189,5 +201,53 @@ mod tests {
     fn test_image_name_split_no_tag() {
         let image = ImageName::new("emrius11/example");
         assert_eq!(image.split(), ("emrius11/example", "latest"));
+    }
+
+    fn deployment(status: DeploymentStatus, image: &str, host: &str) -> CreateDeployment {
+        CreateDeployment {
+            project: ProjectName::new("p"),
+            service: ServiceName::new("s"),
+            image: ImageName::new(image),
+            digest: ImageDigest::new("sha256:1"),
+            status,
+            hostname: HostName::new(host),
+            logs: None,
+        }
+    }
+
+    // Regression: the email subject used to be the status string, so every
+    // notification collapsed into ~3 threads. The subject must be keyed by the
+    // deployment target (image + host), not the event type, so one image's
+    // history threads together — while the title still carries the status for
+    // chat dispatchers.
+    #[test]
+    fn email_subject_is_keyed_by_image_and_host_not_status() {
+        let success = deployment(DeploymentStatus::Success, "myapp:latest", "web-01");
+        let rollback = deployment(DeploymentStatus::RollbackFinished, "myapp:latest", "web-01");
+        let other_image = deployment(DeploymentStatus::Success, "other:latest", "web-01");
+        let other_host = deployment(DeploymentStatus::Success, "myapp:latest", "web-02");
+
+        // Same image+host, different status -> one thread.
+        assert_eq!(success.to_message().subject, rollback.to_message().subject);
+
+        // The subject must not leak the status, or clients would split the thread.
+        let subject = success.to_message().subject.expect("subject is set");
+        assert!(
+            !subject.contains("Success") && !subject.contains('✅'),
+            "subject must not depend on status: {subject}"
+        );
+
+        // A different image or host is a different thread.
+        assert_ne!(
+            success.to_message().subject,
+            other_image.to_message().subject
+        );
+        assert_ne!(
+            success.to_message().subject,
+            other_host.to_message().subject
+        );
+
+        // The title still carries the status for chat dispatchers.
+        assert!(success.to_message().title.contains("Successful"));
     }
 }
