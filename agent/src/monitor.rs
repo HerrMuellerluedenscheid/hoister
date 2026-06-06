@@ -154,6 +154,7 @@ async fn fetch_container_info(
                     };
 
                     redact_credentials(&mut inspect);
+                    strip_health_check_output(&mut inspect);
                     states.insert(
                         service_identifier.clone(),
                         ServiceState { inspect, last_logs },
@@ -279,6 +280,21 @@ fn redact_values(haystack: &mut String, needles: &[String]) {
         }
         if haystack.contains(needle.as_str()) {
             *haystack = haystack.replace(needle.as_str(), REDACTION_MARKER);
+        }
+    }
+}
+
+/// Drop the per-probe `Output` from the container's health-check log before the
+/// inspect leaves the host. The `ExitCode` already tells the dashboard whether a
+/// probe passed; the raw probe output is unnecessary and can echo back response
+/// bodies or secrets the health-check command happened to print.
+fn strip_health_check_output(inspect: &mut ContainerInspectResponse) {
+    if let Some(state) = inspect.state.as_mut()
+        && let Some(health) = state.health.as_mut()
+        && let Some(log) = health.log.as_mut()
+    {
+        for probe in log {
+            probe.output = None;
         }
     }
 }
@@ -421,6 +437,32 @@ mod tests {
     fn collect_sensitive_env_values_ignores_benign_keys() {
         let inspect = inspect_with_env(vec!["PORT=8080", "HOSTNAME=foo"]);
         assert!(collect_sensitive_env_values(&inspect).is_empty());
+    }
+
+    #[test]
+    fn strip_health_check_output_keeps_exit_code() {
+        use bollard::models::{ContainerState, Health, HealthcheckResult};
+
+        let mut inspect = ContainerInspectResponse {
+            state: Some(ContainerState {
+                health: Some(Health {
+                    log: Some(vec![HealthcheckResult {
+                        exit_code: Some(1),
+                        output: Some("HTTP/1.1 500 ... full body".to_string()),
+                        ..Default::default()
+                    }]),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        strip_health_check_output(&mut inspect);
+
+        let probe = &inspect.state.unwrap().health.unwrap().log.unwrap()[0];
+        assert_eq!(probe.exit_code, Some(1));
+        assert_eq!(probe.output, None);
     }
 
     #[test]

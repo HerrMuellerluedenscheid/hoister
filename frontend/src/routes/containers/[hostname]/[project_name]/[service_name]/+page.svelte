@@ -192,14 +192,16 @@
                   ? 'border-green-200 bg-green-50'
                   : 'border-red-200 bg-red-50'}"
               >
-                <div class="mb-1 flex justify-between text-xs text-gray-600">
-                  <span>{formatDate(probe.End)}</span>
-                  <span>exit {probe.ExitCode}</span>
+                <div class="flex items-center justify-between text-xs">
+                  <span
+                    class="font-medium {probe.ExitCode === 0
+                      ? 'text-green-800'
+                      : 'text-red-800'}"
+                  >
+                    {probe.ExitCode === 0 ? 'Passed' : 'Failed'}
+                  </span>
+                  <span class="text-gray-600">{formatDate(probe.End)}</span>
                 </div>
-                {#if probe.Output}
-                  <pre
-                    class="overflow-x-auto rounded bg-white/60 p-2 font-mono text-xs whitespace-pre-wrap text-gray-900">{probe.Output}</pre>
-                {/if}
               </div>
             {/each}
           </div>
