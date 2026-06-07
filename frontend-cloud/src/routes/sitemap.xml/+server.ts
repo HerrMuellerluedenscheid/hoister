@@ -5,8 +5,9 @@ import { SITE_URL } from '$lib/seo';
 // and the legal pages (/impressum, /datenschutz) are noindex and excluded.
 const ROUTES = ['/'];
 
-export const prerender = true;
-
+// Served dynamically by adapter-node rather than prerendered: the payload is
+// tiny and on-demand rendering avoids the build-time prerender step (which
+// aborts under bun in the production image build).
 export const GET: RequestHandler = () => {
 	const urls = ROUTES.map(
 		(path) =>
