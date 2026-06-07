@@ -46,6 +46,14 @@
 		</div>
 
 		<nav class="flex items-center gap-4">
+			<a
+				href="https://docs.hoister.io"
+				target="_blank"
+				rel="noopener noreferrer"
+				class="text-sm font-medium text-zinc-300 transition hover:text-zinc-100"
+			>
+				Docs
+			</a>
 			<Show when="signed-out">
 				{#snippet children()}
 					<SignInButton mode="modal">
@@ -155,7 +163,7 @@
 
 	<!-- Feature strip -->
 	<section class="mx-auto mb-20 grid max-w-3xl grid-cols-1 gap-6 px-8 sm:grid-cols-3">
-		{#each [{ icon: '🔄', title: 'Auto-updates', desc: 'Detects new image digests and rolls out without any manual steps.' }, { icon: '↩️', title: 'Auto-rollback', desc: 'Health check fails? Hoister restores the previous container automatically.' }, { icon: '🔔', title: 'Notifications', desc: 'Get alerts via Slack, Telegram, Discord, or email on every deploy.' }] as feature}
+		{#each [{ icon: '🔄', title: 'Auto-updates', desc: 'Detects new image digests and rolls out without any manual steps.' }, { icon: '↩️', title: 'Auto-rollback', desc: 'Health check fails? Hoister restores the previous container automatically.' }, { icon: '🔔', title: 'Notifications', desc: 'Get alerts via Slack, Telegram, Discord, Teams, Mattermost, Gotify and more on every deploy.' }] as feature}
 			<div class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
 				<div class="mb-2 text-2xl">{feature.icon}</div>
 				<div class="mb-1 font-semibold text-zinc-100">{feature.title}</div>
@@ -200,6 +208,13 @@
 			target="_blank"
 			rel="noopener noreferrer"
 			class="hover:text-zinc-400">GitHub</a
+		>
+		·
+		<a
+			href="https://docs.hoister.io"
+			target="_blank"
+			rel="noopener noreferrer"
+			class="hover:text-zinc-400">Docs</a
 		>
 		·
 		<a href="/impressum" class="hover:text-zinc-400">Impressum</a> ·

@@ -44,6 +44,65 @@ username="hoister"
 # (Power Automate) webhooks and the legacy connector webhooks.
 [dispatcher.teams]
 webhook="https://example.webhook.office.com/webhookb2/.../IncomingWebhook/.../..."
+
+# Gotify push server.
+[dispatcher.gotify]
+server="https://gotify.example.com"
+token="your-application-token"
+
+# Email via SMTP. `from` is an optional display name (defaults to "hoister");
+# the SMTP port is fixed at 587.
+[dispatcher.email]
+recipient="alerts@example.com"
+from="hoister"
+[dispatcher.email.smtp]
+user="bot@example.com"
+password="your-smtp-password"
+server="smtp.example.com"
+
+# ntfy. `access_token` is only needed for reserved/protected topics.
+[dispatcher.ntfy]
+server="https://ntfy.sh"
+topic="my-deploys"
+# access_token="tk_xxxxxxxx"
+
+# Pushover. `device` optionally targets a single device.
+[dispatcher.pushover]
+token="your-application-api-token"
+user="your-user-or-group-key"
+# device="phone"
+
+# Matrix via a homeserver access token to a room the user has joined.
+[dispatcher.matrix]
+homeserver="https://matrix.org"
+access_token="your-access-token"
+room_id="!roomid:matrix.org"
+
+# Mattermost via an incoming webhook. `channel` and `username` are optional
+# overrides; a channel override only works if the webhook allows it.
+[dispatcher.mattermost]
+webhook="https://mattermost.example.com/hooks/xxxxxxxxxxxxxxxxxxxxxxxxxx"
+# channel="town-square"
+# username="hoister"
+
+# Rocket.Chat via an incoming webhook. `channel` and `alias` are optional
+# overrides.
+[dispatcher.rocketchat]
+webhook="https://rocketchat.example.com/hooks/xxxxxxxx/xxxxxxxxxxxxxxxxxxxx"
+# channel="#general"
+# alias="hoister"
+
+# Google Chat via an incoming webhook. The target space is fixed when you
+# create the webhook; the key/token in the URL is the secret.
+[dispatcher.google_chat]
+webhook="https://chat.googleapis.com/v1/spaces/AAAAxxxxxxx/messages?key=XXXX&token=YYYY"
+
+# Generic webhook — Hoister POSTs each event as JSON. Optional headers carry
+# any auth your endpoint needs.
+[dispatcher.webhook]
+url="https://example.com/hooks/hoister"
+[dispatcher.webhook.headers]
+Authorization="Bearer your-token"
 ```
 
 ## Disable automatic rollout

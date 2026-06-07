@@ -3,22 +3,31 @@ title: Receive Notifications
 description: Stay informed of changes to your project
 ---
 
-Hoister can send notifications to Slack, Discord, Email and Gotify to inform you of successful, failed and rolled back updates.
+Hoister can notify you of successful, failed and rolled back updates through a
+range of channels:
 
+- **Chat:** Slack, Telegram, Discord (bot or webhook), Microsoft Teams,
+  Mattermost, Rocket.Chat, Google Chat, Matrix
+- **Push:** Gotify, ntfy, Pushover
+- **Other:** Email (SMTP) and a generic JSON webhook
 
-```yaml title="docker-compose.yml"
-services:
-  hoister:
-    image: emrius11/hoister:latest
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    security_opt:
-      - no-new-privileges:true
-    environment:
-      HOISTER_SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXX"
-      HOISTER_SLACK_CHANNEL="#my-update-channel"
-      HOISTER_TELEGRAM_BOT_TOKEN="12345656789:XXXXXXXXXX-XXXXXXXXX-XXXXXXXXX"
-      HOISTER_TELEGRAM_CHAT_ID="9999999999"
+You can configure as many channels as you like — every configured dispatcher
+receives every event.
+
+## Configuring dispatchers
+
+Notifiers are configured under `[dispatcher.*]` tables in your `hoister.toml`.
+For example, to post to a Telegram chat and a Mattermost channel:
+
+```toml title="hoister.toml"
+[dispatcher.telegram]
+token="123456789:qwertyuiopasdfghjkl"
+chat=123456789
+
+[dispatcher.mattermost]
+webhook="https://mattermost.example.com/hooks/xxxxxxxxxxxxxxxxxxxxxxxxxx"
 ```
 
-All available options can be found in the [configuration reference](/reference/environment-variables/).
+The exact fields for every channel are listed in the
+[TOML configuration reference](/reference/toml/). Mount the file into the agent
+container as described there.
