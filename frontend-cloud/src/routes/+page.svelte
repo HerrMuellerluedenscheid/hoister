@@ -209,8 +209,8 @@
 			<div>
 				<h2 class="text-lg font-semibold text-zinc-100">Coming from Watchtower?</h2>
 				<p class="mt-1 text-sm text-zinc-400">
-					Hoister auto-updates containers the same way — but rolls back and restores volumes when
-					an update fails its health check.
+					Hoister auto-updates containers the same way — but rolls back and restores volumes when an
+					update fails its health check.
 				</p>
 			</div>
 			<span class="shrink-0 text-sm font-medium text-indigo-400">Compare →</span>
@@ -243,6 +243,36 @@
 				<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono">emrius11/hoister:latest</code>
 				image is bumped to the cloud-aware build.
 			</p>
+		</div>
+	</section>
+
+	<!-- Contribute / bounty -->
+	<section class="mx-auto mb-20 w-full max-w-3xl px-8">
+		<div class="rounded-2xl border border-indigo-500/30 bg-indigo-500/10 p-6 text-center sm:p-8">
+			<h2 class="mb-2 text-lg font-semibold text-zinc-100">
+				Got an idea for a handy feature? Found a vulnerability?
+			</h2>
+			<p class="mx-auto mb-5 max-w-xl text-sm leading-relaxed text-zinc-300">
+				Open an issue or send a report and get up to 3 years of Pro subscription for free.
+			</p>
+			<div class="flex flex-col items-center justify-center gap-3 sm:flex-row">
+				<a
+					href="https://github.com/HerrMuellerluedenscheid/hoister/issues/new"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-100 active:scale-95"
+				>
+					Open an issue
+				</a>
+				<a
+					href="https://github.com/HerrMuellerluedenscheid/hoister/security/advisories/new"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="rounded-xl border border-zinc-700 bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-800 active:scale-95"
+				>
+					Report a vulnerability
+				</a>
+			</div>
 		</div>
 	</section>
 

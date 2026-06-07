@@ -40,7 +40,7 @@
 			</h2>
 			<div class="space-y-1 text-zinc-300">
 				<p>Vector &amp; Veneer UG (haftungsbeschränkt)</p>
-				<p>Rubenstr. 108, 12157 Berlin</p>
+				<p>Rubensstr. 108, 12157 Berlin</p>
 				<p>
 					E-Mail: <a
 						href="mailto:info@vectorandveneer.com"

@@ -492,10 +492,6 @@ impl From<HoisterError> for Option<Message> {
                 debug!("no update available");
                 None
             }
-            HoisterError::UpdateFailed(e) => Some(Message::new(
-                "update failed".to_string(),
-                format!("failed to update image {e}"),
-            )),
             _ => {
                 error!("unexpected error: {value:?}");
                 None

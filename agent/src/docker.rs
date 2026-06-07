@@ -1,13 +1,13 @@
 use crate::HoisterError;
-use crate::HoisterError::UpdateFailed;
 use crate::config::Registry;
 use crate::env;
 use crate::notifications::DeploymentResultHandler;
 use bollard::Docker;
 use bollard::auth::DockerCredentials;
 use bollard::models::{
-    ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerSummary,
-    HealthStatusEnum, MountPointTypeEnum, NetworkingConfig, VolumeCreateOptions,
+    ContainerCreateBody, ContainerCreateResponse, ContainerInspectResponse, ContainerState,
+    ContainerSummary, Health, HealthStatusEnum, MountPointTypeEnum, NetworkingConfig,
+    VolumeCreateOptions,
 };
 use bollard::query_parameters::{
     CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions,
@@ -21,7 +21,7 @@ use log::{debug, error, info, trace, warn};
 use std::collections::HashMap;
 use std::error::Error;
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub(crate) type ContainerID = String;
 pub(crate) type VolumeName = String;
@@ -549,7 +549,10 @@ impl DockerHandler {
             .await?;
         info!("Container started");
 
-        if let Err(_e) = check_container_health(&self.docker, &container.id).await {
+        if let Err(failure_reason) =
+            check_container_health(&self.docker, &container.id, self.report_logs).await
+        {
+            warn!("New container failed its health check: {failure_reason}");
             // Capture the failed container's logs before we tear it down — once
             // it's removed during rollback they're gone for good. Gated behind
             // report_logs since logs can leak secrets. `container_details` holds
@@ -574,13 +577,18 @@ impl DockerHandler {
                 None
             };
 
+            // Always lead with the diagnostic reason — even when log forwarding
+            // is disabled — so the dashboard explains *why* the update failed
+            // instead of only showing the container's stdout.
+            let failure_report = combine_reason_and_logs(&failure_reason, failed_logs);
+
             self.deployment_handler
                 .inform_container_failed(
                     project.clone(),
                     service_identifier.clone(),
                     old_image_name.clone(),
                     new_image_digest.clone(),
-                    failed_logs.clone(),
+                    Some(failure_report.clone()),
                 )
                 .await;
             warn!("New container failed, rolling back to previous version");
@@ -648,7 +656,7 @@ impl DockerHandler {
             } else {
                 None
             };
-            let rollback_logs = concat_failure_and_rollback(failed_logs, restored_logs);
+            let rollback_logs = concat_failure_and_rollback(Some(failure_report), restored_logs);
 
             self.deployment_handler
                 .inform_rollback_complete(
@@ -840,6 +848,16 @@ impl DockerHandler {
 /// the user sees why the update failed and what the rollback produced in one
 /// place. Returns `None` when neither section has content (e.g. logging opted
 /// out), and emits only the present sections otherwise.
+/// Prepend the health-check failure reason to the captured container logs (if
+/// any), so the reported failure leads with *why* it failed rather than just
+/// the container's stdout.
+fn combine_reason_and_logs(reason: &str, logs: Option<String>) -> String {
+    match logs.filter(|l| !l.trim().is_empty()) {
+        Some(logs) => format!("{reason}\n\n--- container logs ---\n{}", logs.trim_end()),
+        None => reason.to_string(),
+    }
+}
+
 fn concat_failure_and_rollback(
     failure_logs: Option<String>,
     rollback_logs: Option<String>,
@@ -1235,34 +1253,133 @@ async fn get_credentials(
     Ok(None)
 }
 
-async fn check_container_health(docker: &Docker, container_name: &str) -> Result<(), HoisterError> {
-    tokio::time::sleep(Duration::from_secs(5)).await;
+/// Let a freshly-started container settle (or crash) before the first health
+/// evaluation. Mirrors the previous single grace period.
+const HEALTH_CHECK_SETTLE: Duration = Duration::from_secs(5);
+/// Upper bound on how long we keep waiting for a container's health check to
+/// turn `healthy`. Docker reports `starting` until the first probe succeeds (or
+/// the start period elapses); the old single early check rolled back perfectly
+/// healthy containers that simply boot slowly.
+const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(60);
+/// How often we re-inspect while the health check is still `starting`.
+const HEALTH_CHECK_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
-    let container = docker
-        .inspect_container(container_name, None::<InspectContainerOptions>)
-        .await?;
+/// Wait for the new container to prove itself healthy. Returns `Ok` when it is
+/// running and either has no health check or reports `healthy`.
+///
+/// On failure the `Err` carries a human-readable reason — the container's exit
+/// state, or the health status plus the last probe's exit code and output — so
+/// the rollback report explains *why* the update was rejected instead of only
+/// echoing the container's stdout. The probe output is gated behind
+/// `report_logs`, like other potentially secret-bearing output.
+async fn check_container_health(
+    docker: &Docker,
+    container_name: &str,
+    report_logs: bool,
+) -> Result<(), String> {
+    tokio::time::sleep(HEALTH_CHECK_SETTLE).await;
+    let deadline = Instant::now() + HEALTH_CHECK_TIMEOUT;
 
-    if let Some(state) = container.state
-        && let Some(running) = state.running
-        && running
-    {
-        if let Some(health) = state.health {
-            if let Some(status) = health.status
-                && status == HealthStatusEnum::HEALTHY
-            {
-                return Ok(());
-            }
-        } else {
-            return Ok(());
+    loop {
+        let container = docker
+            .inspect_container(container_name, None::<InspectContainerOptions>)
+            .await
+            .map_err(|e| format!("could not inspect the new container: {e}"))?;
+
+        let state = container.state.as_ref();
+        if !state.and_then(|s| s.running).unwrap_or(false) {
+            return Err(describe_container_exit(state));
         }
-    }
 
-    Err(UpdateFailed(container.config.unwrap().image.unwrap()))
+        match state.and_then(|s| s.health.as_ref()) {
+            // No health check defined: a running container is the best signal
+            // we have, so accept it.
+            None => return Ok(()),
+            Some(health) => match health.status {
+                Some(HealthStatusEnum::HEALTHY) => return Ok(()),
+                Some(HealthStatusEnum::UNHEALTHY) => {
+                    return Err(describe_unhealthy(health, report_logs));
+                }
+                // STARTING / NONE / EMPTY: the probe hasn't resolved yet.
+                _ => {
+                    if Instant::now() >= deadline {
+                        return Err(format!(
+                            "health check did not turn healthy within {}s (still {}). {}",
+                            (HEALTH_CHECK_SETTLE + HEALTH_CHECK_TIMEOUT).as_secs(),
+                            health
+                                .status
+                                .map_or_else(|| "starting".to_string(), |s| s.to_string()),
+                            describe_last_probe(health, report_logs),
+                        ));
+                    }
+                }
+            },
+        }
+
+        tokio::time::sleep(HEALTH_CHECK_POLL_INTERVAL).await;
+    }
+}
+
+/// Human-readable explanation for a container that is no longer running:
+/// exit code, OOM kill, and any Docker-reported error.
+fn describe_container_exit(state: Option<&ContainerState>) -> String {
+    let Some(state) = state else {
+        return "the new container is not running (no state reported)".to_string();
+    };
+    let status = state
+        .status
+        .map_or_else(|| "unknown".to_string(), |s| s.to_string());
+    let mut parts = vec![format!(
+        "the new container is not running (status: {status})"
+    )];
+    if let Some(code) = state.exit_code {
+        parts.push(format!("exit code {code}"));
+    }
+    if state.oom_killed == Some(true) {
+        parts.push("killed by the OOM killer (out of memory)".to_string());
+    }
+    if let Some(err) = state.error.as_deref().filter(|e| !e.trim().is_empty()) {
+        parts.push(format!("docker error: {err}"));
+    }
+    parts.join("; ")
+}
+
+/// Explanation for a container whose health check reports `unhealthy`.
+fn describe_unhealthy(health: &Health, report_logs: bool) -> String {
+    format!(
+        "health check reports the container as unhealthy (failing streak: {}). {}",
+        health.failing_streak.unwrap_or(0),
+        describe_last_probe(health, report_logs),
+    )
+}
+
+/// Render the most recent health-check probe: always its exit code, and its
+/// output too when `report_logs` is enabled (the output can echo back secrets).
+fn describe_last_probe(health: &Health, report_logs: bool) -> String {
+    let Some(probe) = health.log.as_ref().and_then(|log| log.last()) else {
+        return "No health-check probe has completed yet.".to_string();
+    };
+    let exit = probe.exit_code.unwrap_or_default();
+    if !report_logs {
+        return format!(
+            "Last probe exited with code {exit}. Set HOISTER_REPORT_LOGS=true to include the probe output."
+        );
+    }
+    match probe
+        .output
+        .as_deref()
+        .map(str::trim)
+        .filter(|o| !o.is_empty())
+    {
+        Some(output) => format!("Last probe exited with code {exit}:\n{output}"),
+        None => format!("Last probe exited with code {exit} (no output)."),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bollard::models::{ContainerStateStatusEnum, HealthcheckResult};
 
     #[tokio::test]
     async fn test_no_credentials_without_config() {
@@ -1333,5 +1450,71 @@ mod tests {
     fn concat_treats_blank_as_absent() {
         assert!(concat_failure_and_rollback(None, None).is_none());
         assert!(concat_failure_and_rollback(Some("   ".to_string()), None).is_none());
+    }
+
+    #[test]
+    fn combine_reason_and_logs_leads_with_reason() {
+        let combined = combine_reason_and_logs("health check failed", Some("line1\n".to_string()));
+        assert_eq!(
+            combined,
+            "health check failed\n\n--- container logs ---\nline1"
+        );
+    }
+
+    #[test]
+    fn combine_reason_and_logs_uses_reason_only_without_logs() {
+        assert_eq!(combine_reason_and_logs("boom", None), "boom");
+        assert_eq!(
+            combine_reason_and_logs("boom", Some("   ".to_string())),
+            "boom"
+        );
+    }
+
+    #[test]
+    fn describe_container_exit_reports_code_and_oom() {
+        let state = ContainerState {
+            status: Some(ContainerStateStatusEnum::EXITED),
+            running: Some(false),
+            exit_code: Some(137),
+            oom_killed: Some(true),
+            ..Default::default()
+        };
+        let msg = describe_container_exit(Some(&state));
+        assert!(msg.contains("status: exited"), "{msg}");
+        assert!(msg.contains("exit code 137"), "{msg}");
+        assert!(msg.contains("OOM"), "{msg}");
+    }
+
+    #[test]
+    fn describe_last_probe_gates_output_behind_report_logs() {
+        let health = Health {
+            failing_streak: Some(3),
+            log: Some(vec![HealthcheckResult {
+                exit_code: Some(1),
+                output: Some("connection refused".to_string()),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+
+        let without = describe_last_probe(&health, false);
+        assert!(without.contains("code 1"), "{without}");
+        assert!(!without.contains("connection refused"), "{without}");
+        assert!(without.contains("HOISTER_REPORT_LOGS"), "{without}");
+
+        let with = describe_last_probe(&health, true);
+        assert!(with.contains("connection refused"), "{with}");
+    }
+
+    #[test]
+    fn describe_unhealthy_includes_failing_streak() {
+        let health = Health {
+            failing_streak: Some(5),
+            log: None,
+            ..Default::default()
+        };
+        let msg = describe_unhealthy(&health, true);
+        assert!(msg.contains("unhealthy"), "{msg}");
+        assert!(msg.contains("failing streak: 5"), "{msg}");
     }
 }

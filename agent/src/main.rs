@@ -43,8 +43,6 @@ use tokio::sync::mpsc;
 enum HoisterError {
     #[error("no update available")]
     NoUpdateAvailable,
-    #[error("update failed: {0}")]
-    UpdateFailed(String),
     #[error("failed to pull image {image}: {message}")]
     ImagePullFailed { image: String, message: String },
     #[error(transparent)]

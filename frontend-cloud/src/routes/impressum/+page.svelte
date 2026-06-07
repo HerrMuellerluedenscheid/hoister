@@ -37,10 +37,14 @@
 				Angaben gemäß § 5 TMG
 			</h2>
 			<div class="space-y-1 text-zinc-300">
-				<p class="font-semibold">Vector &amp; Veneer (in Gründung)</p>
-				<p>Rubenstr. 108</p>
+				<p class="font-semibold">Vector &amp; Veneer UG (haftungsbeschränkt)</p>
+				<p>Rubensstr. 108</p>
 				<p>12157 Berlin</p>
 				<p>Deutschland</p>
+			</div>
+			<div class="mt-3 space-y-1 text-zinc-300">
+				<p class="text-zinc-400">Vertreten durch:</p>
+				<p>Marius Kriegerowski (Geschäftsführer)</p>
 			</div>
 		</section>
 
@@ -60,9 +64,12 @@
 			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
 				Hinweis Handelsregister &amp; USt-IdNr.
 			</h2>
-			<p class="text-zinc-400">
-				Das Unternehmen befindet sich derzeit in Gründung. Eine Eintragung ins Handelsregister sowie
-				die Erteilung einer Umsatzsteuer-Identifikationsnummer stehen noch aus.
+			<div class="space-y-1 text-zinc-300">
+				<p>Registergericht: Amtsgericht Charlottenburg</p>
+				<p>Registernummer: HRB 286900 B</p>
+			</div>
+			<p class="mt-3 text-zinc-400">
+				Eine Umsatzsteuer-Identifikationsnummer gemäß § 27a UStG wurde bislang nicht erteilt.
 			</p>
 		</section>
 
@@ -71,8 +78,8 @@
 				Verantwortlich für den Inhalt (§ 55 Abs. 2 RStV)
 			</h2>
 			<div class="space-y-1 text-zinc-300">
-				<p>Vector &amp; Veneer (in Gründung)</p>
-				<p>Rubenstr. 108</p>
+				<p>Marius Kriegerowski</p>
+				<p>Rubensstr. 108</p>
 				<p>12157 Berlin</p>
 			</div>
 		</section>

@@ -268,14 +268,16 @@
 										? 'border-emerald-500/30 bg-emerald-500/5'
 										: 'border-red-500/30 bg-red-500/5'}"
 								>
-									<div class="mb-1 flex justify-between text-xs text-zinc-500">
-										<span>{formatDate(probe.End)}</span>
-										<span>exit {probe.ExitCode}</span>
+									<div class="flex items-center justify-between text-xs">
+										<span
+											class="font-medium {probe.ExitCode === 0
+												? 'text-emerald-300'
+												: 'text-red-300'}"
+										>
+											{probe.ExitCode === 0 ? 'Passed' : 'Failed'}
+										</span>
+										<span class="text-zinc-500">{formatDate(probe.End)}</span>
 									</div>
-									{#if probe.Output}
-										<pre
-											class="overflow-x-auto rounded bg-black/40 p-2 font-mono text-xs whitespace-pre-wrap text-zinc-200">{probe.Output}</pre>
-									{/if}
 								</div>
 							{/each}
 						</div>
