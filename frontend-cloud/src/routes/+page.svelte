@@ -198,6 +198,25 @@
 		{/each}
 	</section>
 
+	<!-- Watchtower comparison -->
+	<section class="mx-auto mb-20 w-full max-w-3xl px-8">
+		<a
+			href="https://docs.hoister.io/watchtower-alternative/"
+			target="_blank"
+			rel="noopener noreferrer"
+			class="flex flex-col items-start justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-6 transition hover:border-zinc-600 sm:flex-row sm:items-center"
+		>
+			<div>
+				<h2 class="text-lg font-semibold text-zinc-100">Coming from Watchtower?</h2>
+				<p class="mt-1 text-sm text-zinc-400">
+					Hoister auto-updates containers the same way — but rolls back and restores volumes when
+					an update fails its health check.
+				</p>
+			</div>
+			<span class="shrink-0 text-sm font-medium text-indigo-400">Compare →</span>
+		</a>
+	</section>
+
 	<!-- Connect your stack -->
 	<section class="mx-auto mb-20 w-full max-w-3xl px-8">
 		<div class="rounded-2xl border border-zinc-800 bg-zinc-900 p-6">

@@ -12,6 +12,7 @@ export default defineConfig({
 			plugins: [ogPlugin()],
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/HerrMuellerluedenscheid/hoister' }],
 			sidebar: [
+				{ label: 'Watchtower alternative', slug: 'watchtower-alternative' },
 				{
 					label: 'Guides',
 					items: [
