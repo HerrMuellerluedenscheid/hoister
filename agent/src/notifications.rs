@@ -429,6 +429,31 @@ pub(crate) fn setup_dispatcher(config: &Config) -> Option<Dispatcher> {
         }
     });
 
+    let mattermost = dispatcher_config.mattermost.map(|m| {
+        info!("Using Mattermost dispatcher");
+        chatterbox::dispatcher::mattermost::Mattermost {
+            webhook_url: m.webhook.to_string(),
+            channel: m.channel,
+            username: m.username,
+        }
+    });
+
+    let rocketchat = dispatcher_config.rocketchat.map(|r| {
+        info!("Using Rocket.Chat dispatcher");
+        chatterbox::dispatcher::rocketchat::RocketChat {
+            webhook_url: r.webhook.to_string(),
+            channel: r.channel,
+            alias: r.alias,
+        }
+    });
+
+    let google_chat = dispatcher_config.google_chat.map(|g| {
+        info!("Using Google Chat dispatcher");
+        chatterbox::dispatcher::google_chat::GoogleChat {
+            webhook_url: g.webhook.to_string(),
+        }
+    });
+
     let webhook = dispatcher_config.webhook.map(|w| {
         info!("Using webhook dispatcher");
         chatterbox::dispatcher::webhook::Webhook {
@@ -451,6 +476,9 @@ pub(crate) fn setup_dispatcher(config: &Config) -> Option<Dispatcher> {
         ntfy,
         pushover,
         matrix,
+        mattermost,
+        rocketchat,
+        google_chat,
         webhook,
     };
 

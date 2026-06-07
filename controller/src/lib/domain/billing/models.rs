@@ -37,9 +37,12 @@ impl Plan {
                     NotifierKind::Ntfy,
                     NotifierKind::Pushover,
                     NotifierKind::Matrix,
-                    // Webhook is Pro-only: a generic, user-controlled POST
-                    // target is the most abuse-prone notifier (SSRF/relay), so
-                    // we keep it off the free tier.
+                    NotifierKind::Mattermost,
+                    NotifierKind::RocketChat,
+                    // Webhook and Google Chat are Pro-only. Webhook is a
+                    // generic, user-controlled POST target (the most abuse-prone
+                    // notifier); Google Chat is a hosted SaaS channel kept on
+                    // the same tier as Slack/Teams.
                 ],
             },
             Plan::Pro => PlanLimits {
@@ -55,6 +58,9 @@ impl Plan {
                     NotifierKind::Ntfy,
                     NotifierKind::Pushover,
                     NotifierKind::Matrix,
+                    NotifierKind::Mattermost,
+                    NotifierKind::RocketChat,
+                    NotifierKind::GoogleChat,
                     NotifierKind::Webhook,
                 ],
             },

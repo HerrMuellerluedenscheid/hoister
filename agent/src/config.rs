@@ -72,6 +72,9 @@ pub(crate) struct Dispatcher {
     pub(crate) ntfy: Option<Ntfy>,
     pub(crate) pushover: Option<Pushover>,
     pub(crate) matrix: Option<Matrix>,
+    pub(crate) mattermost: Option<Mattermost>,
+    pub(crate) rocketchat: Option<RocketChat>,
+    pub(crate) google_chat: Option<GoogleChat>,
     pub(crate) webhook: Option<Webhook>,
 }
 
@@ -142,6 +145,32 @@ pub(crate) struct Matrix {
     pub(crate) homeserver: Url,
     pub(crate) access_token: String,
     pub(crate) room_id: String,
+}
+
+/// Mattermost delivery via an incoming webhook. `channel` and `username`
+/// optionally override the webhook's defaults; a `channel` override only works
+/// if the webhook was created with "allow channel override" enabled.
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct Mattermost {
+    pub(crate) webhook: Url,
+    pub(crate) channel: Option<String>,
+    pub(crate) username: Option<String>,
+}
+
+/// Rocket.Chat delivery via an incoming webhook. `channel` and `alias`
+/// optionally override the webhook's defaults.
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct RocketChat {
+    pub(crate) webhook: Url,
+    pub(crate) channel: Option<String>,
+    pub(crate) alias: Option<String>,
+}
+
+/// Google Chat delivery via an incoming webhook — the target space is fixed
+/// when the webhook is created (the URL carries the `key`/`token` pair).
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct GoogleChat {
+    pub(crate) webhook: Url,
 }
 
 /// Generic webhook delivery — POSTs each event to `url`. `headers` carries any

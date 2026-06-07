@@ -18,6 +18,9 @@
 		{ value: 'ntfy', label: 'ntfy' },
 		{ value: 'pushover', label: 'Pushover' },
 		{ value: 'matrix', label: 'Matrix' },
+		{ value: 'mattermost', label: 'Mattermost' },
+		{ value: 'rocketchat', label: 'Rocket.Chat' },
+		{ value: 'google_chat', label: 'Google Chat' },
 		{ value: 'webhook', label: 'Webhook' }
 	];
 	const allowed = $derived<Set<NotifierKind>>(
@@ -62,6 +65,16 @@
 				return n.config.device ? `device ${n.config.device}` : 'pushover';
 			case 'matrix':
 				return `${n.config.room_id} @ ${n.config.homeserver_host}`;
+			case 'mattermost':
+				return n.config.channel
+					? `${n.config.channel} @ ${n.config.webhook_host}`
+					: n.config.webhook_host;
+			case 'rocketchat':
+				return n.config.channel
+					? `${n.config.channel} @ ${n.config.webhook_host}`
+					: n.config.webhook_host;
+			case 'google_chat':
+				return n.config.webhook_host;
 			case 'webhook':
 				return n.config.url_host;
 		}
@@ -402,6 +415,76 @@
 					<p class="text-xs text-zinc-500">
 						Use a bot/user access token that has already joined the target room. Homeserver must be
 						reachable over https.
+					</p>
+				</div>
+			{:else if kind === 'mattermost'}
+				<div class="space-y-3">
+					<input
+						type="url"
+						name="webhook"
+						required
+						placeholder="https://mattermost.example.com/hooks/…"
+						class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+					/>
+					<div class="grid gap-3 sm:grid-cols-2">
+						<input
+							type="text"
+							name="channel"
+							placeholder="Channel override (optional, e.g. town-square)"
+							class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+						/>
+						<input
+							type="text"
+							name="username"
+							placeholder="Display name (optional)"
+							class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+						/>
+					</div>
+					<p class="text-xs text-zinc-500">
+						In Mattermost: Integrations → Incoming Webhooks → Add. Server must be reachable over
+						https. A channel override only works if the webhook allows it.
+					</p>
+				</div>
+			{:else if kind === 'rocketchat'}
+				<div class="space-y-3">
+					<input
+						type="url"
+						name="webhook"
+						required
+						placeholder="https://rocketchat.example.com/hooks/…"
+						class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+					/>
+					<div class="grid gap-3 sm:grid-cols-2">
+						<input
+							type="text"
+							name="channel"
+							placeholder="Channel override (optional, e.g. #general)"
+							class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+						/>
+						<input
+							type="text"
+							name="alias"
+							placeholder="Alias / display name (optional)"
+							class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+						/>
+					</div>
+					<p class="text-xs text-zinc-500">
+						In Rocket.Chat: Administration → Integrations → New → Incoming. Server must be reachable
+						over https.
+					</p>
+				</div>
+			{:else if kind === 'google_chat'}
+				<div class="space-y-2">
+					<input
+						type="url"
+						name="webhook"
+						required
+						placeholder="https://chat.googleapis.com/v1/spaces/…?key=…&token=…"
+						class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+					/>
+					<p class="text-xs text-zinc-500">
+						In Google Chat: open the space → Apps & integrations → Webhooks → Add. Copy the full URL
+						including the key/token — it's the secret that authorizes posting.
 					</p>
 				</div>
 			{:else if kind === 'webhook'}

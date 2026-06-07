@@ -17,6 +17,9 @@ pub enum NotifierKind {
     Ntfy,
     Pushover,
     Matrix,
+    Mattermost,
+    RocketChat,
+    GoogleChat,
     Webhook,
 }
 
@@ -33,6 +36,9 @@ impl NotifierKind {
             NotifierKind::Ntfy => "ntfy",
             NotifierKind::Pushover => "pushover",
             NotifierKind::Matrix => "matrix",
+            NotifierKind::Mattermost => "mattermost",
+            NotifierKind::RocketChat => "rocketchat",
+            NotifierKind::GoogleChat => "google_chat",
             NotifierKind::Webhook => "webhook",
         }
     }
@@ -49,6 +55,9 @@ impl NotifierKind {
             "ntfy" => Some(Self::Ntfy),
             "pushover" => Some(Self::Pushover),
             "matrix" => Some(Self::Matrix),
+            "mattermost" => Some(Self::Mattermost),
+            "rocketchat" => Some(Self::RocketChat),
+            "google_chat" => Some(Self::GoogleChat),
             "webhook" => Some(Self::Webhook),
             _ => None,
         }
@@ -72,6 +81,9 @@ pub enum NotifierConfig {
     Ntfy(NtfyConfig),
     Pushover(PushoverConfig),
     Matrix(MatrixConfig),
+    Mattermost(MattermostConfig),
+    RocketChat(RocketChatConfig),
+    GoogleChat(GoogleChatConfig),
     Webhook(WebhookConfig),
 }
 
@@ -88,6 +100,9 @@ impl NotifierConfig {
             NotifierConfig::Ntfy(_) => NotifierKind::Ntfy,
             NotifierConfig::Pushover(_) => NotifierKind::Pushover,
             NotifierConfig::Matrix(_) => NotifierKind::Matrix,
+            NotifierConfig::Mattermost(_) => NotifierKind::Mattermost,
+            NotifierConfig::RocketChat(_) => NotifierKind::RocketChat,
+            NotifierConfig::GoogleChat(_) => NotifierKind::GoogleChat,
             NotifierConfig::Webhook(_) => NotifierKind::Webhook,
         }
     }
@@ -173,6 +188,41 @@ pub struct MatrixConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MattermostConfig {
+    /// Mattermost incoming-webhook URL. Self-hosted, so user-supplied and
+    /// SSRF-validated at create time.
+    pub webhook: String,
+    /// Optional channel override (e.g. `town-square` or `@username`); only
+    /// honoured if the webhook allows channel overrides.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
+    /// Optional display-name override for the posting bot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RocketChatConfig {
+    /// Rocket.Chat incoming-webhook URL. Self-hosted, so user-supplied and
+    /// SSRF-validated at create time.
+    pub webhook: String,
+    /// Optional channel override (e.g. `#general` or `@username`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
+    /// Optional alias (display name) override for the posting bot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GoogleChatConfig {
+    /// Google Chat incoming-webhook URL. The target space is fixed when the
+    /// webhook is created; the URL carries the `key`/`token` pair, so it is a
+    /// secret. Host is fixed (`chat.googleapis.com`), pinned at create time.
+    pub webhook: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebhookConfig {
     /// Arbitrary HTTP endpoint to POST events to. User-supplied, so
     /// SSRF-validated at create time. Headers carry auth and are secret.
@@ -255,6 +305,25 @@ pub enum NotifierSummaryConfig {
         room_id: String,
         access_token_set: bool,
     },
+    Mattermost {
+        /// Webhook host (origin) only — the `/hooks/<token>` path is secret.
+        webhook_host: String,
+        webhook_set: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        channel: Option<String>,
+    },
+    RocketChat {
+        /// Webhook host (origin) only — the `/hooks/...` path is secret.
+        webhook_host: String,
+        webhook_set: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        channel: Option<String>,
+    },
+    GoogleChat {
+        /// Fixed host only — the `key`/`token` query pair is secret.
+        webhook_host: String,
+        webhook_set: bool,
+    },
     Webhook {
         /// Endpoint host (origin) only — path/query stripped so URL-embedded
         /// secrets don't leak back to the browser.
@@ -305,6 +374,20 @@ impl From<&Notifier> for NotifierSummary {
                 homeserver_host: url_host_only(&c.homeserver),
                 room_id: c.room_id.clone(),
                 access_token_set: !c.access_token.is_empty(),
+            },
+            NotifierConfig::Mattermost(c) => NotifierSummaryConfig::Mattermost {
+                webhook_host: url_host_only(&c.webhook),
+                webhook_set: !c.webhook.is_empty(),
+                channel: c.channel.clone().filter(|s| !s.is_empty()),
+            },
+            NotifierConfig::RocketChat(c) => NotifierSummaryConfig::RocketChat {
+                webhook_host: url_host_only(&c.webhook),
+                webhook_set: !c.webhook.is_empty(),
+                channel: c.channel.clone().filter(|s| !s.is_empty()),
+            },
+            NotifierConfig::GoogleChat(c) => NotifierSummaryConfig::GoogleChat {
+                webhook_host: url_host_only(&c.webhook),
+                webhook_set: !c.webhook.is_empty(),
             },
             NotifierConfig::Webhook(c) => NotifierSummaryConfig::Webhook {
                 url_host: url_host_only(&c.url),
@@ -420,6 +503,9 @@ mod tests {
             NotifierKind::Ntfy,
             NotifierKind::Pushover,
             NotifierKind::Matrix,
+            NotifierKind::Mattermost,
+            NotifierKind::RocketChat,
+            NotifierKind::GoogleChat,
             NotifierKind::Webhook,
         ] {
             assert_eq!(NotifierKind::parse(k.as_str()), Some(k));

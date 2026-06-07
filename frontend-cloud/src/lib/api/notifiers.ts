@@ -15,6 +15,9 @@ export type NotifierKind =
 	| 'ntfy'
 	| 'pushover'
 	| 'matrix'
+	| 'mattermost'
+	| 'rocketchat'
+	| 'google_chat'
 	| 'webhook';
 
 export type NotifierConfig =
@@ -28,6 +31,9 @@ export type NotifierConfig =
 	| { kind: 'ntfy'; server: string; topic: string; access_token?: string }
 	| { kind: 'pushover'; token: string; user: string; device?: string }
 	| { kind: 'matrix'; homeserver: string; access_token: string; room_id: string }
+	| { kind: 'mattermost'; webhook: string; channel?: string; username?: string }
+	| { kind: 'rocketchat'; webhook: string; channel?: string; alias?: string }
+	| { kind: 'google_chat'; webhook: string }
 	| { kind: 'webhook'; url: string; headers?: Record<string, string> };
 
 /**
@@ -47,6 +53,9 @@ export type NotifierSummaryConfig =
 	| { kind: 'ntfy'; server_host: string; topic: string; access_token_set: boolean }
 	| { kind: 'pushover'; token_set: boolean; user_set: boolean; device?: string }
 	| { kind: 'matrix'; homeserver_host: string; room_id: string; access_token_set: boolean }
+	| { kind: 'mattermost'; webhook_host: string; webhook_set: boolean; channel?: string }
+	| { kind: 'rocketchat'; webhook_host: string; webhook_set: boolean; channel?: string }
+	| { kind: 'google_chat'; webhook_host: string; webhook_set: boolean }
 	| { kind: 'webhook'; url_host: string; headers_set: boolean };
 
 export interface Notifier {

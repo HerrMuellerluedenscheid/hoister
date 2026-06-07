@@ -68,6 +68,17 @@ pub async fn validate_config(config: &NotifierConfig) -> Result<(), ValidationEr
         NotifierConfig::Matrix(c) => {
             validate_public_https_url(&c.homeserver, "Matrix homeserver URL").await
         }
+        // Mattermost and Rocket.Chat are self-hosted, so the webhook host is
+        // tenant-supplied — same SSRF surface as ntfy/Matrix/Gotify.
+        NotifierConfig::Mattermost(c) => {
+            validate_public_https_url(&c.webhook, "Mattermost webhook URL").await
+        }
+        NotifierConfig::RocketChat(c) => {
+            validate_public_https_url(&c.webhook, "Rocket.Chat webhook URL").await
+        }
+        // Google Chat webhooks are always served from chat.googleapis.com, so
+        // we pin the host the way we pin Slack/Teams — no SSRF surface.
+        NotifierConfig::GoogleChat(c) => validate_google_chat_webhook(&c.webhook),
         NotifierConfig::Webhook(c) => validate_public_https_url(&c.url, "Webhook URL").await,
         // Pushover delivers through its fixed API host (no user-supplied host),
         // so there is nothing to SSRF-check — only confirm the credentials are
@@ -123,6 +134,26 @@ fn validate_teams_webhook(webhook: &str) -> Result<(), ValidationError> {
     if !allowed {
         return Err(ValidationError::UnsupportedDomain(
             "Teams webhook must be on *.webhook.office.com or *.logic.azure.com",
+        ));
+    }
+    Ok(())
+}
+
+/// Google Chat incoming webhooks are always served from `chat.googleapis.com`,
+/// so we pin the host the same way we pin Slack/Teams — no user-supplied host
+/// means no SSRF surface. We match on the parsed host (not a string prefix) so
+/// a crafted path like `https://evil.com/chat.googleapis.com` can't slip through.
+fn validate_google_chat_webhook(webhook: &str) -> Result<(), ValidationError> {
+    if webhook.is_empty() {
+        return Err(ValidationError::Empty("Google Chat webhook URL"));
+    }
+    let url = url::Url::parse(webhook).map_err(|_| ValidationError::InvalidUrl)?;
+    if url.scheme() != "https" {
+        return Err(ValidationError::NotHttps);
+    }
+    if url.host_str() != Some("chat.googleapis.com") {
+        return Err(ValidationError::UnsupportedDomain(
+            "Google Chat webhook must be on https://chat.googleapis.com/",
         ));
     }
     Ok(())
@@ -335,6 +366,28 @@ mod tests {
             validate_pushover("tok", ""),
             Err(ValidationError::Empty(_))
         ));
+    }
+
+    #[test]
+    fn google_chat_webhook_requires_google_host() {
+        assert!(
+            validate_google_chat_webhook(
+                "https://chat.googleapis.com/v1/spaces/AAAA/messages?key=K&token=T"
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_google_chat_webhook(
+                "http://chat.googleapis.com/v1/spaces/AAAA/messages?key=K&token=T"
+            )
+            .is_err()
+        );
+        // A crafted path must not satisfy the host check.
+        assert!(
+            validate_google_chat_webhook("https://evil.example.com/chat.googleapis.com").is_err()
+        );
+        assert!(validate_google_chat_webhook("https://chat.googleapis.com.evil.com/x").is_err());
+        assert!(validate_google_chat_webhook("").is_err());
     }
 
     #[test]

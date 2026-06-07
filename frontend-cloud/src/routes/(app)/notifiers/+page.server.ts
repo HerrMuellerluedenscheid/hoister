@@ -89,6 +89,35 @@ function parseConfig(form: FormData): NotifierConfig | { error: string } {
 			}
 			return { kind: 'matrix', homeserver, access_token, room_id };
 		}
+		case 'mattermost': {
+			const webhook = requireString(form, 'webhook');
+			if (!webhook) return { error: 'Mattermost: a webhook URL is required' };
+			const channel = requireString(form, 'channel');
+			const username = requireString(form, 'username');
+			return {
+				kind: 'mattermost',
+				webhook,
+				...(channel ? { channel } : {}),
+				...(username ? { username } : {})
+			};
+		}
+		case 'rocketchat': {
+			const webhook = requireString(form, 'webhook');
+			if (!webhook) return { error: 'Rocket.Chat: a webhook URL is required' };
+			const channel = requireString(form, 'channel');
+			const alias = requireString(form, 'alias');
+			return {
+				kind: 'rocketchat',
+				webhook,
+				...(channel ? { channel } : {}),
+				...(alias ? { alias } : {})
+			};
+		}
+		case 'google_chat': {
+			const webhook = requireString(form, 'webhook');
+			if (!webhook) return { error: 'Google Chat: a webhook URL is required' };
+			return { kind: 'google_chat', webhook };
+		}
 		case 'webhook': {
 			const url = requireString(form, 'url');
 			if (!url) return { error: 'Webhook: a URL is required' };

@@ -154,6 +154,25 @@ fn sender_for(
                 room_id: m.room_id,
             });
         }
+        NotifierConfig::Mattermost(m) => {
+            sender.mattermost = Some(chatterbox::dispatcher::mattermost::Mattermost {
+                webhook_url: m.webhook,
+                channel: m.channel,
+                username: m.username,
+            });
+        }
+        NotifierConfig::RocketChat(r) => {
+            sender.rocketchat = Some(chatterbox::dispatcher::rocketchat::RocketChat {
+                webhook_url: r.webhook,
+                channel: r.channel,
+                alias: r.alias,
+            });
+        }
+        NotifierConfig::GoogleChat(g) => {
+            sender.google_chat = Some(chatterbox::dispatcher::google_chat::GoogleChat {
+                webhook_url: g.webhook,
+            });
+        }
         NotifierConfig::Webhook(w) => {
             sender.webhook = Some(chatterbox::dispatcher::webhook::Webhook {
                 url: w.url,
