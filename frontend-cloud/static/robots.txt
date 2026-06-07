@@ -1,3 +1,9 @@
-# allow crawling everything by default
+# Allow crawling of public pages; keep auth-gated app routes out of the index.
 User-agent: *
-Disallow:
+Disallow: /dashboard
+Disallow: /containers
+Disallow: /tokens
+Disallow: /notifiers
+Disallow: /settings
+
+Sitemap: https://hoister.io/sitemap.xml

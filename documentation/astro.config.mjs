@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import { ogPlugin } from './src/plugins/og-plugin';
 
 // https://astro.build/config
 export default defineConfig({
@@ -8,6 +9,7 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'Hoister',
+			plugins: [ogPlugin()],
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/HerrMuellerluedenscheid/hoister' }],
 			sidebar: [
 				{

@@ -1,5 +1,24 @@
 <script lang="ts">
 	import { Show, SignInButton, UserButton } from 'svelte-clerk';
+	import SEO from '$lib/components/SEO.svelte';
+	import { SITE_URL } from '$lib/seo';
+
+	const description =
+		'Hoister automatically updates your running Docker containers when a new image is pushed — with built-in health-check rollback. A self-hostable Watchtower alternative for Docker Compose.';
+
+	// SoftwareApplication schema so search engines understand this is a
+	// self-hostable developer tool and can show rich results.
+	const jsonLd = {
+		'@context': 'https://schema.org',
+		'@type': 'SoftwareApplication',
+		name: 'Hoister',
+		applicationCategory: 'DeveloperApplication',
+		operatingSystem: 'Docker',
+		description,
+		url: SITE_URL,
+		offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+		sameAs: ['https://github.com/HerrMuellerluedenscheid/hoister']
+	};
 
 	const composeSnippet = `services:
   hoister:
@@ -24,6 +43,13 @@
 		setTimeout(() => (copied = false), 2000);
 	}
 </script>
+
+<SEO
+	title="Hoister — Automatic Docker container updates with rollback"
+	{description}
+	path="/"
+	{jsonLd}
+/>
 
 <div class="flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
 	<!-- Nav -->

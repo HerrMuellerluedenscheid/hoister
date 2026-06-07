@@ -1,3 +1,14 @@
+<script lang="ts">
+	import SEO from '$lib/components/SEO.svelte';
+</script>
+
+<SEO
+	title="Datenschutz — Hoister"
+	description="Privacy policy for Hoister."
+	path="/datenschutz"
+	noindex
+/>
+
 <div class="flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
 	<header class="flex items-center justify-between px-8 py-5">
 		<a href="/" class="flex items-center gap-2">

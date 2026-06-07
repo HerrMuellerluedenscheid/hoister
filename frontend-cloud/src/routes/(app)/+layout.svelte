@@ -42,6 +42,11 @@
 	});
 </script>
 
+<svelte:head>
+	<!-- Auth-gated app pages carry no SEO value and shouldn't be indexed. -->
+	<meta name="robots" content="noindex, nofollow" />
+</svelte:head>
+
 <svelte:window
 	onkeydown={(e) => {
 		if (e.key === 'Escape') mobileOpen = false;
