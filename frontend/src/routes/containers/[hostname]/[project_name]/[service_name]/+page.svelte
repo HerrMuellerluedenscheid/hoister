@@ -183,29 +183,6 @@
             >
           </span>
         </div>
-        {#if container.State.Health.Log && container.State.Health.Log.length > 0}
-          <h3 class="mb-2 text-sm font-medium text-gray-700">Recent probes</h3>
-          <div class="space-y-2">
-            {#each container.State.Health.Log.slice(-3).reverse() as probe}
-              <div
-                class="rounded border p-3 {probe.ExitCode === 0
-                  ? 'border-green-200 bg-green-50'
-                  : 'border-red-200 bg-red-50'}"
-              >
-                <div class="flex items-center justify-between text-xs">
-                  <span
-                    class="font-medium {probe.ExitCode === 0
-                      ? 'text-green-800'
-                      : 'text-red-800'}"
-                  >
-                    {probe.ExitCode === 0 ? 'Passed' : 'Failed'}
-                  </span>
-                  <span class="text-gray-600">{formatDate(probe.End)}</span>
-                </div>
-              </div>
-            {/each}
-          </div>
-        {/if}
       </div>
     {/if}
 

@@ -284,18 +284,15 @@ fn redact_values(haystack: &mut String, needles: &[String]) {
     }
 }
 
-/// Drop the per-probe `Output` from the container's health-check log before the
-/// inspect leaves the host. The `ExitCode` already tells the dashboard whether a
-/// probe passed; the raw probe output is unnecessary and can echo back response
-/// bodies or secrets the health-check command happened to print.
+/// Drop the per-probe health-check log before the inspect leaves the host. The
+/// dashboard only shows `Health.Status` and `Health.FailingStreak`, so the probe
+/// log is dead weight; clearing it also keeps probe output (which can echo back
+/// response bodies or secrets the health-check command printed) off the wire.
 fn strip_health_check_output(inspect: &mut ContainerInspectResponse) {
     if let Some(state) = inspect.state.as_mut()
         && let Some(health) = state.health.as_mut()
-        && let Some(log) = health.log.as_mut()
     {
-        for probe in log {
-            probe.output = None;
-        }
+        health.log = None;
     }
 }
 
@@ -440,18 +437,19 @@ mod tests {
     }
 
     #[test]
-    fn strip_health_check_output_keeps_exit_code() {
-        use bollard::models::{ContainerState, Health, HealthcheckResult};
+    fn strip_health_check_output_drops_log_keeps_status() {
+        use bollard::models::{ContainerState, Health, HealthStatusEnum, HealthcheckResult};
 
         let mut inspect = ContainerInspectResponse {
             state: Some(ContainerState {
                 health: Some(Health {
+                    status: Some(HealthStatusEnum::UNHEALTHY),
+                    failing_streak: Some(3),
                     log: Some(vec![HealthcheckResult {
                         exit_code: Some(1),
                         output: Some("HTTP/1.1 500 ... full body".to_string()),
                         ..Default::default()
                     }]),
-                    ..Default::default()
                 }),
                 ..Default::default()
             }),
@@ -460,9 +458,10 @@ mod tests {
 
         strip_health_check_output(&mut inspect);
 
-        let probe = &inspect.state.unwrap().health.unwrap().log.unwrap()[0];
-        assert_eq!(probe.exit_code, Some(1));
-        assert_eq!(probe.output, None);
+        let health = inspect.state.unwrap().health.unwrap();
+        assert_eq!(health.status, Some(HealthStatusEnum::UNHEALTHY));
+        assert_eq!(health.failing_streak, Some(3));
+        assert_eq!(health.log, None);
     }
 
     #[test]
