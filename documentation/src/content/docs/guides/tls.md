@@ -124,7 +124,7 @@ services:
     environment:
       HOISTER_CONTROLLER_URL: "https://hoister-controller:3033"
       HOISTER_AUTH_USERNAME: admin
-      HOISTER_AUTH_PASSWORD: $2y$05$xXHhvkw0Jl95eYvK9zMubuTj39YgyKcwj2etuEgLFeec4.S9K5AVC
+      HOISTER_AUTH_PASSWORD: $$2b$$05$$9cQr6ip8PmR0dUN3..NR0.UazKLunYc/RrjpzI8GrGg5eSvsqbbiC  # password
       NODE_EXTRA_CA_CERTS: /certs/ca.pem
 
 volumes:

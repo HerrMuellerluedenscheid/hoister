@@ -11,7 +11,7 @@ Deploy Docker images automatically with rollback support.
 
 ## Quick start
 
-Add the `hoister.enable=true` label to any service you want Hoister to manage, then add Hoister itself to the same Compose file:
+Mint an agent token at [hoister.io](https://hoister.io) (sign in, then open **Tokens**). Add the `hoister.enable=true` label to any service you want Hoister to manage, then add Hoister itself to the same Compose file:
 
 ```yaml
 services:
@@ -27,9 +27,15 @@ services:
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped
+    environment:
+      # Report to the hosted dashboard at api.hoister.io (the default
+      # controller URL). Paste the token you minted above.
+      HOISTER_CONTROLLER_TOKEN: "hst_<your-token>"
 ```
 
-Push a new image under the same tag — Hoister will pull it and restart the container automatically. If the new container fails to start, it rolls back to the previous version.
+Push a new image under the same tag — Hoister will pull it and restart the container automatically. If the new container fails to start, it rolls back to the previous version, and the result shows up on your dashboard.
+
+> **Prefer no hosted dashboard?** Drop the `HOISTER_CONTROLLER_TOKEN` line and Hoister runs standalone — same auto-update and rollback, with no telemetry leaving the host.
 
 See the [Getting Started guide](https://docs.hoister.io/guides/getting-started/) for a full walkthrough including volume backups.
 
