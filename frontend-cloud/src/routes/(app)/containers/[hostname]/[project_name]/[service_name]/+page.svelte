@@ -353,7 +353,16 @@
 								MacAddress?: string;
 							}}
 							<div class="rounded-lg border border-zinc-800 p-3">
-								<h3 class="mb-2 text-sm font-medium text-zinc-300">{networkName}</h3>
+								<a
+									href="/networks/{encodeURIComponent(hostname ?? '')}/{encodeURIComponent(
+										networkName
+									)}"
+									class="mb-2 inline-flex items-center gap-1 text-sm font-medium text-indigo-300 hover:text-indigo-200 hover:underline"
+									title="View services on this network"
+								>
+									{networkName}
+									<span aria-hidden="true">→</span>
+								</a>
 								<div class="grid grid-cols-1 gap-3 text-xs md:grid-cols-3">
 									<div>
 										<span class="text-zinc-500">IP</span>

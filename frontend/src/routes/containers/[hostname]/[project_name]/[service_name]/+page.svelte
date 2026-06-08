@@ -242,7 +242,14 @@
       <div class="space-y-4">
         {#each Object.entries(container.NetworkSettings.Networks) as [networkName, network]}
           <div class="rounded-lg border p-4">
-            <h3 class="mb-3 font-medium text-gray-900">{networkName}</h3>
+            <a
+              href="/networks/{encodeURIComponent(hostname)}/{encodeURIComponent(networkName)}"
+              class="mb-3 inline-flex items-center gap-1 font-medium text-blue-600 hover:text-blue-800 hover:underline"
+              title="View services on this network"
+            >
+              {networkName}
+              <span aria-hidden="true">→</span>
+            </a>
             <div class="grid grid-cols-1 gap-4 text-sm md:grid-cols-3">
               <div>
                 <span class="text-gray-600">IP Address</span>
