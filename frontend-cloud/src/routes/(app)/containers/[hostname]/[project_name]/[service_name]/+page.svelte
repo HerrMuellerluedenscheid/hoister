@@ -260,27 +260,13 @@
 						>
 					</div>
 					{#if container.State.Health.Log && container.State.Health.Log.length > 0}
-						<h3 class="mb-2 text-xs font-medium text-zinc-400">Recent probes</h3>
-						<div class="space-y-2">
-							{#each container.State.Health.Log.slice(-3).reverse() as probe}
-								<div
-									class="rounded-lg border p-3 {probe.ExitCode === 0
-										? 'border-emerald-500/30 bg-emerald-500/5'
-										: 'border-red-500/30 bg-red-500/5'}"
-								>
-									<div class="flex items-center justify-between text-xs">
-										<span
-											class="font-medium {probe.ExitCode === 0
-												? 'text-emerald-300'
-												: 'text-red-300'}"
-										>
-											{probe.ExitCode === 0 ? 'Passed' : 'Failed'}
-										</span>
-										<span class="text-zinc-500">{formatDate(probe.End)}</span>
-									</div>
-								</div>
-							{/each}
-						</div>
+						<p class="text-xs text-zinc-500">
+							Last checked: <span class="text-zinc-300"
+								>{formatDate(
+									container.State.Health.Log[container.State.Health.Log.length - 1].End
+								)}</span
+							>
+						</p>
 					{/if}
 				</section>
 			{/if}
@@ -288,7 +274,9 @@
 			<!-- Recent deployments -->
 			<section class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
 				<h2 class="mb-3 text-base font-semibold text-zinc-200">Recent deployments</h2>
-				<Deployments data={deployments} />
+				<div class="max-h-96 overflow-y-auto">
+					<Deployments data={deployments} />
+				</div>
 			</section>
 
 			<!-- Configuration -->

@@ -189,7 +189,9 @@
     <!-- Deployments -->
     <div class="mb-6 rounded-lg bg-white p-6 shadow">
       <h2 class="mb-4 text-xl font-semibold text-gray-900">Most recent Deployments</h2>
-      <Deployments data={deployments} />
+      <div class="max-h-96 overflow-y-auto">
+        <Deployments data={deployments} />
+      </div>
     </div>
 
     <!-- Configuration Card -->

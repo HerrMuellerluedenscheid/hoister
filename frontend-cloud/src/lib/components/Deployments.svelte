@@ -22,7 +22,7 @@
 {:else}
 	<div class="overflow-x-auto rounded-xl border border-zinc-800">
 		<table class="min-w-full bg-zinc-900">
-			<thead class="bg-zinc-800">
+			<thead class="sticky top-0 z-10 bg-zinc-800">
 				<tr>
 					<th
 						class="border-b border-zinc-700 px-6 py-3 text-left text-xs font-medium tracking-wider text-zinc-400 uppercase"

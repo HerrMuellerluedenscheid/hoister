@@ -12,7 +12,7 @@
   {:else if data.length > 0}
     <div class="overflow-x-auto">
       <table class="min-w-full rounded-lg border border-gray-200 bg-white shadow">
-        <thead class="bg-gray-50">
+        <thead class="sticky top-0 z-10 bg-gray-50">
           <tr>
             <th
               class="border-b px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-700 uppercase"
@@ -77,7 +77,9 @@
                   {/if}
                 </div>
                 {#if item.status === 'Failed' && item.logs}
-                  <p class="mt-1 max-w-md font-mono text-xs break-all whitespace-pre-wrap text-red-700">
+                  <p
+                    class="mt-1 max-w-md font-mono text-xs break-all whitespace-pre-wrap text-red-700"
+                  >
                     {item.logs}
                   </p>
                 {/if}
