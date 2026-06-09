@@ -86,6 +86,9 @@ pub struct AppState<
     /// Controller-wide email (Resend) delivery settings, or `None` when not
     /// configured. Email notifiers can't dispatch without this.
     pub email: Option<EmailDispatchConfig>,
+    /// Public base URL of the dashboard frontend. Notifications append a deep
+    /// link to the relevant container details page using this origin.
+    pub dashboard_url: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -745,7 +748,7 @@ async fn create_deployment<
     }
 
     let notify_payload = if should_notify_for(&payload.status) {
-        Some(payload_message(&payload))
+        Some(payload_message(&payload, &state.dashboard_url))
     } else {
         None
     };
@@ -784,8 +787,8 @@ fn should_notify_for(status: &DeploymentStatus) -> bool {
     )
 }
 
-fn payload_message(payload: &CreateDeployment) -> Message {
-    payload.to_message()
+fn payload_message(payload: &CreateDeployment, dashboard_url: &str) -> Message {
+    payload.to_message_with_dashboard(Some(dashboard_url))
 }
 
 /// Fan out a deployment-event message to the user's notifiers, in the

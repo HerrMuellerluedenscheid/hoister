@@ -104,6 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         event_tx,
         pending_updates,
         email,
+        dashboard_url: config.dashboard_url.clone(),
     };
     // Treat an empty secret as unset everywhere downstream (the middleware's
     // X-Internal-Auth gate would otherwise just require an empty, trivially

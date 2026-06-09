@@ -136,17 +136,7 @@ pub struct CreateDeployment {
 
 impl Display for CreateDeployment {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let body = format!(
-            "image {} update to {}\nfinished with status {:?}\n(project {} | service {} | host {})",
-            self.image.as_str(),
-            self.digest.as_str(),
-            self.status,
-            self.project.as_str(),
-            self.service.as_str(),
-            self.hostname.as_str()
-        );
-
-        write!(f, "{body}")
+        write!(f, "{}", self.body(None))
     }
 }
 
@@ -163,8 +153,50 @@ impl CreateDeployment {
         }
     }
 
+    /// Dashboard path to this deployment's container details page, e.g.
+    /// `/containers/<host>/<project>/<service>`. Joined with a dashboard base
+    /// URL (see [`to_message_with_dashboard`](Self::to_message_with_dashboard))
+    /// it deep-links a notification straight to the relevant page.
+    pub fn container_details_path(&self) -> String {
+        format!(
+            "/containers/{}/{}/{}",
+            self.hostname.as_str(),
+            self.project.as_str(),
+            self.service.as_str(),
+        )
+    }
+
+    /// Notification body. When `dashboard_url` is set, a link to the container
+    /// details page is appended so the recipient can jump straight to it.
+    fn body(&self, dashboard_url: Option<&str>) -> String {
+        let mut body = format!(
+            "image {} update to {}\nfinished with status {:?}\n(project {} | service {} | host {})",
+            self.image.as_str(),
+            self.digest.as_str(),
+            self.status,
+            self.project.as_str(),
+            self.service.as_str(),
+            self.hostname.as_str()
+        );
+        if let Some(base) = dashboard_url {
+            body.push_str(&format!(
+                "\n\nView details: {}{}",
+                base.trim_end_matches('/'),
+                self.container_details_path()
+            ));
+        }
+        body
+    }
+
     pub fn to_message(&self) -> Message {
-        Message::new(self.status.to_string(), self.to_string()).with_subject(
+        self.to_message_with_dashboard(None)
+    }
+
+    /// Like [`to_message`](Self::to_message) but appends a deep link to the
+    /// container details page when a dashboard base URL is known (e.g. the
+    /// hosted controller passes `https://hoister.io`).
+    pub fn to_message_with_dashboard(&self, dashboard_url: Option<&str>) -> Message {
+        Message::new(self.status.to_string(), self.body(dashboard_url)).with_subject(
             deployment_email_subject(self.image.as_str(), self.hostname.as_str()),
         )
     }
@@ -249,5 +281,33 @@ mod tests {
 
         // The title still carries the status for chat dispatchers.
         assert!(success.to_message().title.contains("Successful"));
+    }
+
+    // The notification should deep-link to the container details page when a
+    // dashboard base URL is known, mirroring the frontend route
+    // `/containers/<host>/<project>/<service>`.
+    #[test]
+    fn message_appends_container_details_link_when_dashboard_url_is_set() {
+        let d = CreateDeployment {
+            project: ProjectName::new("myproj"),
+            service: ServiceName::new("web"),
+            image: ImageName::new("myapp:latest"),
+            digest: ImageDigest::new("sha256:1"),
+            status: DeploymentStatus::Success,
+            hostname: HostName::new("web-01"),
+            logs: None,
+        };
+
+        // No base URL -> no link, body unchanged.
+        assert!(!d.to_message().body.contains("/containers/"));
+
+        // A trailing slash on the base must not double up in the link.
+        let body = d
+            .to_message_with_dashboard(Some("https://hoister.io/"))
+            .body;
+        assert!(
+            body.contains("https://hoister.io/containers/web-01/myproj/web"),
+            "expected deep link in body: {body}"
+        );
     }
 }

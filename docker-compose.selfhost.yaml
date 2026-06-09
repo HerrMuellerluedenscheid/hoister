@@ -40,6 +40,12 @@ services:
     restart: unless-stopped
     volumes:
       - controller-data:/data  # persist deployments across restarts
+    environment:
+      # Origin of the dashboard as reached from a browser, used to deep-link
+      # notifications to the container details page. Defaults to the hosted
+      # dashboard; point it at this stack's frontend. Set it to the public URL
+      # when exposing the dashboard beyond localhost.
+      HOISTER_CONTROLLER_DASHBOARD_URL: "http://localhost:3000"
     labels:
       - "hoister.hide=true"
 

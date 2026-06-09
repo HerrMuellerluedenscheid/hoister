@@ -71,6 +71,7 @@ mod tests {
             event_tx,
             pending_updates: Default::default(),
             email: None,
+            dashboard_url: "https://hoister.io".to_string(),
         };
         let agent = create_agent_router(state.clone()).await;
         let internal = create_internal_router(state, InternalSecret(None)).await;

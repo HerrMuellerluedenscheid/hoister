@@ -47,6 +47,12 @@ pub struct Config {
     /// on a Resend-verified domain. Env: `HOISTER_CONTROLLER_EMAIL_FROM`.
     #[serde(default)]
     pub email_from: Option<String>,
+    /// Public base URL of the dashboard frontend, used to deep-link
+    /// notifications to the relevant container details page. Defaults to the
+    /// hosted dashboard at hoister.io; self-hosted controllers should set this
+    /// to their own frontend origin. Env: `HOISTER_CONTROLLER_DASHBOARD_URL`.
+    #[serde(default = "default_dashboard_url")]
+    pub dashboard_url: String,
     pub database_path: String,
     #[serde(default)]
     pub tls_cert_path: Option<PathBuf>,
@@ -78,6 +84,10 @@ fn default_internal_port() -> u16 {
 
 fn default_internal_bind_addr() -> String {
     "127.0.0.1".to_string()
+}
+
+fn default_dashboard_url() -> String {
+    "https://hoister.io".to_string()
 }
 
 pub fn get_config() -> Config {
