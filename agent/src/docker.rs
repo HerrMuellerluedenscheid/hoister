@@ -1104,9 +1104,44 @@ async fn create_container(
     let container = docker.create_container(Some(options), config).await?;
     Ok(container)
 }
+/// Pull the image, retrying transient pull failures (registry/network blips
+/// like i/o timeouts or 5xx gateway errors) with a capped exponential backoff.
+///
+/// Only `ImagePullFailed` is retried: `NoUpdateAvailable` is a normal outcome
+/// and any later failure (container start/health check) lives in
+/// `do_update_container`, so it stays a hard failure as intended.
 async fn download_image(
     docker: &Docker,
     image_name: ImageName,
+    image_tag: &str,
+    registries: Option<&Registry>,
+    http_client: &reqwest::Client,
+) -> Result<ImageDigest, HoisterError> {
+    const MAX_ATTEMPTS: u32 = 3;
+    const BASE_DELAY: Duration = Duration::from_secs(2);
+    const MAX_DELAY: Duration = Duration::from_secs(15);
+
+    for attempt in 0..MAX_ATTEMPTS {
+        match pull_image_once(docker, &image_name, image_tag, registries, http_client).await {
+            Err(e @ HoisterError::ImagePullFailed { .. }) if attempt + 1 < MAX_ATTEMPTS => {
+                let delay = std::cmp::min(BASE_DELAY * 2u32.pow(attempt), MAX_DELAY);
+                warn!(
+                    "Pulling image failed ({e}), retrying in {:?} ({}/{})...",
+                    delay,
+                    attempt + 1,
+                    MAX_ATTEMPTS
+                );
+                tokio::time::sleep(delay).await;
+            }
+            result => return result,
+        }
+    }
+    unreachable!("download_image loop always returns within MAX_ATTEMPTS");
+}
+
+async fn pull_image_once(
+    docker: &Docker,
+    image_name: &ImageName,
     image_tag: &str,
     registries: Option<&Registry>,
     http_client: &reqwest::Client,
@@ -1118,7 +1153,7 @@ async fn download_image(
         ..Default::default()
     };
 
-    let credentials = get_credentials(http_client, registries, &image_name).await?;
+    let credentials = get_credentials(http_client, registries, image_name).await?;
 
     let full_image_name = format!("{}:{}", image_name.as_str(), image_tag);
 
