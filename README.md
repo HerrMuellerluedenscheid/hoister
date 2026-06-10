@@ -26,7 +26,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
       - no-new-privileges:true
-    restart: unless-stopped
     environment:
       # Report to the hosted dashboard at api.hoister.io (the default
       # controller URL). Paste the token you minted above.
