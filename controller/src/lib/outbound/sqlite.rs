@@ -75,7 +75,7 @@ impl Sqlite {
     /// Run embedded database migrations.
     pub async fn migrate(&self) -> Result<(), SqlxError> {
         info!("Running database migrations");
-        sqlx::migrate!()
+        sqlx::migrate!("migrations/sqlite")
             .run(&self.pool)
             .await
             .map_err(|e| SqlxError::Migrate(Box::new(e)))?;
