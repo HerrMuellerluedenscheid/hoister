@@ -13,7 +13,7 @@
 	let {
 		points,
 		label,
-		color = '#818cf8',
+		color = 'var(--color-brand-accent)',
 		formatValue = (v: number) => v.toFixed(1),
 		// Optional fixed upper bound for the y-axis (e.g. memory limit). When
 		// omitted the axis auto-scales to the data's max.
@@ -107,18 +107,18 @@
 	}
 </script>
 
-<div class="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+<div class="rounded-xl border border-line bg-card p-4">
 	<div class="mb-2 flex items-baseline justify-between">
-		<h3 class="text-sm font-medium text-zinc-300">{label}</h3>
+		<h3 class="text-sm font-medium text-ink-secondary">{label}</h3>
 		{#if stats}
-			<span class="font-mono text-xs text-zinc-400">
+			<span class="font-mono text-xs text-ink-muted">
 				now {formatValue(stats.last)} · peak {formatValue(stats.peak)}
 			</span>
 		{/if}
 	</div>
 
 	{#if !stats}
-		<div class="flex h-40 items-center justify-center text-sm text-zinc-600">No data</div>
+		<div class="flex h-40 items-center justify-center text-sm text-ink-ghost">No data</div>
 	{:else}
 		<svg
 			viewBox="0 0 {W} {H}"
@@ -135,19 +135,19 @@
 					y1={tick.py}
 					x2={W - PAD.right}
 					y2={tick.py}
-					stroke="#27272a"
+					stroke="var(--color-line)"
 					stroke-width="1"
 				/>
-				<text x={PAD.left - 6} y={tick.py + 3} text-anchor="end" class="fill-zinc-500 text-[10px]">
+				<text x={PAD.left - 6} y={tick.py + 3} text-anchor="end" class="fill-ink-faint text-[10px]">
 					{formatValue(tick.v)}
 				</text>
 			{/each}
 
 			<!-- x labels: first + last sample time -->
-			<text x={PAD.left} y={H - 6} text-anchor="start" class="fill-zinc-500 text-[10px]">
+			<text x={PAD.left} y={H - 6} text-anchor="start" class="fill-ink-faint text-[10px]">
 				{fmtTime(stats.tMin)}
 			</text>
-			<text x={W - PAD.right} y={H - 6} text-anchor="end" class="fill-zinc-500 text-[10px]">
+			<text x={W - PAD.right} y={H - 6} text-anchor="end" class="fill-ink-faint text-[10px]">
 				{fmtTime(stats.tMax)}
 			</text>
 
@@ -160,7 +160,7 @@
 					y1={PAD.top}
 					x2={hover.x}
 					y2={PAD.top + plotH}
-					stroke="#52525b"
+					stroke="var(--color-line-subtle)"
 					stroke-width="1"
 					stroke-dasharray="3 3"
 				/>
@@ -169,7 +169,7 @@
 		</svg>
 
 		{#if hover}
-			<p class="mt-1 text-center font-mono text-xs text-zinc-400">
+			<p class="mt-1 text-center font-mono text-xs text-ink-muted">
 				{formatValue(hover.p.v)} · {fmtTime(hover.p.t)}
 			</p>
 		{/if}

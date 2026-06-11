@@ -208,7 +208,7 @@
 					href="https://github.com/HerrMuellerluedenscheid/hoister/issues/new"
 					target="_blank"
 					rel="noopener noreferrer"
-					class="rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-ink-inverse transition hover:bg-zinc-100 active:scale-95"
+					class="rounded-xl border border-line bg-element px-5 py-2.5 text-sm font-semibold text-ink transition hover:bg-line hover:border-line-subtle active:scale-95"
 				>
 					Open an issue
 				</a>

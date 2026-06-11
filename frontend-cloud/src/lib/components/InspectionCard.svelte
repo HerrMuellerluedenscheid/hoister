@@ -54,58 +54,58 @@
 	const status = $derived(inspection.State?.Status ?? 'unknown');
 	const statusClass = $derived(
 		status === 'running'
-			? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+			? 'bg-success-bg text-success border-success-border'
 			: status === 'exited' || status === 'dead'
-				? 'bg-red-500/15 text-red-300 border-red-500/30'
+				? 'bg-error-bg text-error border-error-border'
 				: status === 'paused'
 					? 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30'
 					: status === 'restarting'
 						? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
-						: 'bg-zinc-700/40 text-zinc-300 border-zinc-600/40'
+						: 'bg-line-subtle/40 text-ink-secondary border-line-subtle/40'
 	);
 </script>
 
 <a
 	href="/containers/{inspection_data.hostname}/{inspection_data.project_name}/{inspection_data.service_name}"
-	class="block rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition hover:border-zinc-700 hover:bg-zinc-900/80 {stale
+	class="block rounded-xl border border-line bg-card p-5 transition hover:border-line-subtle hover:bg-card/80 {stale
 		? 'opacity-60'
 		: ''}"
 >
 	<div class="mb-2 flex items-start justify-between gap-3">
-		<h3 class="text-base font-semibold break-all text-zinc-100">{inspection_data.service_name}</h3>
+		<h3 class="text-base font-semibold break-all text-ink">{inspection_data.service_name}</h3>
 		<span class="rounded-full border px-2 py-0.5 text-xs font-medium capitalize {statusClass}">
 			{status}
 		</span>
 	</div>
-	<dl class="space-y-1 text-xs text-zinc-400">
+	<dl class="space-y-1 text-xs text-ink-muted">
 		<div class="flex gap-1">
-			<dt class="text-zinc-500">Host:</dt>
+			<dt class="text-ink-faint">Host:</dt>
 			<dd class="break-all">{inspection_data.hostname}</dd>
 		</div>
 		<div class="flex gap-1">
-			<dt class="text-zinc-500">Image:</dt>
+			<dt class="text-ink-faint">Image:</dt>
 			<dd class="font-mono break-all">{inspection.Config?.Image ?? '—'}</dd>
 		</div>
 		<div class="flex gap-1">
-			<dt class="text-zinc-500">Uptime:</dt>
+			<dt class="text-ink-faint">Uptime:</dt>
 			<dd>{uptime}</dd>
 		</div>
-		<div class="flex gap-1 {stale ? 'text-amber-400' : ''}">
-			<dt class="text-zinc-500">{stale ? 'Stale — last update:' : 'Updated:'}</dt>
+		<div class="flex gap-1 {stale ? 'text-warning' : ''}">
+			<dt class="text-ink-faint">{stale ? 'Stale — last update:' : 'Updated:'}</dt>
 			<dd>{lastUpdatedAgo}</dd>
 		</div>
 	</dl>
 	<div class="mt-3 flex flex-wrap gap-1.5">
 		{#if hoisterEnabled}
 			<span
-				class="inline-flex items-center rounded-full border border-emerald-500/40 px-2 py-0.5 text-[10px] text-emerald-300"
+				class="inline-flex items-center rounded-full border border-success-border px-2 py-0.5 text-[10px] text-success"
 			>
 				Hoister enabled
 			</span>
 		{/if}
 		{#if hoisterBackupVolumes}
 			<span
-				class="inline-flex items-center rounded-full border border-emerald-500/40 px-2 py-0.5 text-[10px] text-emerald-300"
+				class="inline-flex items-center rounded-full border border-success-border px-2 py-0.5 text-[10px] text-success"
 			>
 				Backup volumes
 			</span>

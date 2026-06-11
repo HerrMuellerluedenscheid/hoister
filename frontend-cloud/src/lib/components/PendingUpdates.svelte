@@ -27,13 +27,13 @@
 {#if updates.length > 0}
 	{#if compact}
 		<!-- Compact banner: used on the container detail view, typically one row. -->
-		<div class="space-y-2 rounded-xl border border-amber-700 bg-amber-950/40 px-4 py-3">
+		<div class="space-y-2 rounded-xl border border-warning-border bg-warning-bg px-4 py-3">
 			{#each updates as update (updateKey(update))}
 				{@const key = updateKey(update)}
 				<div class="flex flex-wrap items-center justify-between gap-3">
 					<div class="text-sm">
-						<p class="font-semibold text-amber-300">Update available</p>
-						<p class="font-mono text-xs break-all text-amber-200/80">
+						<p class="font-semibold text-warning">Update available</p>
+						<p class="font-mono text-xs break-all text-warning">
 							{update.image_name} · {update.new_digest.slice(0, 20)}…
 						</p>
 					</div>
@@ -54,10 +54,10 @@
 		</div>
 	{:else}
 		<section>
-			<h2 class="mb-3 text-base font-semibold text-amber-300">Pending updates</h2>
-			<div class="overflow-x-auto rounded-xl border border-amber-800/50 bg-amber-950/20">
-				<table class="min-w-full divide-y divide-amber-800/40 text-sm">
-					<thead class="bg-amber-900/30 text-xs tracking-wider text-amber-300 uppercase">
+			<h2 class="mb-3 text-base font-semibold text-warning">Pending updates</h2>
+			<div class="overflow-x-auto rounded-xl border border-warning-border/50 bg-warning-bg">
+				<table class="min-w-full divide-y divide-warning-border text-sm">
+					<thead class="bg-warning-bg text-xs tracking-wider text-warning uppercase">
 						<tr>
 							<th class="px-4 py-2 text-left font-medium">Host</th>
 							<th class="px-4 py-2 text-left font-medium">Service</th>
@@ -67,17 +67,17 @@
 							<th class="px-4 py-2"></th>
 						</tr>
 					</thead>
-					<tbody class="divide-y divide-amber-800/30">
+					<tbody class="divide-y divide-warning-border">
 						{#each updates as update (updateKey(update))}
 							{@const key = updateKey(update)}
-							<tr class="text-zinc-300">
+							<tr class="text-ink-secondary">
 								<td class="px-4 py-2 break-all">{update.hostname}</td>
-								<td class="px-4 py-2 font-medium break-all text-zinc-100">{update.service_name}</td>
+								<td class="px-4 py-2 font-medium break-all text-ink">{update.service_name}</td>
 								<td class="px-4 py-2 font-mono text-xs break-all">{update.image_name}</td>
-								<td class="px-4 py-2 font-mono text-xs text-zinc-500"
+								<td class="px-4 py-2 font-mono text-xs text-ink-faint"
 									>{update.new_digest.slice(0, 20)}…</td
 								>
-								<td class="px-4 py-2 text-xs text-zinc-500"
+								<td class="px-4 py-2 text-xs text-ink-faint"
 									>{new Date(update.detected_at).toLocaleString()}</td
 								>
 								<td class="px-4 py-2">

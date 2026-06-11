@@ -10,7 +10,7 @@
 </script>
 
 {#each segments as segment, i}{segment}{#if i < segments.length - 1}<span
-			class="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 align-middle font-sans text-[0.65rem] font-medium tracking-wide text-amber-300 uppercase select-none"
+			class="inline-flex items-center gap-1 rounded border border-warning-border bg-amber-500/10 px-1.5 align-middle font-sans text-[0.65rem] font-medium tracking-wide text-warning uppercase select-none"
 			title="Hidden by the agent before it left the host"
 			><svg class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
 				><path

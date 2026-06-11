@@ -61,38 +61,38 @@
 
 	function statusClass(status: string | undefined): string {
 		return status === 'running'
-			? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+			? 'bg-success-bg text-success border-success-border'
 			: status === 'exited' || status === 'dead'
-				? 'bg-red-500/15 text-red-300 border-red-500/30'
+				? 'bg-error-bg text-error border-error-border'
 				: status === 'paused'
 					? 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30'
 					: status === 'restarting'
 						? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
-						: 'bg-zinc-700/40 text-zinc-300 border-zinc-600/40';
+						: 'bg-line-subtle/40 text-ink-secondary border-line-subtle/40';
 	}
 </script>
 
 <div class="px-4 py-6 sm:px-8 sm:py-10">
 	<div class="mx-auto max-w-6xl space-y-6">
 		{#if data.error || !container}
-			<div class="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-400">
+			<div class="rounded-xl border border-error-border bg-error-bg px-4 py-3 text-sm text-error">
 				{data.error ?? 'Container not found.'}
 			</div>
 		{:else}
 			<!-- Header -->
 			<div>
 				<h1 class="mb-1 text-2xl font-bold">
-					<span class="text-zinc-400">{project_name}</span>
-					<span class="px-2 text-zinc-600">/</span>
+					<span class="text-ink-muted">{project_name}</span>
+					<span class="px-2 text-ink-ghost">/</span>
 					<span>{service_name}</span>
 				</h1>
-				<p class="text-xs text-zinc-500">Host: {hostname}</p>
-				<p class="font-mono text-xs text-zinc-500">{container.Id}</p>
-				<p class="text-xs text-zinc-600">Last updated: {formatDate(last_updated)}</p>
+				<p class="text-xs text-ink-faint">Host: {hostname}</p>
+				<p class="font-mono text-xs text-ink-faint">{container.Id}</p>
+				<p class="text-xs text-ink-ghost">Last updated: {formatDate(last_updated)}</p>
 			</div>
 
 			{#if form?.applyError}
-				<div class="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-400">
+				<div class="rounded-xl border border-error-border bg-error-bg px-4 py-3 text-sm text-error">
 					<span class="font-medium">Deploy failed:</span>
 					{form.applyError}
 				</div>
@@ -102,7 +102,7 @@
 
 			{#if stale}
 				<div
-					class="rounded-xl border border-amber-700 bg-amber-950/40 px-4 py-3 text-sm text-amber-300"
+					class="rounded-xl border border-warning-border bg-warning-bg px-4 py-3 text-sm text-warning"
 				>
 					<p class="font-semibold">Stale data</p>
 					<p>This container has not reported in over a minute.</p>
@@ -110,11 +110,11 @@
 			{/if}
 
 			<!-- Status -->
-			<section class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-				<h2 class="mb-4 text-base font-semibold text-zinc-200">Status</h2>
+			<section class="rounded-xl border border-line bg-card p-5">
+				<h2 class="mb-4 text-base font-semibold text-ink-code">Status</h2>
 				<div class="grid grid-cols-2 gap-4 md:grid-cols-4">
 					<div>
-						<span class="text-xs text-zinc-500">State</span>
+						<span class="text-xs text-ink-faint">State</span>
 						<p class="mt-1">
 							<span
 								class="inline-flex rounded-full border px-2 py-0.5 text-xs font-medium capitalize {statusClass(
@@ -126,43 +126,43 @@
 						</p>
 					</div>
 					<div>
-						<span class="text-xs text-zinc-500">Exit code</span>
+						<span class="text-xs text-ink-faint">Exit code</span>
 						<p class="mt-1 font-mono text-sm">{container.State?.ExitCode ?? '—'}</p>
 					</div>
 					<div>
-						<span class="text-xs text-zinc-500">Restart count</span>
+						<span class="text-xs text-ink-faint">Restart count</span>
 						<p class="mt-1 font-mono text-sm">{container.RestartCount ?? 0}</p>
 					</div>
 					<div>
-						<span class="text-xs text-zinc-500">OOM killed</span>
+						<span class="text-xs text-ink-faint">OOM killed</span>
 						<p class="mt-1 text-sm">{container.State?.OOMKilled ? 'Yes' : 'No'}</p>
 					</div>
 				</div>
-				<div class="mt-4 grid grid-cols-1 gap-4 border-t border-zinc-800 pt-4 md:grid-cols-2">
+				<div class="mt-4 grid grid-cols-1 gap-4 border-t border-line pt-4 md:grid-cols-2">
 					<div>
-						<span class="text-xs text-zinc-500">Created</span>
+						<span class="text-xs text-ink-faint">Created</span>
 						<p class="mt-1 text-sm">{formatDate(container.Created)}</p>
 					</div>
 					<div>
-						<span class="text-xs text-zinc-500">Started</span>
+						<span class="text-xs text-ink-faint">Started</span>
 						<p class="mt-1 text-sm">{formatDate(container.State?.StartedAt)}</p>
 					</div>
 					<div>
-						<span class="text-xs text-zinc-500">Finished</span>
+						<span class="text-xs text-ink-faint">Finished</span>
 						<p class="mt-1 text-sm">{formatDate(container.State?.FinishedAt)}</p>
 					</div>
 					<div>
-						<span class="text-xs text-zinc-500">PID</span>
+						<span class="text-xs text-ink-faint">PID</span>
 						<p class="mt-1 font-mono text-sm">{container.State?.Pid ?? '—'}</p>
 					</div>
 				</div>
 			</section>
 
 			<!-- Resource usage -->
-			<section class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-				<h2 class="mb-1 text-base font-semibold text-zinc-200">Resource usage (last 7 days)</h2>
+			<section class="rounded-xl border border-line bg-card p-5">
+				<h2 class="mb-1 text-base font-semibold text-ink-code">Resource usage (last 7 days)</h2>
 				{#if metricPoints.length > 0}
-					<p class="mb-4 text-xs text-zinc-500">Sampled roughly once a minute by the agent.</p>
+					<p class="mb-4 text-xs text-ink-faint">Sampled roughly once a minute by the agent.</p>
 					<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 						<TimeSeriesChart
 							points={cpuSeries}
@@ -179,10 +179,10 @@
 						/>
 					</div>
 				{:else}
-					<p class="mt-2 text-sm text-zinc-500">
+					<p class="mt-2 text-sm text-ink-faint">
 						No metrics recorded yet. Metrics are collected by default; make sure the agent can reach
 						the controller and that this container isn't disabled with <code
-							class="rounded bg-zinc-800 px-1 py-0.5 font-mono">HOISTER_REPORT_METRICS=false</code
+							class="rounded bg-element px-1 py-0.5 font-mono">HOISTER_REPORT_METRICS=false</code
 						>.
 					</p>
 				{/if}
@@ -190,32 +190,32 @@
 
 			<!-- Exit reason -->
 			{#if container.State?.Error || (container.State?.Status && container.State.Status !== 'running' && container.State.Status !== 'created')}
-				<section class="rounded-xl border border-red-700 bg-red-950/40 p-5">
-					<h2 class="mb-3 text-base font-semibold text-red-300">Exit reason</h2>
+				<section class="rounded-xl border border-error-border bg-error-bg p-5">
+					<h2 class="mb-3 text-base font-semibold text-error">Exit reason</h2>
 					{#if container.State.Error}
 						<div class="mb-3">
-							<span class="text-xs text-red-400">Docker error</span>
-							<p class="mt-1 font-mono text-sm break-all text-red-200">{container.State.Error}</p>
+							<span class="text-xs text-error">Docker error</span>
+							<p class="mt-1 font-mono text-sm break-all text-error">{container.State.Error}</p>
 						</div>
 					{/if}
 					<div class="grid grid-cols-1 gap-3 text-sm md:grid-cols-3">
 						<div>
-							<span class="text-xs text-red-400">Exit code</span>
+							<span class="text-xs text-error">Exit code</span>
 							<p class="font-mono">{container.State.ExitCode ?? '—'}</p>
 						</div>
 						<div>
-							<span class="text-xs text-red-400">OOM killed</span>
+							<span class="text-xs text-error">OOM killed</span>
 							<p>{container.State.OOMKilled ? 'Yes' : 'No'}</p>
 						</div>
 						<div>
-							<span class="text-xs text-red-400">Finished at</span>
+							<span class="text-xs text-error">Finished at</span>
 							<p>{formatDate(container.State.FinishedAt)}</p>
 						</div>
 					</div>
 					{#if !container.State.Error && container.State.ExitCode !== 0}
-						<p class="mt-3 text-xs text-red-400">
+						<p class="mt-3 text-xs text-error">
 							Docker did not report a startup error, so the container process exited on its own.
-							Enable <code class="rounded bg-zinc-800 px-1 py-0.5 font-mono"
+							Enable <code class="rounded bg-element px-1 py-0.5 font-mono"
 								>HOISTER_REPORT_LOGS=true</code
 							>
 							on the agent to forward log tails for crashed containers.
@@ -226,14 +226,14 @@
 
 			<!-- Container logs (only present if agent has HOISTER_REPORT_LOGS=true and the container is in a non-running state) -->
 			{#if last_logs}
-				<section class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-					<h2 class="mb-1 text-base font-semibold text-zinc-200">Container logs (tail)</h2>
-					<p class="mb-3 text-xs text-zinc-500">
+				<section class="rounded-xl border border-line bg-card p-5">
+					<h2 class="mb-1 text-base font-semibold text-ink-code">Container logs (tail)</h2>
+					<p class="mb-3 text-xs text-ink-faint">
 						Last lines captured by the agent because the container is not running. Secrets matching
 						known sensitive env-var values are redacted.
 					</p>
 					<pre
-						class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-zinc-200"><RedactedText
+						class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink-code"><RedactedText
 							text={last_logs}
 						/></pre>
 				</section>
@@ -241,27 +241,27 @@
 
 			<!-- Health -->
 			{#if container.State?.Health}
-				<section class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-					<h2 class="mb-2 text-base font-semibold text-zinc-200">Health check</h2>
+				<section class="rounded-xl border border-line bg-card p-5">
+					<h2 class="mb-2 text-base font-semibold text-ink-code">Health check</h2>
 					<div class="mb-4 flex items-center gap-3 text-sm">
 						<span
 							class="inline-flex rounded-full border px-2 py-0.5 text-xs font-medium {container
 								.State.Health.Status === 'healthy'
-								? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
+								? 'border-success-border bg-success-bg text-success'
 								: container.State.Health.Status === 'unhealthy'
-									? 'border-red-500/40 bg-red-500/15 text-red-300'
-									: 'border-zinc-600/40 bg-zinc-700/40 text-zinc-300'}"
+									? 'border-error-border bg-error-bg text-error'
+									: 'border-line-subtle/40 bg-line-subtle/40 text-ink-secondary'}"
 						>
 							{container.State.Health.Status}
 						</span>
-						<span class="text-xs text-zinc-500"
+						<span class="text-xs text-ink-faint"
 							>Failing streak:
 							<span class="font-mono">{container.State.Health.FailingStreak ?? 0}</span></span
 						>
 					</div>
 					{#if container.State.Health.Log && container.State.Health.Log.length > 0}
-						<p class="text-xs text-zinc-500">
-							Last checked: <span class="text-zinc-300"
+						<p class="text-xs text-ink-faint">
+							Last checked: <span class="text-ink-secondary"
 								>{formatDate(
 									container.State.Health.Log[container.State.Health.Log.length - 1].End
 								)}</span
@@ -272,33 +272,33 @@
 			{/if}
 
 			<!-- Recent deployments -->
-			<section class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-				<h2 class="mb-3 text-base font-semibold text-zinc-200">Recent deployments</h2>
+			<section class="rounded-xl border border-line bg-card p-5">
+				<h2 class="mb-3 text-base font-semibold text-ink-code">Recent deployments</h2>
 				<div class="max-h-96 overflow-y-auto">
 					<Deployments data={deployments} />
 				</div>
 			</section>
 
 			<!-- Configuration -->
-			<section class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-				<h2 class="mb-3 text-base font-semibold text-zinc-200">Configuration</h2>
+			<section class="rounded-xl border border-line bg-card p-5">
+				<h2 class="mb-3 text-base font-semibold text-ink-code">Configuration</h2>
 				<dl class="space-y-3 text-sm">
 					<div>
-						<dt class="text-xs text-zinc-500">Image</dt>
-						<dd class="mt-1 font-mono break-all text-zinc-200">{container.Config?.Image ?? '—'}</dd>
+						<dt class="text-xs text-ink-faint">Image</dt>
+						<dd class="mt-1 font-mono break-all text-ink-code">{container.Config?.Image ?? '—'}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-zinc-500">Hostname</dt>
-						<dd class="mt-1 font-mono text-zinc-200">{container.Config?.Hostname ?? '—'}</dd>
+						<dt class="text-xs text-ink-faint">Hostname</dt>
+						<dd class="mt-1 font-mono text-ink-code">{container.Config?.Hostname ?? '—'}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-zinc-500">Working directory</dt>
-						<dd class="mt-1 font-mono text-zinc-200">{container.Config?.WorkingDir || '—'}</dd>
+						<dt class="text-xs text-ink-faint">Working directory</dt>
+						<dd class="mt-1 font-mono text-ink-code">{container.Config?.WorkingDir || '—'}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-zinc-500">Command</dt>
+						<dt class="text-xs text-ink-faint">Command</dt>
 						<dd
-							class="mt-1 rounded-lg bg-zinc-950 p-3 font-mono text-xs whitespace-pre-wrap text-zinc-200"
+							class="mt-1 rounded-lg bg-canvas p-3 font-mono text-xs whitespace-pre-wrap text-ink-code"
 						>
 							{container.Config?.Cmd ? container.Config.Cmd.join(' ') : '—'}
 						</dd>
@@ -308,18 +308,18 @@
 
 			<!-- Environment Variables -->
 			{#if container.Config?.Env && container.Config.Env.length > 0}
-				<section class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-					<h2 class="mb-3 text-base font-semibold text-zinc-200">Environment variables</h2>
-					<div class="divide-y divide-zinc-800">
+				<section class="rounded-xl border border-line bg-card p-5">
+					<h2 class="mb-3 text-base font-semibold text-ink-code">Environment variables</h2>
+					<div class="divide-y divide-line">
 						{#each container.Config.Env as env}
 							{#if env.includes('=')}
 								{@const [key, ...valueParts] = env.split('=')}
 								{@const value = valueParts.join('=')}
 								<div class="flex flex-col gap-0.5 py-2 sm:flex-row sm:items-start sm:gap-3">
-									<span class="font-mono text-xs break-all text-zinc-500 sm:w-64 sm:flex-shrink-0"
+									<span class="font-mono text-xs break-all text-ink-faint sm:w-64 sm:flex-shrink-0"
 										>{key}</span
 									>
-									<span class="font-mono text-xs break-all text-zinc-200"
+									<span class="font-mono text-xs break-all text-ink-code"
 										><RedactedText text={value} /></span
 									>
 								</div>
@@ -331,8 +331,8 @@
 
 			<!-- Network -->
 			{#if container.NetworkSettings?.Networks}
-				<section class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-					<h2 class="mb-3 text-base font-semibold text-zinc-200">Networks</h2>
+				<section class="rounded-xl border border-line bg-card p-5">
+					<h2 class="mb-3 text-base font-semibold text-ink-code">Networks</h2>
 					<div class="space-y-3">
 						{#each Object.entries(container.NetworkSettings.Networks) as [networkName, network]}
 							{@const net = network as {
@@ -340,12 +340,12 @@
 								Gateway?: string;
 								MacAddress?: string;
 							}}
-							<div class="rounded-lg border border-zinc-800 p-3">
+							<div class="rounded-lg border border-line p-3">
 								<a
 									href="/networks/{encodeURIComponent(hostname ?? '')}/{encodeURIComponent(
 										networkName
 									)}"
-									class="mb-2 inline-flex items-center gap-1 text-sm font-medium text-indigo-300 hover:text-indigo-200 hover:underline"
+									class="mb-2 inline-flex items-center gap-1 text-sm font-medium text-brand-light hover:text-brand-light hover:underline"
 									title="View services on this network"
 								>
 									{networkName}
@@ -353,16 +353,16 @@
 								</a>
 								<div class="grid grid-cols-1 gap-3 text-xs md:grid-cols-3">
 									<div>
-										<span class="text-zinc-500">IP</span>
-										<p class="font-mono text-zinc-200">{net.IPAddress || '—'}</p>
+										<span class="text-ink-faint">IP</span>
+										<p class="font-mono text-ink-code">{net.IPAddress || '—'}</p>
 									</div>
 									<div>
-										<span class="text-zinc-500">Gateway</span>
-										<p class="font-mono text-zinc-200">{net.Gateway || '—'}</p>
+										<span class="text-ink-faint">Gateway</span>
+										<p class="font-mono text-ink-code">{net.Gateway || '—'}</p>
 									</div>
 									<div>
-										<span class="text-zinc-500">MAC</span>
-										<p class="font-mono text-zinc-200">{net.MacAddress || '—'}</p>
+										<span class="text-ink-faint">MAC</span>
+										<p class="font-mono text-ink-code">{net.MacAddress || '—'}</p>
 									</div>
 								</div>
 							</div>
@@ -373,27 +373,27 @@
 
 			<!-- Mounts -->
 			{#if container.Mounts && container.Mounts.length > 0}
-				<section class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-					<h2 class="mb-3 text-base font-semibold text-zinc-200">Mounts</h2>
+				<section class="rounded-xl border border-line bg-card p-5">
+					<h2 class="mb-3 text-base font-semibold text-ink-code">Mounts</h2>
 					<div class="space-y-2">
 						{#each container.Mounts as mount}
-							<div class="rounded-lg border border-zinc-800 p-3">
+							<div class="rounded-lg border border-line p-3">
 								<div class="mb-2 flex items-center justify-between text-xs">
 									<span
-										class="inline-flex rounded-full border border-indigo-500/40 bg-indigo-500/15 px-2 py-0.5 text-indigo-300"
+										class="inline-flex rounded-full border border-brand-hover/40 bg-brand-hover/15 px-2 py-0.5 text-brand-light"
 									>
 										{mount.Type}
 									</span>
-									<span class="text-zinc-500">{mount.RW ? 'Read/Write' : 'Read-Only'}</span>
+									<span class="text-ink-faint">{mount.RW ? 'Read/Write' : 'Read-Only'}</span>
 								</div>
 								<dl class="space-y-1 text-xs">
 									<div class="flex gap-2">
-										<dt class="w-20 text-zinc-500">Source:</dt>
-										<dd class="font-mono break-all text-zinc-200">{mount.Source}</dd>
+										<dt class="w-20 text-ink-faint">Source:</dt>
+										<dd class="font-mono break-all text-ink-code">{mount.Source}</dd>
 									</div>
 									<div class="flex gap-2">
-										<dt class="w-20 text-zinc-500">Destination:</dt>
-										<dd class="font-mono text-zinc-200">{mount.Destination}</dd>
+										<dt class="w-20 text-ink-faint">Destination:</dt>
+										<dd class="font-mono text-ink-code">{mount.Destination}</dd>
 									</div>
 								</dl>
 							</div>
@@ -404,15 +404,15 @@
 
 			<!-- Labels -->
 			{#if container.Config?.Labels && Object.keys(container.Config.Labels).length > 0}
-				<section class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-					<h2 class="mb-3 text-base font-semibold text-zinc-200">Labels</h2>
-					<div class="divide-y divide-zinc-800">
+				<section class="rounded-xl border border-line bg-card p-5">
+					<h2 class="mb-3 text-base font-semibold text-ink-code">Labels</h2>
+					<div class="divide-y divide-line">
 						{#each Object.entries(container.Config.Labels) as [key, value]}
 							<div class="flex flex-col gap-0.5 py-2 sm:flex-row sm:items-start sm:gap-3">
-								<span class="font-mono text-xs break-all text-zinc-500 sm:w-80 sm:flex-shrink-0"
+								<span class="font-mono text-xs break-all text-ink-faint sm:w-80 sm:flex-shrink-0"
 									>{key}</span
 								>
-								<span class="font-mono text-xs break-all text-zinc-200">{value}</span>
+								<span class="font-mono text-xs break-all text-ink-code">{value}</span>
 							</div>
 						{/each}
 					</div>
@@ -420,26 +420,26 @@
 			{/if}
 
 			<!-- Host config summary -->
-			<section class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-				<h2 class="mb-3 text-base font-semibold text-zinc-200">Host configuration</h2>
+			<section class="rounded-xl border border-line bg-card p-5">
+				<h2 class="mb-3 text-base font-semibold text-ink-code">Host configuration</h2>
 				<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
 					<div>
-						<span class="text-xs text-zinc-500">Memory limit</span>
-						<p class="mt-1 font-mono text-sm text-zinc-200">
+						<span class="text-xs text-ink-faint">Memory limit</span>
+						<p class="mt-1 font-mono text-sm text-ink-code">
 							{container.HostConfig?.Memory === 0
 								? 'Unlimited'
 								: `${container.HostConfig?.Memory} bytes`}
 						</p>
 					</div>
 					<div>
-						<span class="text-xs text-zinc-500">CPU shares</span>
-						<p class="mt-1 font-mono text-sm text-zinc-200">
+						<span class="text-xs text-ink-faint">CPU shares</span>
+						<p class="mt-1 font-mono text-sm text-ink-code">
 							{container.HostConfig?.CpuShares || 'Default'}
 						</p>
 					</div>
 					<div>
-						<span class="text-xs text-zinc-500">Restart policy</span>
-						<p class="mt-1 text-sm text-zinc-200">
+						<span class="text-xs text-ink-faint">Restart policy</span>
+						<p class="mt-1 text-sm text-ink-code">
 							{container.HostConfig?.RestartPolicy?.Name ?? '—'}
 						</p>
 					</div>

@@ -29,44 +29,44 @@
 
 	function statusClass(s: string): string {
 		return s === 'running'
-			? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+			? 'bg-success-bg text-success border-success-border'
 			: s === 'exited' || s === 'dead'
-				? 'bg-red-500/15 text-red-300 border-red-500/30'
+				? 'bg-error-bg text-error border-error-border'
 				: s === 'paused'
 					? 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30'
 					: s === 'restarting'
 						? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
-						: 'bg-zinc-700/40 text-zinc-300 border-zinc-600/40';
+						: 'bg-line-subtle/40 text-ink-secondary border-line-subtle/40';
 	}
 </script>
 
 <div class="px-4 py-6 sm:px-8 sm:py-10">
 	<div class="mx-auto max-w-6xl space-y-6">
 		<div>
-			<a href="/containers" class="text-xs text-zinc-500 hover:text-zinc-300">← Containers</a>
+			<a href="/containers" class="text-xs text-ink-faint hover:text-ink-secondary">← Containers</a>
 			<h1 class="mt-2 text-2xl font-bold">
-				<span class="text-zinc-400">Network</span>
-				<span class="px-2 text-zinc-600">/</span>
+				<span class="text-ink-muted">Network</span>
+				<span class="px-2 text-ink-ghost">/</span>
 				<span class="font-mono break-all">{data.networkName}</span>
 			</h1>
-			<p class="text-xs text-zinc-500">Host: {data.hostname}</p>
+			<p class="text-xs text-ink-faint">Host: {data.hostname}</p>
 		</div>
 
 		{#if data.error}
-			<div class="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-400">
+			<div class="rounded-xl border border-error-border bg-error-bg px-4 py-3 text-sm text-error">
 				<span class="font-medium">Error:</span>
 				{data.error}
 			</div>
 		{/if}
 
-		<section class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-			<h2 class="mb-4 text-base font-semibold text-zinc-200">
+		<section class="rounded-xl border border-line bg-card p-5">
+			<h2 class="mb-4 text-base font-semibold text-ink-code">
 				Services on this network
-				<span class="ml-1 text-sm font-normal text-zinc-500">({members.length})</span>
+				<span class="ml-1 text-sm font-normal text-ink-faint">({members.length})</span>
 			</h2>
 
 			{#if members.length === 0}
-				<p class="text-sm text-zinc-500">
+				<p class="text-sm text-ink-faint">
 					No other reporting services are connected to this network.
 				</p>
 			{:else}
@@ -76,10 +76,10 @@
 							href="/containers/{encodeURIComponent(member.hostname)}/{encodeURIComponent(
 								member.project_name
 							)}/{encodeURIComponent(member.service_name)}"
-							class="block rounded-lg border border-zinc-800 bg-zinc-950/40 p-4 transition hover:border-zinc-700 hover:bg-zinc-900"
+							class="block rounded-lg border border-line bg-canvas/40 p-4 transition hover:border-line-subtle hover:bg-card"
 						>
 							<div class="mb-2 flex items-start justify-between gap-3">
-								<h3 class="text-sm font-semibold break-all text-zinc-100">
+								<h3 class="text-sm font-semibold break-all text-ink">
 									{member.service_name}
 								</h3>
 								<span
@@ -90,13 +90,13 @@
 									{status(member)}
 								</span>
 							</div>
-							<dl class="space-y-1 text-xs text-zinc-400">
+							<dl class="space-y-1 text-xs text-ink-muted">
 								<div class="flex gap-1">
-									<dt class="text-zinc-500">Project:</dt>
+									<dt class="text-ink-faint">Project:</dt>
 									<dd class="break-all">{member.project_name}</dd>
 								</div>
 								<div class="flex gap-1">
-									<dt class="text-zinc-500">IP:</dt>
+									<dt class="text-ink-faint">IP:</dt>
 									<dd class="font-mono">{ipOnNetwork(member)}</dd>
 								</div>
 							</dl>

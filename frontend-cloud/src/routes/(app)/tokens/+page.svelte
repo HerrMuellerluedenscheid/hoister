@@ -28,9 +28,9 @@
 	<header class="flex items-start justify-between gap-4">
 		<div>
 			<h1 class="text-2xl font-bold">Agent tokens</h1>
-			<p class="mt-1 text-sm text-zinc-400">
+			<p class="mt-1 text-sm text-ink-muted">
 				Each Hoister agent connects to <code
-					class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">api.hoister.io</code
+					class="rounded bg-element px-1 py-0.5 font-mono text-xs">api.hoister.io</code
 				>
 				with one of these tokens. Treat them like passwords — they're shown in plaintext exactly once
 				at creation.
@@ -39,19 +39,19 @@
 	</header>
 
 	{#if data.error}
-		<div class="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-400">
+		<div class="rounded-xl border border-error-border bg-error-bg px-4 py-3 text-sm text-error">
 			{data.error}
 		</div>
 	{/if}
 
 	{#if form?.createError}
-		<div class="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-400">
+		<div class="rounded-xl border border-error-border bg-error-bg px-4 py-3 text-sm text-error">
 			<span class="font-medium">Create failed:</span>
 			{form.createError}
 		</div>
 	{/if}
 	{#if form?.deleteError}
-		<div class="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-400">
+		<div class="rounded-xl border border-error-border bg-error-bg px-4 py-3 text-sm text-error">
 			<span class="font-medium">Delete failed:</span>
 			{form.deleteError}
 		</div>
@@ -59,21 +59,21 @@
 
 	<!-- Freshly-issued token panel: show plaintext exactly once. -->
 	{#if justCreated?.token}
-		<section class="rounded-xl border border-indigo-500/40 bg-indigo-500/10 p-5">
-			<h2 class="mb-1 text-base font-semibold text-indigo-300">New token issued</h2>
-			<p class="mb-4 text-sm text-zinc-300">
+		<section class="rounded-xl border border-brand-hover/40 bg-brand-hover/10 p-5">
+			<h2 class="mb-1 text-base font-semibold text-brand-light">New token issued</h2>
+			<p class="mb-4 text-sm text-ink-secondary">
 				Copy it now — this is the only time the full token will be shown. After you leave this page
-				only the prefix (<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">
+				only the prefix (<code class="rounded bg-element px-1 py-0.5 font-mono text-xs">
 					{justCreated.token_prefix}
 				</code>) remains visible.
 			</p>
 			<div class="relative">
 				<pre
-					class="overflow-x-auto rounded-lg bg-zinc-900 p-4 font-mono text-sm break-all whitespace-pre-wrap text-zinc-100">{justCreated.token}</pre>
+					class="overflow-x-auto rounded-lg bg-card p-4 font-mono text-sm break-all whitespace-pre-wrap text-ink">{justCreated.token}</pre>
 				<button
 					type="button"
 					onclick={copyPlaintext}
-					class="absolute top-3 right-3 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+					class="absolute top-3 right-3 rounded-md border border-line-subtle bg-element px-3 py-1 text-xs text-ink-secondary transition hover:border-line-active hover:text-ink"
 				>
 					{copied ? 'Copied!' : 'Copy'}
 				</button>
@@ -82,8 +82,8 @@
 	{/if}
 
 	<!-- Create form -->
-	<section class="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-		<h2 class="mb-3 text-base font-semibold text-zinc-200">Create new token</h2>
+	<section class="rounded-xl border border-line bg-card p-5">
+		<h2 class="mb-3 text-base font-semibold text-ink-code">Create new token</h2>
 		<form
 			method="POST"
 			action="?/create"
@@ -103,12 +103,12 @@
 				bind:value={comment}
 				maxlength="120"
 				placeholder="Optional label, e.g. the hostname"
-				class="flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-400 focus:outline-none"
+				class="flex-1 rounded-md border border-line-subtle bg-canvas px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-brand-accent focus:outline-none"
 			/>
 			<button
 				type="submit"
 				disabled={creating}
-				class="rounded-md bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:opacity-50"
+				class="rounded-md bg-brand-hover px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-accent disabled:opacity-50"
 			>
 				{creating ? 'Creating…' : 'Create token'}
 			</button>
@@ -117,18 +117,18 @@
 
 	<!-- Existing tokens -->
 	<section>
-		<h2 class="mb-3 text-base font-semibold text-zinc-200">
+		<h2 class="mb-3 text-base font-semibold text-ink-code">
 			Your tokens ({data.tokens.length})
 		</h2>
 
 		{#if data.tokens.length === 0}
-			<div class="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-4 text-sm text-zinc-400">
+			<div class="rounded-xl border border-line bg-card px-5 py-4 text-sm text-ink-muted">
 				No tokens yet. Create one above to connect your first agent.
 			</div>
 		{:else}
-			<div class="overflow-x-auto rounded-xl border border-zinc-800">
-				<table class="min-w-full divide-y divide-zinc-800 text-sm">
-					<thead class="bg-zinc-900 text-xs tracking-wider text-zinc-400 uppercase">
+			<div class="overflow-x-auto rounded-xl border border-line">
+				<table class="min-w-full divide-y divide-line text-sm">
+					<thead class="bg-card text-xs tracking-wider text-ink-muted uppercase">
 						<tr>
 							<th class="px-4 py-2 text-left font-medium">Prefix</th>
 							<th class="px-4 py-2 text-left font-medium">Comment</th>
@@ -136,18 +136,18 @@
 							<th class="px-4 py-2"></th>
 						</tr>
 					</thead>
-					<tbody class="divide-y divide-zinc-800 bg-zinc-950">
+					<tbody class="divide-y divide-line bg-canvas">
 						{#each data.tokens as token (token.id)}
-							<tr class="text-zinc-300">
+							<tr class="text-ink-secondary">
 								<td class="px-4 py-3 font-mono text-xs">{token.token_prefix}…</td>
 								<td class="px-4 py-3 break-all">
 									{#if token.comment}
 										{token.comment}
 									{:else}
-										<span class="text-zinc-600">—</span>
+										<span class="text-ink-ghost">—</span>
 									{/if}
 								</td>
-								<td class="px-4 py-3 text-xs text-zinc-500">{formatDate(token.created_at)}</td>
+								<td class="px-4 py-3 text-xs text-ink-faint">{formatDate(token.created_at)}</td>
 								<td class="px-4 py-3 text-right">
 									<form
 										method="POST"
@@ -164,7 +164,7 @@
 										<button
 											type="submit"
 											disabled={deletingId === token.id}
-											class="rounded-md border border-red-500/40 px-3 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/15 disabled:opacity-50"
+											class="rounded-md border border-error-border px-3 py-1 text-xs font-medium text-error transition hover:bg-error-bg disabled:opacity-50"
 										>
 											{deletingId === token.id ? 'Deleting…' : 'Delete'}
 										</button>
