@@ -135,6 +135,7 @@ async fn agent_auth_middleware<
     // tenant scoping being non-optional.
     #[cfg(feature = "self-hosted")]
     if state.api_secret.is_none() {
+        state.billing_service.upsert_user("local").await;
         request.extensions_mut().insert(UserId("local".to_string()));
         return Ok(next.run(request).await);
     }
@@ -163,6 +164,7 @@ async fn agent_auth_middleware<
     if let Some(ref secret) = state.api_secret
         && token == *secret
     {
+        state.billing_service.upsert_user("local").await;
         request.extensions_mut().insert(UserId("local".to_string()));
         return Ok(next.run(request).await);
     }
@@ -171,6 +173,7 @@ async fn agent_auth_middleware<
     if token.starts_with("hst_") {
         match state.token_service.find_user_by_token(&token).await {
             Some(user_id) => {
+                state.billing_service.upsert_user(&user_id).await;
                 request.extensions_mut().insert(UserId(user_id));
                 return Ok(next.run(request).await);
             }
@@ -186,7 +189,15 @@ async fn agent_auth_middleware<
 /// This router is VPC-isolated — not publicly reachable — so no cryptographic
 /// auth is required. We simply trust the `X-User-Id` header set by the BFF
 /// (which has already authenticated the user via Clerk).
-async fn internal_user_middleware(
+async fn internal_user_middleware<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+    BS: BillingService,
+    MS: MetricsService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS>>,
     Extension(InternalSecret(expected)): Extension<InternalSecret>,
     mut request: Request,
     next: Next,
@@ -220,6 +231,7 @@ async fn internal_user_middleware(
         // letting it through unscoped.
         return Err(StatusCode::UNAUTHORIZED);
     };
+    state.billing_service.upsert_user(&user_id).await;
     request.extensions_mut().insert(UserId(user_id));
 
     Ok(next.run(request).await)
@@ -404,7 +416,7 @@ async fn delete_token<
 >(
     State(state): State<AppState<DS, CS, TS, NS, BS, MS>>,
     Extension(UserId(user_id)): Extension<UserId>,
-    Path(token_id): Path<i64>,
+    Path(token_id): Path<uuid::Uuid>,
 ) -> Result<StatusCode, StatusCode> {
     match state.token_service.delete_token(&user_id, token_id).await {
         Ok(true) => Ok(StatusCode::NO_CONTENT),
@@ -511,7 +523,7 @@ async fn delete_notifier<
 >(
     State(state): State<AppState<DS, CS, TS, NS, BS, MS>>,
     Extension(UserId(user_id)): Extension<UserId>,
-    Path(notifier_id): Path<i64>,
+    Path(notifier_id): Path<uuid::Uuid>,
 ) -> Result<StatusCode, StatusCode> {
     match state
         .notifier_service
@@ -542,7 +554,7 @@ async fn set_notifier_enabled<
 >(
     State(state): State<AppState<DS, CS, TS, NS, BS, MS>>,
     Extension(UserId(user_id)): Extension<UserId>,
-    Path(notifier_id): Path<i64>,
+    Path(notifier_id): Path<uuid::Uuid>,
     Json(req): Json<SetEnabledRequest>,
 ) -> Result<StatusCode, StatusCode> {
     match state
@@ -579,7 +591,7 @@ async fn test_notifier<
 >(
     State(state): State<AppState<DS, CS, TS, NS, BS, MS>>,
     Extension(UserId(user_id)): Extension<UserId>,
-    Path(notifier_id): Path<i64>,
+    Path(notifier_id): Path<uuid::Uuid>,
 ) -> Response {
     let notifiers = match state.notifier_service.list_notifiers(&user_id).await {
         Ok(n) => n,
@@ -1261,6 +1273,28 @@ async fn apply_pending_update<
     StatusCode::OK.into_response()
 }
 
+/// Internal endpoint: delete a user and all their data via CASCADE.
+/// Called by the BFF after it has verified a Clerk `user.deleted` webhook.
+/// The BFF sets `X-User-Id` to the deleted user's Clerk ID before calling
+/// this endpoint, so the identity comes from the trusted internal middleware.
+async fn delete_user<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+    BS: BillingService,
+    MS: MetricsService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+) -> StatusCode {
+    if state.billing_service.delete_user(&user_id).await {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}
+
 /// Agent-facing router: publicly reachable (behind TLS), authenticated via `hst_` tokens.
 /// Handles writes from agents and SSE.
 pub async fn create_agent_router<
@@ -1402,7 +1436,14 @@ pub async fn create_internal_router<
             "/pending-updates/{hostname}/{project_name}/{service_name}/apply",
             post(apply_pending_update::<DS, CS, TS, NS, BS, MS>),
         )
-        .layer(middleware::from_fn(internal_user_middleware))
+        .route(
+            "/users",
+            axum::routing::delete(delete_user::<DS, CS, TS, NS, BS, MS>),
+        )
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            internal_user_middleware::<DS, CS, TS, NS, BS, MS>,
+        ))
         .layer(Extension(internal_secret))
         .layer(middleware::from_fn(audit_log_middleware))
         .with_state(state)

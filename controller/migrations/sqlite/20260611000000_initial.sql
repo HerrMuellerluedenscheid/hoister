@@ -1,50 +1,60 @@
-CREATE TABLE project (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    user_id TEXT NOT NULL,
+-- SQLite ignores VARCHAR(n) length constraints (all text is stored at full
+-- length), but the limits here document intent and are enforced in Postgres.
+
+CREATE TABLE users (
+    id VARCHAR(128) PRIMARY KEY,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE project (
+    id TEXT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    user_id VARCHAR(128) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, name)
+);
+
 CREATE TABLE host (
-    id BLOB PRIMARY KEY,
-    hostname TEXT NOT NULL UNIQUE,
-    user_id TEXT NOT NULL
+    id TEXT PRIMARY KEY,
+    hostname VARCHAR(253) NOT NULL,
+    user_id VARCHAR(128) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, hostname)
 );
 
 CREATE TABLE service (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    project_id INTEGER NOT NULL REFERENCES project(id),
-    name TEXT NOT NULL,
-    image TEXT NOT NULL,
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    image VARCHAR(1024) NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(project_id, name)
 );
 
 CREATE TABLE deployment (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    digest TEXT NOT NULL,
+    id TEXT PRIMARY KEY,
+    digest VARCHAR(255) NOT NULL,
     status INTEGER NOT NULL CHECK (status IN (0, 1, 2, 3, 4, 5, 6)),
-    service_id INTEGER NOT NULL REFERENCES service(id),
-    host_id BLOB REFERENCES host(id),
+    service_id TEXT NOT NULL REFERENCES service(id) ON DELETE CASCADE,
+    host_id TEXT REFERENCES host(id) ON DELETE SET NULL,
     logs TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE api_token (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL,
-    token_hash TEXT NOT NULL UNIQUE,
-    token_prefix TEXT NOT NULL,
-    comment TEXT,
+    id TEXT PRIMARY KEY,
+    user_id VARCHAR(128) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(255) NOT NULL UNIQUE,
+    token_prefix VARCHAR(12) NOT NULL,
+    comment VARCHAR(255),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX api_token_user_id_idx ON api_token(user_id);
 
 CREATE TABLE notifier (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL,
-    kind TEXT NOT NULL,
+    id TEXT PRIMARY KEY,
+    user_id VARCHAR(128) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind VARCHAR(64) NOT NULL,
     config TEXT NOT NULL,
     enabled INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -53,15 +63,15 @@ CREATE TABLE notifier (
 CREATE INDEX notifier_user_id_idx ON notifier(user_id);
 
 CREATE TABLE user_plan (
-    user_id TEXT PRIMARY KEY,
-    plan TEXT NOT NULL DEFAULT 'free',
+    user_id VARCHAR(128) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    plan VARCHAR(16) NOT NULL DEFAULT 'free',
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE container_state (
-    user_id TEXT NOT NULL,
-    hostname TEXT NOT NULL,
-    project_name TEXT NOT NULL,
+    user_id VARCHAR(128) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    hostname VARCHAR(253) NOT NULL,
+    project_name VARCHAR(255) NOT NULL,
     services TEXT NOT NULL,
     last_updated TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, hostname, project_name)
@@ -70,10 +80,10 @@ CREATE TABLE container_state (
 CREATE INDEX container_state_user_idx ON container_state(user_id);
 
 CREATE TABLE container_metrics (
-    user_id TEXT NOT NULL,
-    hostname TEXT NOT NULL,
-    project_name TEXT NOT NULL,
-    service_name TEXT NOT NULL,
+    user_id VARCHAR(128) NOT NULL,
+    hostname VARCHAR(253) NOT NULL,
+    project_name VARCHAR(255) NOT NULL,
+    service_name VARCHAR(255) NOT NULL,
     recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     cpu_pct REAL NOT NULL,
     mem_bytes INTEGER NOT NULL,

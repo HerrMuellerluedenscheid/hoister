@@ -110,10 +110,10 @@ impl Sqlite {
         let deployments = rows
             .iter()
             .map(|row| Deployment {
-                id: DeploymentId(row.get("id")),
+                id: DeploymentId(row.get::<uuid::Uuid, _>("id")),
                 digest: row.get("digest"),
                 status: row.get("status"),
-                service_id: row.get("service_id"),
+                service_id: row.get::<uuid::Uuid, _>("service_id"),
                 created_at: row.get("created_at"),
                 service_name: ServiceName(row.get("service_name")),
                 project_name: ProjectName(row.get("project_name")),
@@ -125,20 +125,21 @@ impl Sqlite {
         Ok(deployments)
     }
 
-    /// Upsert a project by name, returning its ID.
-    /// Sets user_id only on insert; existing projects keep their user_id.
+    /// Upsert a project by name, returning its UUID.
     pub async fn upsert_project(
         &self,
         name: &ProjectName,
         user_id: &str,
-    ) -> Result<i64, SqlxError> {
+    ) -> Result<uuid::Uuid, SqlxError> {
+        let id = uuid::Uuid::new_v4();
         let result = sqlx::query(
             r#"
-            INSERT INTO project (name, user_id) VALUES (?, ?)
-            ON CONFLICT(name) DO UPDATE SET name = name
+            INSERT INTO project (id, name, user_id) VALUES (?, ?, ?)
+            ON CONFLICT(user_id, name) DO UPDATE SET name = name
             RETURNING id
             "#,
         )
+        .bind(id)
         .bind(name.as_str())
         .bind(user_id)
         .fetch_one(&self.pool)
@@ -147,20 +148,22 @@ impl Sqlite {
         Ok(result.get("id"))
     }
 
-    /// Upsert a service, returning its ID
+    /// Upsert a service, returning its UUID.
     pub async fn upsert_service(
         &self,
-        project_id: i64,
+        project_id: uuid::Uuid,
         name: &ServiceName,
         image: &ImageName,
-    ) -> Result<i64, SqlxError> {
+    ) -> Result<uuid::Uuid, SqlxError> {
+        let id = uuid::Uuid::new_v4();
         let result = sqlx::query(
             r#"
-            INSERT INTO service (project_id, name, image) VALUES (?, ?, ?)
+            INSERT INTO service (id, project_id, name, image) VALUES (?, ?, ?, ?)
             ON CONFLICT(project_id, name) DO UPDATE SET image = excluded.image
             RETURNING id
             "#,
         )
+        .bind(id)
         .bind(project_id)
         .bind(name.as_str())
         .bind(image.as_str())
@@ -171,21 +174,20 @@ impl Sqlite {
     }
 
     /// Upsert a host by hostname, returning its UUID.
-    /// Sets user_id only on insert; existing hosts keep their user_id.
     pub async fn upsert_host(
         &self,
         hostname: &HostName,
         user_id: &str,
-    ) -> Result<Vec<u8>, SqlxError> {
-        let id = uuid::Uuid::new_v4().as_bytes().to_vec();
+    ) -> Result<uuid::Uuid, SqlxError> {
+        let id = uuid::Uuid::new_v4();
         let result = sqlx::query(
             r#"
             INSERT INTO host (id, hostname, user_id) VALUES (?, ?, ?)
-            ON CONFLICT(hostname) DO UPDATE SET hostname = hostname
+            ON CONFLICT(user_id, hostname) DO UPDATE SET hostname = hostname
             RETURNING id
             "#,
         )
-        .bind(&id)
+        .bind(id)
         .bind(hostname.as_str())
         .bind(user_id)
         .fetch_one(&self.pool)
@@ -206,7 +208,7 @@ impl Sqlite {
         .await?;
 
         let project = Project {
-            id: ProjectId(row.get("id")),
+            id: ProjectId(row.get::<uuid::Uuid, _>("id")),
             name: ProjectName(row.get("name")),
             created_at: row.get("created_at"),
         };
@@ -229,15 +231,18 @@ impl Sqlite {
         .await?;
 
         let result = Service {
-            id: ServiceId(row.get("id")),
+            id: ServiceId(row.get::<uuid::Uuid, _>("id")),
             name: ServiceName(row.get("name")),
-            project_id: ProjectId(row.get("project_id")),
+            project_id: ProjectId(row.get::<uuid::Uuid, _>("project_id")),
             created_at: row.get("created_at"),
         };
         Ok(result)
     }
 
-    async fn clear_last_no_update_deployment(&self, service_id: i64) -> Result<(), SqlxError> {
+    async fn clear_last_no_update_deployment(
+        &self,
+        service_id: uuid::Uuid,
+    ) -> Result<(), SqlxError> {
         sqlx::query("DELETE FROM deployment WHERE status = ? AND service_id = ?")
             .bind(DeploymentStatus::NoUpdate as u8)
             .bind(service_id)
@@ -324,10 +329,10 @@ impl Sqlite {
         let deployments = rows
             .iter()
             .map(|row| Deployment {
-                id: DeploymentId(row.get("id")),
+                id: DeploymentId(row.get::<uuid::Uuid, _>("id")),
                 digest: row.get("digest"),
                 status: row.get("status"),
-                service_id: row.get("service_id"),
+                service_id: row.get::<uuid::Uuid, _>("service_id"),
                 created_at: row.get("created_at"),
                 service_name: ServiceName(row.get("service_name")),
                 project_name: ProjectName(row.get("project_name")),
@@ -359,19 +364,21 @@ impl Sqlite {
             )
         }
 
-        let result = sqlx::query(
-            "INSERT INTO deployment (digest, status, service_id, host_id, logs) VALUES (?, ?, ?, ?, ?)",
+        let id = uuid::Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO deployment (id, digest, status, service_id, host_id, logs) VALUES (?, ?, ?, ?, ?, ?)",
         )
+        .bind(id)
         .bind(req.image_digest.as_str())
         .bind(&req.deployment_status)
         .bind(service_id)
-        .bind(&host_id)
+        .bind(host_id)
         .bind(req.logs.as_deref())
         .execute(&self.pool)
         .await
         .expect("Failed to insert deployment");
 
-        Ok(DeploymentId(result.last_insert_rowid()))
+        Ok(DeploymentId(id))
     }
 }
 
@@ -391,7 +398,7 @@ impl TokenRepository for Sqlite {
         Ok(rows
             .iter()
             .map(|r| ApiToken {
-                id: r.get("id"),
+                id: r.get::<uuid::Uuid, _>("id"),
                 user_id: r.get("user_id"),
                 token: None,
                 token_prefix: r.get("token_prefix"),
@@ -406,14 +413,16 @@ impl TokenRepository for Sqlite {
         user_id: &str,
         comment: Option<String>,
     ) -> Result<ApiToken, TokenError> {
+        let id = uuid::Uuid::new_v4();
         let token = format!("hst_{}", uuid::Uuid::new_v4().simple());
         let token_hash = crate::domain::tokens::hash::hash_token(&token, &self.token_pepper);
         let token_prefix = token[..12].to_string();
         let row = sqlx::query(
-            "INSERT INTO api_token (user_id, token_hash, token_prefix, comment)
-                VALUES (?, ?, ?, ?)
-                RETURNING id, created_at",
+            "INSERT INTO api_token (id, user_id, token_hash, token_prefix, comment)
+                VALUES (?, ?, ?, ?, ?)
+                RETURNING created_at",
         )
+        .bind(id)
         .bind(user_id)
         .bind(&token_hash)
         .bind(&token_prefix)
@@ -423,7 +432,7 @@ impl TokenRepository for Sqlite {
         .map_err(|_| TokenError::UnknownError)?;
 
         Ok(ApiToken {
-            id: row.get("id"),
+            id,
             user_id: user_id.to_string(),
             token: Some(token),
             token_prefix,
@@ -432,7 +441,7 @@ impl TokenRepository for Sqlite {
         })
     }
 
-    async fn delete_token(&self, user_id: &str, token_id: i64) -> Result<bool, TokenError> {
+    async fn delete_token(&self, user_id: &str, token_id: uuid::Uuid) -> Result<bool, TokenError> {
         let result = sqlx::query("DELETE FROM api_token WHERE id = ? AND user_id = ?")
             .bind(token_id)
             .bind(user_id)
@@ -547,7 +556,7 @@ impl NotifierRepository for Sqlite {
                 .map_err(|e| NotifierError::InvalidConfig(e.to_string()))?;
             let enabled_int: i64 = r.get("enabled");
             out.push(Notifier {
-                id: r.get("id"),
+                id: r.get::<uuid::Uuid, _>("id"),
                 user_id: r.get("user_id"),
                 kind,
                 config,
@@ -570,10 +579,12 @@ impl NotifierRepository for Sqlite {
             error!("notifier config encrypt failed: {e:?}");
             NotifierError::UnknownError
         })?;
+        let id = uuid::Uuid::new_v4();
         let row = sqlx::query(
-            "INSERT INTO notifier (user_id, kind, config) VALUES (?, ?, ?)
-                RETURNING id, created_at",
+            "INSERT INTO notifier (id, user_id, kind, config) VALUES (?, ?, ?, ?)
+                RETURNING created_at",
         )
+        .bind(id)
         .bind(user_id)
         .bind(kind.as_str())
         .bind(&to_store)
@@ -584,7 +595,7 @@ impl NotifierRepository for Sqlite {
             NotifierError::UnknownError
         })?;
         Ok(Notifier {
-            id: row.get("id"),
+            id,
             user_id: user_id.to_string(),
             kind,
             config,
@@ -596,7 +607,7 @@ impl NotifierRepository for Sqlite {
     async fn delete_notifier(
         &self,
         user_id: &str,
-        notifier_id: i64,
+        notifier_id: uuid::Uuid,
     ) -> Result<bool, NotifierError> {
         let result = sqlx::query("DELETE FROM notifier WHERE id = ? AND user_id = ?")
             .bind(notifier_id)
@@ -610,7 +621,7 @@ impl NotifierRepository for Sqlite {
     async fn set_enabled(
         &self,
         user_id: &str,
-        notifier_id: i64,
+        notifier_id: uuid::Uuid,
         enabled: bool,
     ) -> Result<bool, NotifierError> {
         let result = sqlx::query("UPDATE notifier SET enabled = ? WHERE id = ? AND user_id = ?")
@@ -651,6 +662,30 @@ impl PlanRepository for Sqlite {
             PlanError::UnknownError
         })?;
         Ok(())
+    }
+
+    async fn upsert_user(&self, user_id: &str) {
+        if let Err(e) = sqlx::query("INSERT OR IGNORE INTO users(id) VALUES (?)")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+        {
+            error!("upsert_user failed for {user_id}: {e:?}");
+        }
+    }
+
+    async fn delete_user(&self, user_id: &str) -> bool {
+        match sqlx::query("DELETE FROM users WHERE id = ?")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+        {
+            Ok(r) => r.rows_affected() > 0,
+            Err(e) => {
+                error!("delete_user failed for {user_id}: {e:?}");
+                false
+            }
+        }
     }
 }
 

@@ -6,11 +6,13 @@ use sqlx::{FromRow, Type};
 use thiserror::Error;
 use ts_rs::TS;
 
-#[derive(FromRow, Debug, Clone, Serialize, Deserialize, TS, Type)]
-pub struct DeploymentId(pub i64);
+#[derive(Debug, Clone, Serialize, Deserialize, TS, Type)]
+#[sqlx(transparent)]
+pub struct DeploymentId(pub uuid::Uuid);
 
-#[derive(FromRow, Debug, Clone, Serialize, Deserialize, TS, Type)]
-pub struct ProjectId(pub i64);
+#[derive(Debug, Clone, Serialize, Deserialize, TS, Type)]
+#[sqlx(transparent)]
+pub struct ProjectId(pub uuid::Uuid);
 
 pub struct CreateDeploymentRequest {
     pub project_name: ProjectName,
@@ -47,7 +49,7 @@ pub struct Deployment {
     pub id: DeploymentId,
     pub digest: String,
     pub status: DeploymentStatus,
-    pub service_id: i64,
+    pub service_id: uuid::Uuid,
     pub created_at: String,
     pub service_name: ServiceName,
     pub project_name: ProjectName,

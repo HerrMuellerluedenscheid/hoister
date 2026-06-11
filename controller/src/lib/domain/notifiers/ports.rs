@@ -15,13 +15,13 @@ pub trait NotifierRepository: Send + Sync + 'static + Clone {
     fn delete_notifier(
         &self,
         user_id: &str,
-        notifier_id: i64,
+        notifier_id: uuid::Uuid,
     ) -> impl Future<Output = Result<bool, NotifierError>> + Send;
 
     fn set_enabled(
         &self,
         user_id: &str,
-        notifier_id: i64,
+        notifier_id: uuid::Uuid,
         enabled: bool,
     ) -> impl Future<Output = Result<bool, NotifierError>> + Send;
 }
@@ -41,13 +41,13 @@ pub trait NotifierService: Send + Sync + 'static + Clone {
     fn delete_notifier(
         &self,
         user_id: &str,
-        notifier_id: i64,
+        notifier_id: uuid::Uuid,
     ) -> impl Future<Output = Result<bool, NotifierError>> + Send;
 
     fn set_enabled(
         &self,
         user_id: &str,
-        notifier_id: i64,
+        notifier_id: uuid::Uuid,
         enabled: bool,
     ) -> impl Future<Output = Result<bool, NotifierError>> + Send;
 }

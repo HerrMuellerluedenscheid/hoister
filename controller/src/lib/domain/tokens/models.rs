@@ -3,7 +3,7 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ApiToken {
-    pub id: i64,
+    pub id: uuid::Uuid,
     pub user_id: String,
     /// Plaintext token. Only populated on creation; subsequent reads only
     /// have access to the hash, so this field is `None`.

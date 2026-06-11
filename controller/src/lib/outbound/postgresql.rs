@@ -132,14 +132,16 @@ impl Postgresql {
         &self,
         name: &ProjectName,
         user_id: &str,
-    ) -> Result<i64, SqlxError> {
+    ) -> Result<uuid::Uuid, SqlxError> {
+        let id = uuid::Uuid::new_v4();
         let result = sqlx::query(
             r#"
-            INSERT INTO project (name, user_id) VALUES ($1, $2)
-            ON CONFLICT(name) DO UPDATE SET name = EXCLUDED.name
+            INSERT INTO project (id, name, user_id) VALUES ($1, $2, $3)
+            ON CONFLICT(user_id, name) DO UPDATE SET name = EXCLUDED.name
             RETURNING id
             "#,
         )
+        .bind(id)
         .bind(name.as_str())
         .bind(user_id)
         .fetch_one(&self.pool)
@@ -151,17 +153,19 @@ impl Postgresql {
     /// Upsert a service, returning its ID
     pub async fn upsert_service(
         &self,
-        project_id: i64,
+        project_id: uuid::Uuid,
         name: &ServiceName,
         image: &ImageName,
-    ) -> Result<i64, SqlxError> {
+    ) -> Result<uuid::Uuid, SqlxError> {
+        let id = uuid::Uuid::new_v4();
         let result = sqlx::query(
             r#"
-            INSERT INTO service (project_id, name, image) VALUES ($1, $2, $3)
+            INSERT INTO service (id, project_id, name, image) VALUES ($1, $2, $3, $4)
             ON CONFLICT(project_id, name) DO UPDATE SET image = EXCLUDED.image
             RETURNING id
             "#,
         )
+        .bind(id)
         .bind(project_id)
         .bind(name.as_str())
         .bind(image.as_str())
@@ -171,22 +175,22 @@ impl Postgresql {
         Ok(result.get("id"))
     }
 
-    /// Upsert a host by hostname, returning its UUID bytes.
+    /// Upsert a host by hostname, returning its UUID.
     /// Sets user_id only on insert; existing hosts keep their user_id.
     pub async fn upsert_host(
         &self,
         hostname: &HostName,
         user_id: &str,
-    ) -> Result<Vec<u8>, SqlxError> {
-        let id = uuid::Uuid::new_v4().as_bytes().to_vec();
+    ) -> Result<uuid::Uuid, SqlxError> {
+        let id = uuid::Uuid::new_v4();
         let result = sqlx::query(
             r#"
             INSERT INTO host (id, hostname, user_id) VALUES ($1, $2, $3)
-            ON CONFLICT(hostname) DO UPDATE SET hostname = EXCLUDED.hostname
+            ON CONFLICT(user_id, hostname) DO UPDATE SET hostname = EXCLUDED.hostname
             RETURNING id
             "#,
         )
-        .bind(&id)
+        .bind(id)
         .bind(hostname.as_str())
         .bind(user_id)
         .fetch_one(&self.pool)
@@ -239,7 +243,10 @@ impl Postgresql {
         Ok(result)
     }
 
-    async fn clear_last_no_update_deployment(&self, service_id: i64) -> Result<(), SqlxError> {
+    async fn clear_last_no_update_deployment(
+        &self,
+        service_id: uuid::Uuid,
+    ) -> Result<(), SqlxError> {
         sqlx::query("DELETE FROM deployment WHERE status = $1 AND service_id = $2")
             .bind(DeploymentStatus::NoUpdate as i16)
             .bind(service_id)
@@ -362,18 +369,20 @@ impl Postgresql {
             )
         }
 
-        let result = sqlx::query(
-            "INSERT INTO deployment (digest, status, service_id, host_id, logs) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+        let id = uuid::Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO deployment (id, digest, status, service_id, host_id, logs) VALUES ($1, $2, $3, $4, $5, $6)",
         )
+        .bind(id)
         .bind(req.image_digest.as_str())
         .bind(req.deployment_status.clone() as i16)
         .bind(service_id)
-        .bind(&host_id)
+        .bind(host_id)
         .bind(req.logs.as_deref())
-        .fetch_one(&self.pool)
+        .execute(&self.pool)
         .await?;
 
-        Ok(DeploymentId(result.get("id")))
+        Ok(DeploymentId(id))
     }
 }
 
@@ -393,7 +402,7 @@ impl TokenRepository for Postgresql {
         Ok(rows
             .iter()
             .map(|r| ApiToken {
-                id: r.get("id"),
+                id: r.get::<uuid::Uuid, _>("id"),
                 user_id: r.get("user_id"),
                 token: None,
                 token_prefix: r.get("token_prefix"),
@@ -408,14 +417,16 @@ impl TokenRepository for Postgresql {
         user_id: &str,
         comment: Option<String>,
     ) -> Result<ApiToken, TokenError> {
+        let id = uuid::Uuid::new_v4();
         let token = format!("hst_{}", uuid::Uuid::new_v4().simple());
         let token_hash = crate::domain::tokens::hash::hash_token(&token, &self.token_pepper);
         let token_prefix = token[..12].to_string();
         let row = sqlx::query(
-            "INSERT INTO api_token (user_id, token_hash, token_prefix, comment)
-                VALUES ($1, $2, $3, $4)
-                RETURNING id, created_at::text AS created_at",
+            "INSERT INTO api_token (id, user_id, token_hash, token_prefix, comment)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING created_at::text AS created_at",
         )
+        .bind(id)
         .bind(user_id)
         .bind(&token_hash)
         .bind(&token_prefix)
@@ -425,7 +436,7 @@ impl TokenRepository for Postgresql {
         .map_err(|_| TokenError::UnknownError)?;
 
         Ok(ApiToken {
-            id: row.get("id"),
+            id,
             user_id: user_id.to_string(),
             token: Some(token),
             token_prefix,
@@ -434,7 +445,7 @@ impl TokenRepository for Postgresql {
         })
     }
 
-    async fn delete_token(&self, user_id: &str, token_id: i64) -> Result<bool, TokenError> {
+    async fn delete_token(&self, user_id: &str, token_id: uuid::Uuid) -> Result<bool, TokenError> {
         let result = sqlx::query("DELETE FROM api_token WHERE id = $1 AND user_id = $2")
             .bind(token_id)
             .bind(user_id)
@@ -548,7 +559,7 @@ impl NotifierRepository for Postgresql {
             let config: NotifierConfig = serde_json::from_str(&config_str)
                 .map_err(|e| NotifierError::InvalidConfig(e.to_string()))?;
             out.push(Notifier {
-                id: r.get("id"),
+                id: r.get::<uuid::Uuid, _>("id"),
                 user_id: r.get("user_id"),
                 kind,
                 config,
@@ -564,6 +575,7 @@ impl NotifierRepository for Postgresql {
         user_id: &str,
         config: NotifierConfig,
     ) -> Result<Notifier, NotifierError> {
+        let id = uuid::Uuid::new_v4();
         let kind = config.kind();
         let config_json = serde_json::to_string(&config)
             .map_err(|e| NotifierError::InvalidConfig(e.to_string()))?;
@@ -572,9 +584,10 @@ impl NotifierRepository for Postgresql {
             NotifierError::UnknownError
         })?;
         let row = sqlx::query(
-            "INSERT INTO notifier (user_id, kind, config) VALUES ($1, $2, $3::jsonb)
-                RETURNING id, created_at::text AS created_at",
+            "INSERT INTO notifier (id, user_id, kind, config) VALUES ($1, $2, $3, $4::jsonb)
+                RETURNING created_at::text AS created_at",
         )
+        .bind(id)
         .bind(user_id)
         .bind(kind.as_str())
         .bind(&to_store)
@@ -585,7 +598,7 @@ impl NotifierRepository for Postgresql {
             NotifierError::UnknownError
         })?;
         Ok(Notifier {
-            id: row.get("id"),
+            id,
             user_id: user_id.to_string(),
             kind,
             config,
@@ -597,7 +610,7 @@ impl NotifierRepository for Postgresql {
     async fn delete_notifier(
         &self,
         user_id: &str,
-        notifier_id: i64,
+        notifier_id: uuid::Uuid,
     ) -> Result<bool, NotifierError> {
         let result = sqlx::query("DELETE FROM notifier WHERE id = $1 AND user_id = $2")
             .bind(notifier_id)
@@ -611,7 +624,7 @@ impl NotifierRepository for Postgresql {
     async fn set_enabled(
         &self,
         user_id: &str,
-        notifier_id: i64,
+        notifier_id: uuid::Uuid,
         enabled: bool,
     ) -> Result<bool, NotifierError> {
         let result = sqlx::query("UPDATE notifier SET enabled = $1 WHERE id = $2 AND user_id = $3")
@@ -653,6 +666,30 @@ impl PlanRepository for Postgresql {
             PlanError::UnknownError
         })?;
         Ok(())
+    }
+
+    async fn upsert_user(&self, user_id: &str) {
+        if let Err(e) = sqlx::query("INSERT INTO users(id) VALUES ($1) ON CONFLICT DO NOTHING")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+        {
+            error!("upsert_user failed for {user_id}: {e:?}");
+        }
+    }
+
+    async fn delete_user(&self, user_id: &str) -> bool {
+        match sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+        {
+            Ok(r) => r.rows_affected() > 0,
+            Err(e) => {
+                error!("delete_user failed for {user_id}: {e:?}");
+                false
+            }
+        }
     }
 }
 

@@ -1,7 +1,9 @@
 use crate::domain::deployments::models::deployment::ProjectId;
 use hoister_shared::ServiceName;
 
-pub struct ServiceId(pub i64);
+#[derive(sqlx::Type)]
+#[sqlx(transparent)]
+pub struct ServiceId(pub uuid::Uuid);
 
 #[allow(dead_code)]
 pub struct Service {

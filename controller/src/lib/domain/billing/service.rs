@@ -20,4 +20,12 @@ impl<PR: PlanRepository> BillingService for Service<PR> {
     async fn set_plan(&self, user_id: &str, plan: Plan) -> Result<(), PlanError> {
         self.repository.set_plan(user_id, plan).await
     }
+
+    async fn upsert_user(&self, user_id: &str) {
+        self.repository.upsert_user(user_id).await
+    }
+
+    async fn delete_user(&self, user_id: &str) -> bool {
+        self.repository.delete_user(user_id).await
+    }
 }

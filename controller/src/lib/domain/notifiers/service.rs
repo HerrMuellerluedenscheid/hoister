@@ -28,7 +28,7 @@ impl<NR: NotifierRepository> NotifierService for Service<NR> {
     async fn delete_notifier(
         &self,
         user_id: &str,
-        notifier_id: i64,
+        notifier_id: uuid::Uuid,
     ) -> Result<bool, NotifierError> {
         self.repository.delete_notifier(user_id, notifier_id).await
     }
@@ -36,7 +36,7 @@ impl<NR: NotifierRepository> NotifierService for Service<NR> {
     async fn set_enabled(
         &self,
         user_id: &str,
-        notifier_id: i64,
+        notifier_id: uuid::Uuid,
         enabled: bool,
     ) -> Result<bool, NotifierError> {
         self.repository

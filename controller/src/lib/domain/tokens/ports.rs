@@ -20,7 +20,7 @@ pub trait TokenRepository: Send + Sync + 'static + Clone {
     fn delete_token(
         &self,
         user_id: &str,
-        token_id: i64,
+        token_id: uuid::Uuid,
     ) -> impl Future<Output = Result<bool, TokenError>> + Send;
 
     /// Look up the Clerk user ID that owns `token`, if any. Used by the
@@ -43,7 +43,7 @@ pub trait TokenService: Send + Sync + 'static + Clone {
     fn delete_token(
         &self,
         user_id: &str,
-        token_id: i64,
+        token_id: uuid::Uuid,
     ) -> impl Future<Output = Result<bool, TokenError>> + Send;
 
     fn find_user_by_token(&self, token: &str) -> impl Future<Output = Option<String>> + Send;

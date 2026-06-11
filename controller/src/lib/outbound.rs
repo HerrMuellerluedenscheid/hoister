@@ -163,7 +163,7 @@ impl TokenRepository for Database {
         }
     }
 
-    async fn delete_token(&self, user_id: &str, token_id: i64) -> Result<bool, TokenError> {
+    async fn delete_token(&self, user_id: &str, token_id: uuid::Uuid) -> Result<bool, TokenError> {
         match self {
             Self::Sqlite(db) => {
                 <Sqlite as TokenRepository>::delete_token(db, user_id, token_id).await
@@ -212,7 +212,7 @@ impl NotifierRepository for Database {
     async fn delete_notifier(
         &self,
         user_id: &str,
-        notifier_id: i64,
+        notifier_id: uuid::Uuid,
     ) -> Result<bool, NotifierError> {
         match self {
             Self::Sqlite(db) => {
@@ -227,7 +227,7 @@ impl NotifierRepository for Database {
     async fn set_enabled(
         &self,
         user_id: &str,
-        notifier_id: i64,
+        notifier_id: uuid::Uuid,
         enabled: bool,
     ) -> Result<bool, NotifierError> {
         match self {
@@ -256,6 +256,20 @@ impl PlanRepository for Database {
             Self::Postgresql(db) => {
                 <Postgresql as PlanRepository>::set_plan(db, user_id, plan).await
             }
+        }
+    }
+
+    async fn upsert_user(&self, user_id: &str) {
+        match self {
+            Self::Sqlite(db) => <Sqlite as PlanRepository>::upsert_user(db, user_id).await,
+            Self::Postgresql(db) => <Postgresql as PlanRepository>::upsert_user(db, user_id).await,
+        }
+    }
+
+    async fn delete_user(&self, user_id: &str) -> bool {
+        match self {
+            Self::Sqlite(db) => <Sqlite as PlanRepository>::delete_user(db, user_id).await,
+            Self::Postgresql(db) => <Postgresql as PlanRepository>::delete_user(db, user_id).await,
         }
     }
 }

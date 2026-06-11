@@ -25,7 +25,7 @@ impl<TR: TokenRepository> TokenService for Service<TR> {
         self.repository.create_token(user_id, comment).await
     }
 
-    async fn delete_token(&self, user_id: &str, token_id: i64) -> Result<bool, TokenError> {
+    async fn delete_token(&self, user_id: &str, token_id: uuid::Uuid) -> Result<bool, TokenError> {
         self.repository.delete_token(user_id, token_id).await
     }
 

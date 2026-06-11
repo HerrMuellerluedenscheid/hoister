@@ -235,7 +235,7 @@ pub struct WebhookConfig {
 /// server-side; the dashboard receives [`NotifierSummary`] instead.
 #[derive(Debug, Clone)]
 pub struct Notifier {
-    pub id: i64,
+    pub id: uuid::Uuid,
     pub user_id: String,
     pub kind: NotifierKind,
     pub config: NotifierConfig,
@@ -250,7 +250,7 @@ pub struct Notifier {
 /// notifier and creates a new one.
 #[derive(Debug, Clone, Serialize)]
 pub struct NotifierSummary {
-    pub id: i64,
+    pub id: uuid::Uuid,
     pub kind: NotifierKind,
     pub config: NotifierSummaryConfig,
     pub enabled: bool,
@@ -438,7 +438,7 @@ mod tests {
 
     fn notifier(kind: NotifierKind, config: NotifierConfig) -> Notifier {
         Notifier {
-            id: 1,
+            id: uuid::Uuid::nil(),
             user_id: "u".into(),
             kind,
             config,
