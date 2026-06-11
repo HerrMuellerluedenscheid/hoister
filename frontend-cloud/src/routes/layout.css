@@ -14,7 +14,7 @@
   --color-line-active: #94a3b8;
 
   /* text */
-  --color-ink: #0f172a;
+  --color-ink: #364156;
   --color-ink-secondary: #334155;
   --color-ink-muted: #64748b;
   --color-ink-faint: #94a3b8;
@@ -23,7 +23,7 @@
   --color-ink-inverse: #ffffff;
 
   /* brand */
-  --color-brand: #4338ca;
+  --color-brand: #011638;
   --color-brand-hover: #4f46e5;
   --color-brand-accent: #4f46e5;
   --color-brand-light: #6366f1;
@@ -42,4 +42,15 @@
   --color-warning: #d97706;
   --color-warning-bg: #fffbeb;
   --color-warning-border: #fcd34d;
+}
+
+/* Panel gradient — unlayered so it wins over Tailwind's bg-card utility.
+   Adds a background-image on top of the background-color already set. */
+.bg-card {
+  background-image: linear-gradient(
+    145deg,
+    color-mix(in oklch, var(--color-card) 30%, white) 0%,
+    var(--color-card) 35%,
+    color-mix(in oklch, var(--color-card) 78%, var(--color-line-subtle)) 100%
+  );
 }
