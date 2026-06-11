@@ -102,7 +102,7 @@
 				name="comment"
 				bind:value={comment}
 				maxlength="120"
-				placeholder="Optional label, e.g. 'vectorandveneer'"
+				placeholder="Optional label, e.g. the hostname"
 				class="flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-400 focus:outline-none"
 			/>
 			<button

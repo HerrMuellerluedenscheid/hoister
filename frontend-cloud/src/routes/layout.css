@@ -1,3 +1,30 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
+
+@theme {
+  /* surfaces */
+  --color-canvas: #09090b;
+  --color-card: #18181b;
+  --color-element: #27272a;
+
+  /* borders */
+  --color-line: #27272a;
+  --color-line-subtle: #3f3f46;
+  --color-line-active: #71717a;
+
+  /* text */
+  --color-ink: #ffffff;
+  --color-ink-secondary: #d4d4d8;
+  --color-ink-muted: #a1a1aa;
+  --color-ink-faint: #71717a;
+  --color-ink-ghost: #52525b;
+  --color-ink-code: #e4e4e7;
+  --color-ink-inverse: #18181b;
+
+  /* brand */
+  --color-brand: #4f46e5;
+  --color-brand-hover: #6366f1;
+  --color-brand-accent: #818cf8;
+  --color-brand-light: #a5b4fc;
+}
