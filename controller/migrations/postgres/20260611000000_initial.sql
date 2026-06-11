@@ -3,6 +3,13 @@ CREATE TABLE users (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE host (
+    id UUID PRIMARY KEY,
+    hostname VARCHAR(253) NOT NULL,
+    user_id VARCHAR(128) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, hostname)
+);
+
 CREATE TABLE project (
     id UUID PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -10,13 +17,6 @@ CREATE TABLE project (
     host_id UUID NOT NULL REFERENCES host(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(user_id, name)
-);
-
-CREATE TABLE host (
-    id UUID PRIMARY KEY,
-    hostname VARCHAR(253) NOT NULL,
-    user_id VARCHAR(128) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE(user_id, hostname)
 );
 
 CREATE TABLE service (
