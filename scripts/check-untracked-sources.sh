@@ -9,7 +9,7 @@
 # `git commit --no-verify`.
 set -euo pipefail
 
-watched=(frontend-cloud/src controller/src agent/src hoister_shared/src)
+watched=(frontend-cloud/src controller/src agent/src hoister_shared/src controller/migrations)
 
 untracked=$(git ls-files --others --exclude-standard -- "${watched[@]}")
 
