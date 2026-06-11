@@ -37,9 +37,8 @@ export const actions: Actions = {
 		if (!auth.userId) throw error(401, 'Not authenticated');
 
 		const form = await request.formData();
-		const raw = form.get('id');
-		const id = typeof raw === 'string' ? Number.parseInt(raw, 10) : NaN;
-		if (!Number.isFinite(id)) return fail(400, { deleteError: 'Invalid token id' });
+		const id = form.get('id');
+		if (typeof id !== 'string' || id.trim() === '') return fail(400, { deleteError: 'Invalid token id' });
 
 		try {
 			const ok = await deleteToken(auth.userId, id);

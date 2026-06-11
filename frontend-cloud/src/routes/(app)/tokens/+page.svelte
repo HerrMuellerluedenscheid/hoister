@@ -6,7 +6,7 @@
 
 	let comment = $state('');
 	let creating = $state(false);
-	let deletingId = $state<number | null>(null);
+	let deletingId = $state<string | null>(null);
 	let copied = $state(false);
 
 	const justCreated = $derived(form?.created ?? null);

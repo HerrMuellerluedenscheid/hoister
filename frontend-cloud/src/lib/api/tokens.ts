@@ -5,7 +5,7 @@ import { backendHeaders } from './_headers';
 const BACKEND_URL = env.HOISTER_CONTROLLER_URL;
 
 export interface ApiToken {
-	id: number;
+	id: string;
 	user_id: string;
 	/** Plaintext token. Only present when the controller just minted it. */
 	token?: string;
@@ -49,7 +49,7 @@ export async function createToken(userId: string, comment: string | null): Promi
 	return unwrap<ApiToken>(response, 'create token');
 }
 
-export async function deleteToken(userId: string, tokenId: number): Promise<boolean> {
+export async function deleteToken(userId: string, tokenId: string): Promise<boolean> {
 	if (!BACKEND_URL) throw error(500, 'Backend URL not configured');
 	const response = await fetch(`${BACKEND_URL}/tokens/${tokenId}`, {
 		method: 'DELETE',
