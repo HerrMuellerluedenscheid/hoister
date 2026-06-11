@@ -53,7 +53,13 @@
 	}}
 />
 
-<div class="flex min-h-screen flex-col bg-canvas text-ink md:flex-row">
+<div class="relative flex min-h-screen flex-col bg-canvas text-ink md:flex-row">
+	<!-- Decorative background blobs -->
+	<div class="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+		<div class="absolute -top-20 right-0 h-[500px] w-[600px] translate-x-1/4 rounded-full bg-brand/8 blur-[130px]"></div>
+		<div class="absolute bottom-0 left-1/3 h-[400px] w-[500px] translate-y-1/3 rounded-full bg-success/6 blur-[110px]"></div>
+	</div>
+
 	<!-- Mobile top bar -->
 	<header class="flex items-center justify-between border-b border-line px-4 py-3 md:hidden">
 		<button

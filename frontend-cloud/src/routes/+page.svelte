@@ -48,7 +48,14 @@
 	{jsonLd}
 />
 
-<div class="flex min-h-screen flex-col bg-canvas text-ink">
+<div class="relative flex min-h-screen flex-col bg-canvas text-ink">
+	<!-- Decorative background blobs -->
+	<div class="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+		<div class="absolute top-0 left-1/2 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/4 rounded-full bg-brand/10 blur-[130px]"></div>
+		<div class="absolute top-[6%] -right-36 h-[500px] w-[500px] rounded-full bg-brand-light/12 blur-[110px]"></div>
+		<div class="absolute top-[55%] -left-32 h-[420px] w-[420px] rounded-full bg-success/8 blur-[100px]"></div>
+	</div>
+
 	<!-- Nav -->
 	<header class="flex items-center justify-between px-8 py-5">
 		<div class="flex items-center gap-2">
@@ -94,7 +101,7 @@
 				{#snippet children()}
 					<a
 						href="/dashboard"
-						class="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-ink transition hover:bg-brand-hover"
+						class="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-stone-100 transition hover:bg-brand-hover"
 					>
 						Dashboard
 					</a>
@@ -127,7 +134,7 @@
 			{#snippet children()}
 				<a
 					href="/dashboard"
-					class="rounded-xl bg-brand px-6 pt-3 pb-3 mb-5 text-sm font-semibold text-ink shadow-lg transition hover:bg-brand-hover active:scale-95"
+					class="rounded-xl bg-brand px-6 pt-3 pb-3 mb-5 text-sm font-semibold text-stone-100 shadow-lg transition hover:bg-brand-hover active:scale-95"
 				>
 					Go to Dashboard →
 				</a>
