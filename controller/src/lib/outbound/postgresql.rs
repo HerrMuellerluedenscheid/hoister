@@ -450,13 +450,22 @@ impl TokenRepository for Postgresql {
     }
 
     async fn delete_token(&self, user_id: &str, token_id: uuid::Uuid) -> Result<bool, TokenError> {
+        debug!("delete_token user={user_id} token_id={token_id}");
         let result = sqlx::query("DELETE FROM api_token WHERE id = $1 AND user_id = $2")
             .bind(token_id)
             .bind(user_id)
             .execute(&self.pool)
             .await
-            .map_err(|_| TokenError::UnknownError)?;
-        Ok(result.rows_affected() > 0)
+            .map_err(|e| {
+                debug!("delete_token db error: {e:?}");
+                TokenError::UnknownError
+            })?;
+        let deleted = result.rows_affected() > 0;
+        debug!(
+            "delete_token rows_affected={} found={deleted}",
+            result.rows_affected()
+        );
+        Ok(deleted)
     }
 
     async fn find_user_by_token(&self, token: &str) -> Option<String> {
@@ -845,6 +854,13 @@ impl ContainerStateRepository for Postgresql {
 
 impl MetricsRepository for Postgresql {
     async fn add_metrics(&self, req: AddMetricsRequest) {
+        debug!(
+            "add_metrics user={} host={} project={} services={}",
+            req.user_id,
+            req.hostname.as_str(),
+            req.project_name.as_str(),
+            req.samples.len()
+        );
         let now = chrono::Utc::now();
         let now_str = now.to_rfc3339();
         let mut tx = match self.pool.begin().await {
@@ -858,7 +874,7 @@ impl MetricsRepository for Postgresql {
             // Resolve service_id via JOIN; if the service row doesn't exist yet
             // the SELECT returns nothing and the INSERT is a no-op, which is
             // the same guard the old container_state FK provided.
-            if let Err(e) = sqlx::query(
+            match sqlx::query(
                 "INSERT INTO service_metrics
                     (service_id, recorded_at, cpu_pct, mem_bytes, mem_limit_bytes)
                  SELECT s.id, $1::timestamptz, $2, $3, $4
@@ -879,7 +895,15 @@ impl MetricsRepository for Postgresql {
             .execute(&mut *tx)
             .await
             {
-                error!("add_metrics insert failed: {e:?}");
+                Ok(r) if r.rows_affected() == 0 => debug!(
+                    "add_metrics skipped service={} (no matching service row or duplicate timestamp)",
+                    service_name.as_str()
+                ),
+                Ok(_) => debug!("add_metrics wrote service={}", service_name.as_str()),
+                Err(e) => error!(
+                    "add_metrics insert failed service={}: {e:?}",
+                    service_name.as_str()
+                ),
             }
         }
 
@@ -917,7 +941,7 @@ impl MetricsRepository for Postgresql {
         since: chrono::DateTime<chrono::Utc>,
     ) -> Vec<MetricPoint> {
         let rows: Vec<(String, f64, i64, i64)> = match sqlx::query_as(
-            "SELECT sm.recorded_at::text, sm.cpu_pct, sm.mem_bytes, sm.mem_limit_bytes
+            "SELECT sm.recorded_at::text, sm.cpu_pct::float8, sm.mem_bytes, sm.mem_limit_bytes
                 FROM service_metrics sm
                 JOIN service s ON sm.service_id = s.id
                 JOIN project p ON s.project_id = p.id
@@ -957,7 +981,7 @@ impl MetricsRepository for Postgresql {
         let rows: Vec<(String, String, String, String, f64, i64, i64)> = match sqlx::query_as(
             "SELECT DISTINCT ON (sm.service_id)
                     h.hostname, p.name, s.name, sm.recorded_at::text,
-                    sm.cpu_pct, sm.mem_bytes, sm.mem_limit_bytes
+                    sm.cpu_pct::float8, sm.mem_bytes, sm.mem_limit_bytes
                 FROM service_metrics sm
                 JOIN service s ON sm.service_id = s.id
                 JOIN project p ON s.project_id = p.id

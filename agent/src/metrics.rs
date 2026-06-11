@@ -140,6 +140,17 @@ async fn send_to_backend(
         .join(format!("container/metrics/{}/{}", hostname.0, project_name.0).as_str())
         .expect("failed to join url");
 
+    debug!(
+        "sending {} metric samples to {} (services: {})",
+        samples.len(),
+        url,
+        samples
+            .keys()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
     let request = PostContainerMetricsRequest {
         project_name,
         payload: samples.clone(),
@@ -150,6 +161,7 @@ async fn send_to_backend(
         req = req.bearer_auth(token);
     }
     let response = req.send().await?;
+    debug!("metrics POST status: {}", response.status());
     response.error_for_status()?;
     Ok(())
 }

@@ -418,6 +418,7 @@ async fn delete_token<
     Extension(UserId(user_id)): Extension<UserId>,
     Path(token_id): Path<uuid::Uuid>,
 ) -> Result<StatusCode, StatusCode> {
+    debug!("delete_token user={user_id} token_id={token_id}");
     match state.token_service.delete_token(&user_id, token_id).await {
         Ok(true) => Ok(StatusCode::NO_CONTENT),
         Ok(false) => Err(StatusCode::NOT_FOUND),
