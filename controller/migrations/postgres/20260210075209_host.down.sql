@@ -1,3 +1,0 @@
-ALTER TABLE deployment DROP COLUMN IF EXISTS host_id;
-
-DROP TABLE IF EXISTS host;
