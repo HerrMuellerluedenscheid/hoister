@@ -127,16 +127,17 @@ impl Postgresql {
     }
 
     /// Upsert a project by name, returning its ID.
-    /// Sets user_id only on insert; existing projects keep their user_id.
+    /// Sets user_id and host_id only on insert; existing projects keep their values.
     pub async fn upsert_project(
         &self,
         name: &ProjectName,
         user_id: &str,
+        host_id: uuid::Uuid,
     ) -> Result<uuid::Uuid, SqlxError> {
         let id = uuid::Uuid::new_v4();
         let result = sqlx::query(
             r#"
-            INSERT INTO project (id, name, user_id) VALUES ($1, $2, $3)
+            INSERT INTO project (id, name, user_id, host_id) VALUES ($1, $2, $3, $4)
             ON CONFLICT(user_id, name) DO UPDATE SET name = EXCLUDED.name
             RETURNING id
             "#,
@@ -144,6 +145,7 @@ impl Postgresql {
         .bind(id)
         .bind(name.as_str())
         .bind(user_id)
+        .bind(host_id)
         .fetch_one(&self.pool)
         .await?;
 
@@ -354,11 +356,13 @@ impl Postgresql {
         req: &CreateDeploymentRequest,
     ) -> Result<DeploymentId, SqlxError> {
         let user_id = req.user_id.as_str();
-        let project_id = self.upsert_project(&req.project_name, user_id).await?;
+        let host_id = self.upsert_host(&req.hostname, user_id).await?;
+        let project_id = self
+            .upsert_project(&req.project_name, user_id, host_id)
+            .await?;
         let service_id = self
             .upsert_service(project_id, &req.service_name, &req.image_name)
             .await?;
-        let host_id = self.upsert_host(&req.hostname, user_id).await?;
 
         if matches!(req.deployment_status, DeploymentStatus::NoUpdate) {
             self.clear_last_no_update_deployment(service_id).await?;
@@ -702,8 +706,11 @@ impl ContainerStateRepository for Postgresql {
         service_name: &ServiceName,
     ) -> Option<HostProjectState> {
         let row: (String, String) = sqlx::query_as(
-            "SELECT services::text, last_updated::text FROM container_state
-                WHERE user_id = $1 AND hostname = $2 AND project_name = $3",
+            "SELECT cs.services::text, cs.last_updated::text
+                FROM compose_state cs
+                JOIN project p ON cs.project_id = p.id
+                JOIN host h ON p.host_id = h.id
+                WHERE p.user_id = $1 AND h.hostname = $2 AND p.name = $3",
         )
         .bind(user_id)
         .bind(hostname.as_str())
@@ -729,8 +736,11 @@ impl ContainerStateRepository for Postgresql {
 
     async fn get_container_states(&self, user_id: &str) -> ContainerStateData {
         let rows: Vec<(String, String, String, String)> = match sqlx::query_as(
-            "SELECT hostname, project_name, services::text, last_updated::text
-                FROM container_state WHERE user_id = $1",
+            "SELECT h.hostname, p.name, cs.services::text, cs.last_updated::text
+                FROM compose_state cs
+                JOIN project p ON cs.project_id = p.id
+                JOIN host h ON p.host_id = h.id
+                WHERE p.user_id = $1",
         )
         .bind(user_id)
         .fetch_all(&self.pool)
@@ -772,16 +782,31 @@ impl ContainerStateRepository for Postgresql {
                 return;
             }
         };
+        let host_id = match self.upsert_host(&req.hostname, &req.user_id).await {
+            Ok(id) => id,
+            Err(e) => {
+                error!("add_container_state upsert_host failed: {e:?}");
+                return;
+            }
+        };
+        let project_id = match self
+            .upsert_project(&req.project_name, &req.user_id, host_id)
+            .await
+        {
+            Ok(id) => id,
+            Err(e) => {
+                error!("add_container_state upsert_project failed: {e:?}");
+                return;
+            }
+        };
         if let Err(e) = sqlx::query(
-            "INSERT INTO container_state (user_id, hostname, project_name, services, last_updated)
-                 VALUES ($1, $2, $3, $4::jsonb, NOW())
-                 ON CONFLICT(user_id, hostname, project_name) DO UPDATE SET
+            "INSERT INTO compose_state (project_id, services, last_updated)
+                 VALUES ($1, $2::jsonb, NOW())
+                 ON CONFLICT(project_id) DO UPDATE SET
                      services = EXCLUDED.services,
                      last_updated = NOW()",
         )
-        .bind(&req.user_id)
-        .bind(req.hostname.as_str())
-        .bind(req.project_name.as_str())
+        .bind(project_id)
         .bind(&services_json)
         .execute(&self.pool)
         .await
@@ -797,12 +822,15 @@ impl ContainerStateRepository for Postgresql {
         project_name: &ProjectName,
     ) -> bool {
         match sqlx::query(
-            "DELETE FROM container_state
-                WHERE user_id = $1 AND hostname = $2 AND project_name = $3",
+            "DELETE FROM project
+                WHERE user_id = $1 AND name = $2
+                  AND EXISTS (
+                    SELECT 1 FROM host WHERE id = project.host_id AND hostname = $3
+                  )",
         )
         .bind(user_id)
-        .bind(hostname.as_str())
         .bind(project_name.as_str())
+        .bind(hostname.as_str())
         .execute(&self.pool)
         .await
         {
@@ -827,30 +855,27 @@ impl MetricsRepository for Postgresql {
             }
         };
         for (service_name, sample) in &req.samples {
-            // Only store the sample when its (host, project) still has a
-            // container_state row — that row is the FK parent the
-            // `ON DELETE CASCADE` hangs off. The agent reports state and
-            // metrics on independent timers, so a metrics batch can briefly
-            // race ahead of the first state report; dropping those orphans
-            // here keeps the insert from violating the foreign key.
+            // Resolve service_id via JOIN; if the service row doesn't exist yet
+            // the SELECT returns nothing and the INSERT is a no-op, which is
+            // the same guard the old container_state FK provided.
             if let Err(e) = sqlx::query(
-                "INSERT INTO container_metrics
-                    (user_id, hostname, project_name, service_name, recorded_at,
-                     cpu_pct, mem_bytes, mem_limit_bytes)
-                 SELECT $1, $2, $3, $4, $5::timestamptz, $6, $7, $8
-                 WHERE EXISTS (
-                     SELECT 1 FROM container_state
-                     WHERE user_id = $1 AND hostname = $2 AND project_name = $3
-                 )",
+                "INSERT INTO service_metrics
+                    (service_id, recorded_at, cpu_pct, mem_bytes, mem_limit_bytes)
+                 SELECT s.id, $1::timestamptz, $2, $3, $4
+                 FROM service s
+                 JOIN project p ON s.project_id = p.id
+                 JOIN host h ON p.host_id = h.id
+                 WHERE p.user_id = $5 AND h.hostname = $6 AND p.name = $7 AND s.name = $8
+                 ON CONFLICT DO NOTHING",
             )
-            .bind(&req.user_id)
-            .bind(req.hostname.as_str())
-            .bind(req.project_name.as_str())
-            .bind(service_name.as_str())
             .bind(&now_str)
             .bind(sample.cpu_pct)
             .bind(sample.mem_bytes as i64)
             .bind(sample.mem_limit_bytes as i64)
+            .bind(&req.user_id)
+            .bind(req.hostname.as_str())
+            .bind(req.project_name.as_str())
+            .bind(service_name.as_str())
             .execute(&mut *tx)
             .await
             {
@@ -862,10 +887,16 @@ impl MetricsRepository for Postgresql {
         // this user. Runs at most once per agent report (~per minute).
         let cutoff = (now - chrono::Duration::days(RETENTION_DAYS)).to_rfc3339();
         if let Err(e) = sqlx::query(
-            "DELETE FROM container_metrics WHERE user_id = $1 AND recorded_at < $2::timestamptz",
+            "DELETE FROM service_metrics
+                WHERE recorded_at < $1::timestamptz
+                  AND service_id IN (
+                    SELECT s.id FROM service s
+                    JOIN project p ON s.project_id = p.id
+                    WHERE p.user_id = $2
+                  )",
         )
-        .bind(&req.user_id)
         .bind(&cutoff)
+        .bind(&req.user_id)
         .execute(&mut *tx)
         .await
         {
@@ -886,11 +917,14 @@ impl MetricsRepository for Postgresql {
         since: chrono::DateTime<chrono::Utc>,
     ) -> Vec<MetricPoint> {
         let rows: Vec<(String, f64, i64, i64)> = match sqlx::query_as(
-            "SELECT recorded_at::text, cpu_pct, mem_bytes, mem_limit_bytes
-                FROM container_metrics
-                WHERE user_id = $1 AND hostname = $2 AND project_name = $3
-                  AND service_name = $4 AND recorded_at >= $5::timestamptz
-                ORDER BY recorded_at ASC",
+            "SELECT sm.recorded_at::text, sm.cpu_pct, sm.mem_bytes, sm.mem_limit_bytes
+                FROM service_metrics sm
+                JOIN service s ON sm.service_id = s.id
+                JOIN project p ON s.project_id = p.id
+                JOIN host h ON p.host_id = h.id
+                WHERE p.user_id = $1 AND h.hostname = $2 AND p.name = $3 AND s.name = $4
+                  AND sm.recorded_at >= $5::timestamptz
+                ORDER BY sm.recorded_at ASC",
         )
         .bind(user_id)
         .bind(hostname.as_str())
@@ -921,12 +955,15 @@ impl MetricsRepository for Postgresql {
 
     async fn get_latest_metrics(&self, user_id: &str) -> Vec<LatestMetric> {
         let rows: Vec<(String, String, String, String, f64, i64, i64)> = match sqlx::query_as(
-            "SELECT DISTINCT ON (hostname, project_name, service_name)
-                    hostname, project_name, service_name, recorded_at::text,
-                    cpu_pct, mem_bytes, mem_limit_bytes
-                FROM container_metrics
-                WHERE user_id = $1
-                ORDER BY hostname, project_name, service_name, recorded_at DESC",
+            "SELECT DISTINCT ON (sm.service_id)
+                    h.hostname, p.name, s.name, sm.recorded_at::text,
+                    sm.cpu_pct, sm.mem_bytes, sm.mem_limit_bytes
+                FROM service_metrics sm
+                JOIN service s ON sm.service_id = s.id
+                JOIN project p ON s.project_id = p.id
+                JOIN host h ON p.host_id = h.id
+                WHERE p.user_id = $1
+                ORDER BY sm.service_id, sm.recorded_at DESC",
         )
         .bind(user_id)
         .fetch_all(&self.pool)

@@ -62,7 +62,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     let config_path = "/hoister.toml";
-    let config = Arc::new(config::load_config(config_path.as_ref()).await);
+    let mut config = config::load_config(config_path.as_ref()).await;
+
+    // If no hostname was configured, ask the Docker daemon for the host's name
+    // (equivalent to `docker info --format '{{.Name}}'`). This gives a stable,
+    // human-readable identifier without requiring manual config.
+    if config.hostname == hoister_shared::HostName::default() {
+        match Docker::connect_with_local_defaults() {
+            Ok(docker) => match docker.info().await {
+                Ok(info) => {
+                    if let Some(name) = info.name.filter(|n| !n.is_empty()) {
+                        config.hostname = hoister_shared::HostName::new(name);
+                    }
+                }
+                Err(e) => warn!("docker info failed, hostname stays 'undefined': {e}"),
+            },
+            Err(e) => warn!("could not connect to Docker to resolve hostname: {e}"),
+        }
+    }
+
+    let config = Arc::new(config);
     let http_client = config::build_http_client(&config.controller);
 
     // Register operator-supplied redaction keywords before any container is

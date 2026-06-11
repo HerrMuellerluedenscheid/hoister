@@ -51,8 +51,8 @@ impl Sqlite {
         // SQLite enforces foreign keys only when `foreign_keys` is turned on,
         // and the pragma is per-connection — so set it on every pooled
         // connection. Without this the `ON DELETE CASCADE` from
-        // container_metrics → container_state (and the deployment FKs) would be
-        // silently ignored.
+        // service_metrics → service, compose_state → project, and the
+        // deployment FKs would be silently ignored.
         let pool = SqlitePoolOptions::new()
             .after_connect(|conn, _meta| {
                 Box::pin(async move {
@@ -130,11 +130,12 @@ impl Sqlite {
         &self,
         name: &ProjectName,
         user_id: &str,
+        host_id: uuid::Uuid,
     ) -> Result<uuid::Uuid, SqlxError> {
         let id = uuid::Uuid::new_v4();
         let result = sqlx::query(
             r#"
-            INSERT INTO project (id, name, user_id) VALUES (?, ?, ?)
+            INSERT INTO project (id, name, user_id, host_id) VALUES (?, ?, ?, ?)
             ON CONFLICT(user_id, name) DO UPDATE SET name = name
             RETURNING id
             "#,
@@ -142,6 +143,7 @@ impl Sqlite {
         .bind(id)
         .bind(name.as_str())
         .bind(user_id)
+        .bind(host_id)
         .fetch_one(&self.pool)
         .await?;
 
@@ -349,11 +351,13 @@ impl Sqlite {
         req: &CreateDeploymentRequest,
     ) -> Result<DeploymentId, SqlxError> {
         let user_id = req.user_id.as_str();
-        let project_id = self.upsert_project(&req.project_name, user_id).await?;
+        let host_id = self.upsert_host(&req.hostname, user_id).await?;
+        let project_id = self
+            .upsert_project(&req.project_name, user_id, host_id)
+            .await?;
         let service_id = self
             .upsert_service(project_id, &req.service_name, &req.image_name)
             .await?;
-        let host_id = self.upsert_host(&req.hostname, user_id).await?;
 
         if matches!(req.deployment_status, DeploymentStatus::NoUpdate) {
             self.clear_last_no_update_deployment(service_id).await?;
@@ -698,8 +702,11 @@ impl ContainerStateRepository for Sqlite {
         service_name: &ServiceName,
     ) -> Option<HostProjectState> {
         let row: (String, String) = sqlx::query_as(
-            "SELECT services, last_updated FROM container_state
-                WHERE user_id = ? AND hostname = ? AND project_name = ?",
+            "SELECT cs.services, cs.last_updated
+                FROM compose_state cs
+                JOIN project p ON cs.project_id = p.id
+                JOIN host h ON p.host_id = h.id
+                WHERE p.user_id = ? AND h.hostname = ? AND p.name = ?",
         )
         .bind(user_id)
         .bind(hostname.as_str())
@@ -717,24 +724,19 @@ impl ContainerStateRepository for Sqlite {
         if services.is_empty() {
             return None;
         }
-        let last_updated = chrono::DateTime::parse_from_rfc3339(&last_updated)
-            .map(|dt| dt.with_timezone(&chrono::Utc))
-            .or_else(|_| {
-                chrono::NaiveDateTime::parse_from_str(&last_updated, "%Y-%m-%d %H:%M:%S")
-                    .map(|dt| dt.and_utc().fixed_offset())
-                    .map(|dt| dt.with_timezone(&chrono::Utc))
-            })
-            .unwrap_or_else(|_| chrono::Utc::now());
         Some(HostProjectState {
             services,
-            last_updated,
+            last_updated: parse_ts(&last_updated),
         })
     }
 
     async fn get_container_states(&self, user_id: &str) -> ContainerStateData {
         let rows: Vec<(String, String, String, String)> = match sqlx::query_as(
-            "SELECT hostname, project_name, services, last_updated FROM container_state
-                WHERE user_id = ?",
+            "SELECT h.hostname, p.name, cs.services, cs.last_updated
+                FROM compose_state cs
+                JOIN project p ON cs.project_id = p.id
+                JOIN host h ON p.host_id = h.id
+                WHERE p.user_id = ?",
         )
         .bind(user_id)
         .fetch_all(&self.pool)
@@ -757,19 +759,11 @@ impl ContainerStateRepository for Sqlite {
                         continue;
                     }
                 };
-            let last_updated = chrono::DateTime::parse_from_rfc3339(&last_updated)
-                .map(|dt| dt.with_timezone(&chrono::Utc))
-                .or_else(|_| {
-                    chrono::NaiveDateTime::parse_from_str(&last_updated, "%Y-%m-%d %H:%M:%S")
-                        .map(|dt| dt.and_utc().fixed_offset())
-                        .map(|dt| dt.with_timezone(&chrono::Utc))
-                })
-                .unwrap_or_else(|_| chrono::Utc::now());
             out.entry(HostName::new(hostname)).or_default().insert(
                 ProjectName::new(project_name),
                 HostProjectState {
                     services,
-                    last_updated,
+                    last_updated: parse_ts(&last_updated),
                 },
             );
         }
@@ -784,17 +778,32 @@ impl ContainerStateRepository for Sqlite {
                 return;
             }
         };
+        let host_id = match self.upsert_host(&req.hostname, &req.user_id).await {
+            Ok(id) => id,
+            Err(e) => {
+                error!("add_container_state upsert_host failed: {e:?}");
+                return;
+            }
+        };
+        let project_id = match self
+            .upsert_project(&req.project_name, &req.user_id, host_id)
+            .await
+        {
+            Ok(id) => id,
+            Err(e) => {
+                error!("add_container_state upsert_project failed: {e:?}");
+                return;
+            }
+        };
         let now = chrono::Utc::now().to_rfc3339();
         if let Err(e) = sqlx::query(
-            "INSERT INTO container_state (user_id, hostname, project_name, services, last_updated)
-                 VALUES (?, ?, ?, ?, ?)
-                 ON CONFLICT(user_id, hostname, project_name) DO UPDATE SET
+            "INSERT INTO compose_state (project_id, services, last_updated)
+                 VALUES (?, ?, ?)
+                 ON CONFLICT(project_id) DO UPDATE SET
                      services = excluded.services,
                      last_updated = excluded.last_updated",
         )
-        .bind(&req.user_id)
-        .bind(req.hostname.as_str())
-        .bind(req.project_name.as_str())
+        .bind(project_id)
         .bind(&services_json)
         .bind(&now)
         .execute(&self.pool)
@@ -811,12 +820,15 @@ impl ContainerStateRepository for Sqlite {
         project_name: &ProjectName,
     ) -> bool {
         match sqlx::query(
-            "DELETE FROM container_state
-                WHERE user_id = ? AND hostname = ? AND project_name = ?",
+            "DELETE FROM project
+                WHERE user_id = ? AND name = ?
+                  AND EXISTS (
+                    SELECT 1 FROM host WHERE id = project.host_id AND hostname = ?
+                  )",
         )
         .bind(user_id)
-        .bind(hostname.as_str())
         .bind(project_name.as_str())
+        .bind(hostname.as_str())
         .execute(&self.pool)
         .await
         {
@@ -855,26 +867,18 @@ impl MetricsRepository for Sqlite {
             }
         };
         for (service_name, sample) in &req.samples {
-            // Only store the sample when its (host, project) still has a
-            // container_state row — that row is the FK parent the
-            // `ON DELETE CASCADE` hangs off. The agent reports state and
-            // metrics on independent timers, so a metrics batch can briefly
-            // race ahead of the first state report; dropping those orphans
-            // here keeps the insert from violating the foreign key.
+            // Resolve service_id via JOIN; if the service row doesn't exist yet
+            // the SELECT returns nothing and the INSERT is a no-op, which is
+            // the same guard the old container_state FK provided.
             if let Err(e) = sqlx::query(
-                "INSERT INTO container_metrics
-                    (user_id, hostname, project_name, service_name, recorded_at,
-                     cpu_pct, mem_bytes, mem_limit_bytes)
-                 SELECT ?, ?, ?, ?, ?, ?, ?, ?
-                 WHERE EXISTS (
-                     SELECT 1 FROM container_state
-                     WHERE user_id = ? AND hostname = ? AND project_name = ?
-                 )",
+                "INSERT OR IGNORE INTO service_metrics
+                    (service_id, recorded_at, cpu_pct, mem_bytes, mem_limit_bytes)
+                 SELECT s.id, ?, ?, ?, ?
+                 FROM service s
+                 JOIN project p ON s.project_id = p.id
+                 JOIN host h ON p.host_id = h.id
+                 WHERE p.user_id = ? AND h.hostname = ? AND p.name = ? AND s.name = ?",
             )
-            .bind(&req.user_id)
-            .bind(req.hostname.as_str())
-            .bind(req.project_name.as_str())
-            .bind(service_name.as_str())
             .bind(&now_str)
             .bind(sample.cpu_pct)
             .bind(sample.mem_bytes as i64)
@@ -882,6 +886,7 @@ impl MetricsRepository for Sqlite {
             .bind(&req.user_id)
             .bind(req.hostname.as_str())
             .bind(req.project_name.as_str())
+            .bind(service_name.as_str())
             .execute(&mut *tx)
             .await
             {
@@ -892,12 +897,19 @@ impl MetricsRepository for Sqlite {
         // Opportunistic retention: keep at most RETENTION_DAYS of samples for
         // this user. Runs at most once per agent report (~per minute).
         let cutoff = (now - chrono::Duration::days(RETENTION_DAYS)).to_rfc3339();
-        if let Err(e) =
-            sqlx::query("DELETE FROM container_metrics WHERE user_id = ? AND recorded_at < ?")
-                .bind(&req.user_id)
-                .bind(&cutoff)
-                .execute(&mut *tx)
-                .await
+        if let Err(e) = sqlx::query(
+            "DELETE FROM service_metrics
+                WHERE recorded_at < ?
+                  AND service_id IN (
+                    SELECT s.id FROM service s
+                    JOIN project p ON s.project_id = p.id
+                    WHERE p.user_id = ?
+                  )",
+        )
+        .bind(&cutoff)
+        .bind(&req.user_id)
+        .execute(&mut *tx)
+        .await
         {
             error!("add_metrics prune failed: {e:?}");
         }
@@ -916,11 +928,14 @@ impl MetricsRepository for Sqlite {
         since: chrono::DateTime<chrono::Utc>,
     ) -> Vec<MetricPoint> {
         let rows: Vec<(String, f64, i64, i64)> = match sqlx::query_as(
-            "SELECT recorded_at, cpu_pct, mem_bytes, mem_limit_bytes
-                FROM container_metrics
-                WHERE user_id = ? AND hostname = ? AND project_name = ?
-                  AND service_name = ? AND recorded_at >= ?
-                ORDER BY recorded_at ASC",
+            "SELECT sm.recorded_at, sm.cpu_pct, sm.mem_bytes, sm.mem_limit_bytes
+                FROM service_metrics sm
+                JOIN service s ON sm.service_id = s.id
+                JOIN project p ON s.project_id = p.id
+                JOIN host h ON p.host_id = h.id
+                WHERE p.user_id = ? AND h.hostname = ? AND p.name = ? AND s.name = ?
+                  AND sm.recorded_at >= ?
+                ORDER BY sm.recorded_at ASC",
         )
         .bind(user_id)
         .bind(hostname.as_str())
@@ -951,22 +966,18 @@ impl MetricsRepository for Sqlite {
 
     async fn get_latest_metrics(&self, user_id: &str) -> Vec<LatestMetric> {
         let rows: Vec<(String, String, String, String, f64, i64, i64)> = match sqlx::query_as(
-            "SELECT m.hostname, m.project_name, m.service_name, m.recorded_at,
-                    m.cpu_pct, m.mem_bytes, m.mem_limit_bytes
-                FROM container_metrics m
-                JOIN (
-                    SELECT hostname, project_name, service_name, MAX(recorded_at) AS mx
-                    FROM container_metrics
-                    WHERE user_id = ?
-                    GROUP BY hostname, project_name, service_name
-                ) latest
-                  ON m.hostname = latest.hostname
-                 AND m.project_name = latest.project_name
-                 AND m.service_name = latest.service_name
-                 AND m.recorded_at = latest.mx
-                WHERE m.user_id = ?",
+            "SELECT h.hostname, p.name, s.name, sm.recorded_at,
+                    sm.cpu_pct, sm.mem_bytes, sm.mem_limit_bytes
+                FROM service_metrics sm
+                JOIN service s ON sm.service_id = s.id
+                JOIN project p ON s.project_id = p.id
+                JOIN host h ON p.host_id = h.id
+                WHERE p.user_id = ?
+                  AND sm.recorded_at = (
+                    SELECT MAX(sm2.recorded_at) FROM service_metrics sm2
+                    WHERE sm2.service_id = sm.service_id
+                  )",
         )
-        .bind(user_id)
         .bind(user_id)
         .fetch_all(&self.pool)
         .await

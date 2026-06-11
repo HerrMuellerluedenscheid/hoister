@@ -6,19 +6,20 @@ CREATE TABLE users (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE project (
-    id TEXT PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    user_id VARCHAR(128) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, name)
-);
-
 CREATE TABLE host (
     id TEXT PRIMARY KEY,
     hostname VARCHAR(253) NOT NULL,
     user_id VARCHAR(128) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE(user_id, hostname)
+);
+
+CREATE TABLE project (
+    id TEXT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    user_id VARCHAR(128) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    host_id TEXT NOT NULL REFERENCES host(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, name)
 );
 
 CREATE TABLE service (
@@ -68,30 +69,17 @@ CREATE TABLE user_plan (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE container_state (
-    user_id VARCHAR(128) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    hostname VARCHAR(253) NOT NULL,
-    project_name VARCHAR(255) NOT NULL,
+CREATE TABLE compose_state (
+    project_id TEXT NOT NULL PRIMARY KEY REFERENCES project(id) ON DELETE CASCADE,
     services TEXT NOT NULL,
-    last_updated TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (user_id, hostname, project_name)
+    last_updated TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX container_state_user_idx ON container_state(user_id);
-
-CREATE TABLE container_metrics (
-    user_id VARCHAR(128) NOT NULL,
-    hostname VARCHAR(253) NOT NULL,
-    project_name VARCHAR(255) NOT NULL,
-    service_name VARCHAR(255) NOT NULL,
+CREATE TABLE service_metrics (
+    service_id TEXT NOT NULL REFERENCES service(id) ON DELETE CASCADE,
     recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     cpu_pct REAL NOT NULL,
     mem_bytes INTEGER NOT NULL,
     mem_limit_bytes INTEGER NOT NULL,
-    FOREIGN KEY (user_id, hostname, project_name)
-        REFERENCES container_state (user_id, hostname, project_name)
-        ON DELETE CASCADE
+    PRIMARY KEY (service_id, recorded_at)
 );
-
-CREATE INDEX container_metrics_lookup_idx
-    ON container_metrics(user_id, hostname, project_name, service_name, recorded_at);

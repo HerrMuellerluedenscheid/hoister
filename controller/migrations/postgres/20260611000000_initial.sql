@@ -7,6 +7,7 @@ CREATE TABLE project (
     id UUID PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     user_id VARCHAR(128) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    host_id UUID NOT NULL REFERENCES host(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(user_id, name)
 );
@@ -65,30 +66,18 @@ CREATE TABLE user_plan (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE container_state (
-    user_id VARCHAR(128) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    hostname VARCHAR(253) NOT NULL,
-    project_name VARCHAR(255) NOT NULL,
+CREATE TABLE compose_state (
+    project_id UUID NOT NULL REFERENCES project(id) ON DELETE CASCADE,
     services JSONB NOT NULL,
     last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (user_id, hostname, project_name)
+    PRIMARY KEY (project_id)
 );
 
-CREATE INDEX container_state_user_idx ON container_state(user_id);
-
-CREATE TABLE container_metrics (
-    user_id VARCHAR(128) NOT NULL,
-    hostname VARCHAR(253) NOT NULL,
-    project_name VARCHAR(255) NOT NULL,
-    service_name VARCHAR(255) NOT NULL,
+CREATE TABLE service_metrics (
+    service_id UUID NOT NULL REFERENCES service(id) ON DELETE CASCADE,
     recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    cpu_pct DOUBLE PRECISION NOT NULL,
+    cpu_pct REAL NOT NULL,
     mem_bytes BIGINT NOT NULL,
     mem_limit_bytes BIGINT NOT NULL,
-    FOREIGN KEY (user_id, hostname, project_name)
-        REFERENCES container_state (user_id, hostname, project_name)
-        ON DELETE CASCADE
+    PRIMARY KEY (service_id, recorded_at)
 );
-
-CREATE INDEX container_metrics_lookup_idx
-    ON container_metrics(user_id, hostname, project_name, service_name, recorded_at);
