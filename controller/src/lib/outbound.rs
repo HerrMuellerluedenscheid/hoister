@@ -313,6 +313,34 @@ impl ContainerStateRepository for Database {
             }
         }
     }
+
+    async fn delete_project(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+    ) -> bool {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as ContainerStateRepository>::delete_project(
+                    db,
+                    user_id,
+                    hostname,
+                    project_name,
+                )
+                .await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as ContainerStateRepository>::delete_project(
+                    db,
+                    user_id,
+                    hostname,
+                    project_name,
+                )
+                .await
+            }
+        }
+    }
 }
 
 impl MetricsRepository for Database {

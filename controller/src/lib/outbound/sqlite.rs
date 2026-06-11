@@ -21,6 +21,7 @@ use crate::domain::tokens::ports::TokenRepository;
 use hoister_shared::{DeploymentStatus, HostName, ImageName, ProjectName, ServiceName};
 use log::error;
 use sqlx::migrate::MigrateDatabase;
+use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Error as SqlxError, Row, SqlitePool};
 use std::collections::HashMap;
 use tracing::{debug, info};
@@ -47,7 +48,22 @@ impl Sqlite {
             sqlx::Sqlite::create_database(database_url).await?;
         }
 
-        let pool = SqlitePool::connect(database_url).await?;
+        // SQLite enforces foreign keys only when `foreign_keys` is turned on,
+        // and the pragma is per-connection — so set it on every pooled
+        // connection. Without this the `ON DELETE CASCADE` from
+        // container_metrics → container_state (and the deployment FKs) would be
+        // silently ignored.
+        let pool = SqlitePoolOptions::new()
+            .after_connect(|conn, _meta| {
+                Box::pin(async move {
+                    sqlx::query("PRAGMA foreign_keys = ON")
+                        .execute(conn)
+                        .await?;
+                    Ok(())
+                })
+            })
+            .connect(database_url)
+            .await?;
 
         Ok(Self {
             pool,
@@ -752,6 +768,30 @@ impl ContainerStateRepository for Sqlite {
             error!("add_container_state failed: {e:?}");
         }
     }
+
+    async fn delete_project(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+    ) -> bool {
+        match sqlx::query(
+            "DELETE FROM container_state
+                WHERE user_id = ? AND hostname = ? AND project_name = ?",
+        )
+        .bind(user_id)
+        .bind(hostname.as_str())
+        .bind(project_name.as_str())
+        .execute(&self.pool)
+        .await
+        {
+            Ok(result) => result.rows_affected() > 0,
+            Err(e) => {
+                error!("delete_project failed: {e:?}");
+                false
+            }
+        }
+    }
 }
 
 /// Parse a timestamp stored either as RFC3339 (our writes) or SQLite's
@@ -780,11 +820,21 @@ impl MetricsRepository for Sqlite {
             }
         };
         for (service_name, sample) in &req.samples {
+            // Only store the sample when its (host, project) still has a
+            // container_state row — that row is the FK parent the
+            // `ON DELETE CASCADE` hangs off. The agent reports state and
+            // metrics on independent timers, so a metrics batch can briefly
+            // race ahead of the first state report; dropping those orphans
+            // here keeps the insert from violating the foreign key.
             if let Err(e) = sqlx::query(
                 "INSERT INTO container_metrics
                     (user_id, hostname, project_name, service_name, recorded_at,
                      cpu_pct, mem_bytes, mem_limit_bytes)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                 SELECT ?, ?, ?, ?, ?, ?, ?, ?
+                 WHERE EXISTS (
+                     SELECT 1 FROM container_state
+                     WHERE user_id = ? AND hostname = ? AND project_name = ?
+                 )",
             )
             .bind(&req.user_id)
             .bind(req.hostname.as_str())
@@ -794,6 +844,9 @@ impl MetricsRepository for Sqlite {
             .bind(sample.cpu_pct)
             .bind(sample.mem_bytes as i64)
             .bind(sample.mem_limit_bytes as i64)
+            .bind(&req.user_id)
+            .bind(req.hostname.as_str())
+            .bind(req.project_name.as_str())
             .execute(&mut *tx)
             .await
             {

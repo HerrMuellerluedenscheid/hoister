@@ -3,7 +3,8 @@ import { env } from '$env/dynamic/private';
 import { clerkClient } from 'svelte-clerk/server';
 import type { Actions, PageServerLoad } from './$types';
 import { getMe } from '$lib/api/me';
-import { getStripe, stripeTrialDays, type BillingMeta } from '$lib/server/stripe';
+import { getStripe, type BillingMeta } from '$lib/server/stripe';
+import { startProCheckout } from '$lib/server/checkout';
 
 async function billingMeta(userId: string): Promise<BillingMeta> {
 	try {
@@ -52,46 +53,9 @@ export const actions: Actions = {
 		const auth = locals.auth();
 		if (!auth.userId) throw error(401, 'Not authenticated');
 
-		const stripe = getStripe();
-		const priceId = env.STRIPE_PRICE_ID;
-		if (!stripe || !priceId) return fail(503, { error: 'Billing is not configured yet.' });
-
-		// Reuse an existing customer if we have one; otherwise prefill the email.
-		let email: string | undefined;
-		let customerId: string | undefined;
-		try {
-			const user = await clerkClient.users.getUser(auth.userId);
-			email = user.emailAddresses.find(
-				(e) => e.id === user.primaryEmailAddressId
-			)?.emailAddress;
-			customerId = (user.privateMetadata as BillingMeta)?.stripeCustomerId;
-		} catch (e) {
-			console.error('[plan] clerk lookup failed:', e);
-		}
-
-		const trialDays = stripeTrialDays();
-		let checkoutUrl: string | null = null;
-		try {
-			const session = await stripe.checkout.sessions.create({
-				mode: 'subscription',
-				line_items: [{ price: priceId, quantity: 1 }],
-				client_reference_id: auth.userId,
-				...(customerId ? { customer: customerId } : email ? { customer_email: email } : {}),
-				subscription_data: {
-					metadata: { user_id: auth.userId },
-					...(trialDays > 0 ? { trial_period_days: trialDays } : {})
-				},
-				success_url: `${url.origin}/settings/plan?checkout=success`,
-				cancel_url: `${url.origin}/settings/plan?checkout=cancelled`
-			});
-			checkoutUrl = session.url;
-		} catch (e) {
-			console.error('[plan] checkout session create failed:', e);
-			return fail(502, { error: 'Could not start checkout. Please try again.' });
-		}
-
-		if (!checkoutUrl) return fail(502, { error: 'Stripe did not return a checkout URL.' });
-		throw redirect(303, checkoutUrl);
+		const result = await startProCheckout(auth.userId, url.origin);
+		if (!result.ok) return fail(result.status, { error: result.error });
+		throw redirect(303, result.url);
 	},
 
 	// Open the Stripe Billing Portal so the user can manage / cancel.

@@ -752,6 +752,30 @@ impl ContainerStateRepository for Postgresql {
             error!("add_container_state failed: {e:?}");
         }
     }
+
+    async fn delete_project(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+    ) -> bool {
+        match sqlx::query(
+            "DELETE FROM container_state
+                WHERE user_id = $1 AND hostname = $2 AND project_name = $3",
+        )
+        .bind(user_id)
+        .bind(hostname.as_str())
+        .bind(project_name.as_str())
+        .execute(&self.pool)
+        .await
+        {
+            Ok(result) => result.rows_affected() > 0,
+            Err(e) => {
+                error!("delete_project failed: {e:?}");
+                false
+            }
+        }
+    }
 }
 
 impl MetricsRepository for Postgresql {
@@ -766,11 +790,21 @@ impl MetricsRepository for Postgresql {
             }
         };
         for (service_name, sample) in &req.samples {
+            // Only store the sample when its (host, project) still has a
+            // container_state row — that row is the FK parent the
+            // `ON DELETE CASCADE` hangs off. The agent reports state and
+            // metrics on independent timers, so a metrics batch can briefly
+            // race ahead of the first state report; dropping those orphans
+            // here keeps the insert from violating the foreign key.
             if let Err(e) = sqlx::query(
                 "INSERT INTO container_metrics
                     (user_id, hostname, project_name, service_name, recorded_at,
                      cpu_pct, mem_bytes, mem_limit_bytes)
-                 VALUES ($1, $2, $3, $4, $5::timestamptz, $6, $7, $8)",
+                 SELECT $1, $2, $3, $4, $5::timestamptz, $6, $7, $8
+                 WHERE EXISTS (
+                     SELECT 1 FROM container_state
+                     WHERE user_id = $1 AND hostname = $2 AND project_name = $3
+                 )",
             )
             .bind(&req.user_id)
             .bind(req.hostname.as_str())

@@ -41,4 +41,15 @@ impl<CR: ContainerStateRepository> ContainerStateService for Service<CR> {
             .add_container_state(req)
             .await
     }
+
+    async fn delete_project(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+    ) -> bool {
+        self.container_state_repository
+            .delete_project(user_id, hostname, project_name)
+            .await
+    }
 }

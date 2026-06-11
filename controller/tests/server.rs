@@ -258,4 +258,154 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
+
+    /// GET /container/metrics (latest-per-service) as a raw JSON array.
+    async fn latest_metrics(internal: &Router) -> Vec<serde_json::Value> {
+        let response = internal
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/container/metrics")
+                    .header("X-User-Id", TEST_USER)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        serde_json::from_slice::<serde_json::Value>(&body)
+            .unwrap()
+            .as_array()
+            .cloned()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_delete_project_cascades_metrics_and_is_idempotent() {
+        let (agent, internal, _db) = setup_test_app().await;
+        let host = "test-host";
+        let project = "tests-project";
+
+        // Seed a project by reporting (empty) container state via the agent.
+        let state_body = serde_json::json!({ "project_name": project, "payload": {} });
+        let response = agent
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/container/state/{host}/{project}"))
+                    .header("Authorization", "Bearer tests-secret")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(state_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Report a metrics sample for the same (host, project). With the state
+        // row present, the FK-guarded insert stores it.
+        let metrics_body = serde_json::json!({
+            "project_name": project,
+            "payload": { "web": { "cpu_pct": 1.5, "mem_bytes": 1000, "mem_limit_bytes": 2000 } }
+        });
+        let response = agent
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/container/metrics/{host}/{project}"))
+                    .header("Authorization", "Bearer tests-secret")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(metrics_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(latest_metrics(&internal).await.len(), 1);
+
+        // Deleting the project succeeds and frees the slot.
+        let response = internal
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/container/state/{host}/{project}"))
+                    .header("X-User-Id", TEST_USER)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+        // The container state is gone...
+        let response = internal
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/container/state")
+                    .header("X-User-Id", TEST_USER)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let states: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(states.as_array().map(|a| a.len()), Some(0));
+
+        // ...and so are its metrics, removed by the ON DELETE CASCADE rather
+        // than a second application-level delete.
+        assert_eq!(latest_metrics(&internal).await.len(), 0);
+
+        // Deleting a project that no longer exists is a 404.
+        let response = internal
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/container/state/{host}/{project}"))
+                    .header("X-User-Id", TEST_USER)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_metrics_without_state_row_are_dropped() {
+        let (agent, internal, _db) = setup_test_app().await;
+        let host = "test-host";
+        let project = "orphan-project";
+
+        // Report metrics for a project that has no container_state row. The
+        // FK-guarded insert skips them rather than violating the foreign key.
+        let metrics_body = serde_json::json!({
+            "project_name": project,
+            "payload": { "web": { "cpu_pct": 1.5, "mem_bytes": 1000, "mem_limit_bytes": 2000 } }
+        });
+        let response = agent
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/container/metrics/{host}/{project}"))
+                    .header("Authorization", "Bearer tests-secret")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(metrics_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        assert_eq!(latest_metrics(&internal).await.len(), 0);
+    }
 }

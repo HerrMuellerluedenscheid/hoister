@@ -982,6 +982,35 @@ async fn get_container_state_by_service_name<
     })))
 }
 
+/// Internal endpoint: drop one (host, project) for the user, freeing a slot
+/// against the plan's project cap. Deleting the container_state row cascades
+/// (via the `container_metrics → container_state` foreign key) to the
+/// project's persisted metrics, so nothing is left behind. The agent
+/// recreates the project on its next report if it is still running and
+/// labelled — deletion is for projects the user has actually retired.
+async fn delete_project<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+    BS: BillingService,
+    MS: MetricsService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+    Path((hostname, project_name)): Path<(HostName, ProjectName)>,
+) -> Result<StatusCode, StatusCode> {
+    let deleted = state
+        .container_state_service
+        .delete_project(&user_id, &hostname, &project_name)
+        .await;
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
 async fn get_container_states<
     DS: DeploymentsService,
     CS: ContainerStateService,
@@ -1350,6 +1379,10 @@ pub async fn create_internal_router<
         .route(
             "/container/state/{hostname}/{project_name}/{service_name}",
             get(get_container_state_by_service_name::<DS, CS, TS, NS, BS, MS>),
+        )
+        .route(
+            "/container/state/{hostname}/{project_name}",
+            axum::routing::delete(delete_project::<DS, CS, TS, NS, BS, MS>),
         )
         .route(
             "/container/metrics",

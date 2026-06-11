@@ -17,6 +17,14 @@ pub trait ContainerStateRepository: Send + Sync + 'static + Clone {
     ) -> impl Future<Output = ContainerStateData> + Send;
     fn add_container_state(&self, req: AddContainerStateRequest)
     -> impl Future<Output = ()> + Send;
+    /// Remove a single (host, project) entry for a user. Returns `true` when a
+    /// row was deleted, `false` when nothing matched.
+    fn delete_project(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+    ) -> impl Future<Output = bool> + Send;
 }
 
 pub trait ContainerStateService: Send + Sync + 'static + Clone {
@@ -33,4 +41,12 @@ pub trait ContainerStateService: Send + Sync + 'static + Clone {
     ) -> impl Future<Output = ContainerStateData> + Send;
     fn add_container_state(&self, req: AddContainerStateRequest)
     -> impl Future<Output = ()> + Send;
+    /// Remove a single (host, project) entry for a user. Returns `true` when a
+    /// row was deleted, `false` when nothing matched.
+    fn delete_project(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+    ) -> impl Future<Output = bool> + Send;
 }

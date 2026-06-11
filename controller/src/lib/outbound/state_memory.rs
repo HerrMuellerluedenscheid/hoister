@@ -67,4 +67,26 @@ impl ContainerStateRepository for StateMemory {
         entry.services = services;
         entry.last_updated = Utc::now();
     }
+
+    async fn delete_project(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+    ) -> bool {
+        let mut state = self.state.write().await;
+        let Some(user_data) = state.get_mut(user_id) else {
+            return false;
+        };
+        let Some(projects) = user_data.get_mut(hostname) else {
+            return false;
+        };
+        let removed = projects.remove(project_name).is_some();
+        // Drop the host bucket once its last project is gone so stale,
+        // empty hosts don't linger in reads.
+        if projects.is_empty() {
+            user_data.remove(hostname);
+        }
+        removed
+    }
 }
