@@ -40,8 +40,8 @@ pub struct MetricPoint {
     pub mem_limit_bytes: u64,
     pub net_rx_bytes: u64,
     pub net_tx_bytes: u64,
-    pub storage_read_bytes: u64,
-    pub storage_write_bytes: u64,
+    pub disk_read_bytes: u64,
+    pub disk_write_bytes: u64,
 }
 
 /// The most recent sample for one container, used by the dashboard aggregate.

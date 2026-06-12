@@ -896,7 +896,7 @@ impl MetricsRepository for Postgresql {
             match sqlx::query(
                 "INSERT INTO service_metrics
                     (service_id, recorded_at, cpu_pct, mem_bytes, mem_limit_bytes,
-                     net_rx_bytes, net_tx_bytes, storage_read_bytes, storage_write_bytes)
+                     net_rx_bytes, net_tx_bytes, disk_read_bytes, disk_write_bytes)
                  SELECT s.id, $1::timestamptz, $2, $3, $4, $5, $6, $7, $8
                  FROM service s
                  JOIN project p ON s.project_id = p.id
@@ -910,8 +910,8 @@ impl MetricsRepository for Postgresql {
             .bind(sample.mem_limit_bytes as i64)
             .bind(sample.net_rx_bytes as i64)
             .bind(sample.net_tx_bytes as i64)
-            .bind(sample.storage_read_bytes as i64)
-            .bind(sample.storage_write_bytes as i64)
+            .bind(sample.disk_read_bytes as i64)
+            .bind(sample.disk_write_bytes as i64)
             .bind(&req.user_id)
             .bind(req.hostname.as_str())
             .bind(req.project_name.as_str())
@@ -967,7 +967,7 @@ impl MetricsRepository for Postgresql {
         #[allow(clippy::type_complexity)]
         let rows: Vec<(String, f64, i64, i64, i64, i64, i64, i64)> = match sqlx::query_as(
             "SELECT sm.recorded_at::text, sm.cpu_pct::float8, sm.mem_bytes, sm.mem_limit_bytes,
-                    sm.net_rx_bytes, sm.net_tx_bytes, sm.storage_read_bytes, sm.storage_write_bytes
+                    sm.net_rx_bytes, sm.net_tx_bytes, sm.disk_read_bytes, sm.disk_write_bytes
                 FROM service_metrics sm
                 JOIN service s ON sm.service_id = s.id
                 JOIN project p ON s.project_id = p.id
@@ -1000,8 +1000,8 @@ impl MetricsRepository for Postgresql {
                     mem_limit_bytes,
                     net_rx_bytes,
                     net_tx_bytes,
-                    storage_read_bytes,
-                    storage_write_bytes,
+                    disk_read_bytes,
+                    disk_write_bytes,
                 )| MetricPoint {
                     recorded_at: parse_pg_timestamp(&recorded_at),
                     cpu_pct,
@@ -1009,8 +1009,8 @@ impl MetricsRepository for Postgresql {
                     mem_limit_bytes: mem_limit_bytes.max(0) as u64,
                     net_rx_bytes: net_rx_bytes.max(0) as u64,
                     net_tx_bytes: net_tx_bytes.max(0) as u64,
-                    storage_read_bytes: storage_read_bytes.max(0) as u64,
-                    storage_write_bytes: storage_write_bytes.max(0) as u64,
+                    disk_read_bytes: disk_read_bytes.max(0) as u64,
+                    disk_write_bytes: disk_write_bytes.max(0) as u64,
                 },
             )
             .collect()
@@ -1034,7 +1034,7 @@ impl MetricsRepository for Postgresql {
             "SELECT DISTINCT ON (sm.service_id)
                     h.hostname, p.name, s.name, sm.recorded_at::text,
                     sm.cpu_pct::float8, sm.mem_bytes, sm.mem_limit_bytes,
-                    sm.net_rx_bytes, sm.net_tx_bytes, sm.storage_read_bytes, sm.storage_write_bytes
+                    sm.net_rx_bytes, sm.net_tx_bytes, sm.disk_read_bytes, sm.disk_write_bytes
                 FROM service_metrics sm
                 JOIN service s ON sm.service_id = s.id
                 JOIN project p ON s.project_id = p.id
@@ -1065,8 +1065,8 @@ impl MetricsRepository for Postgresql {
                     mem_limit_bytes,
                     net_rx_bytes,
                     net_tx_bytes,
-                    storage_read_bytes,
-                    storage_write_bytes,
+                    disk_read_bytes,
+                    disk_write_bytes,
                 )| {
                     LatestMetric {
                         hostname: HostName::new(hostname),
@@ -1079,8 +1079,8 @@ impl MetricsRepository for Postgresql {
                             mem_limit_bytes: mem_limit_bytes.max(0) as u64,
                             net_rx_bytes: net_rx_bytes.max(0) as u64,
                             net_tx_bytes: net_tx_bytes.max(0) as u64,
-                            storage_read_bytes: storage_read_bytes.max(0) as u64,
-                            storage_write_bytes: storage_write_bytes.max(0) as u64,
+                            disk_read_bytes: disk_read_bytes.max(0) as u64,
+                            disk_write_bytes: disk_write_bytes.max(0) as u64,
                         },
                     }
                 },

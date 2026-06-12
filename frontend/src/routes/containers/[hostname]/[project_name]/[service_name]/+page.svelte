@@ -2,6 +2,9 @@
   import type { ContainerPageData } from './+page.server';
   import Deployments from '$lib/components/Deployments.svelte';
   import RedactedText from '$lib/components/RedactedText.svelte';
+  import MetricSparkline from '$lib/components/MetricSparkline.svelte';
+  import { gaugeSeries, rateSeries } from '$lib/metrics';
+  import { formatBytes, formatPercent, formatRate } from '$lib/format';
   import { invalidateAll } from '$app/navigation';
   import { onDestroy, onMount } from 'svelte';
 
@@ -13,6 +16,26 @@
   const project_name = $derived(data.inspections.project_name);
   const last_updated = $derived(data.inspections.last_updated);
   const last_logs = $derived(data.inspections.last_logs);
+
+  const metrics = $derived(data.metrics ?? []);
+  const hasMetrics = $derived(metrics.length > 0);
+  // The memory limit (0 = unlimited) is constant across samples; take the last.
+  const memLimit = $derived(hasMetrics ? metrics[metrics.length - 1].mem_limit_bytes : 0);
+
+  const cpuSeries = $derived([
+    { label: 'CPU', color: '#2563eb', points: gaugeSeries(metrics, (p) => p.cpu_pct) }
+  ]);
+  const memSeries = $derived([
+    { label: 'Memory', color: '#7c3aed', points: gaugeSeries(metrics, (p) => p.mem_bytes) }
+  ]);
+  const netSeries = $derived([
+    { label: 'RX', color: '#059669', points: rateSeries(metrics, (p) => p.net_rx_bytes) },
+    { label: 'TX', color: '#d97706', points: rateSeries(metrics, (p) => p.net_tx_bytes) }
+  ]);
+  const diskSeries = $derived([
+    { label: 'Read', color: '#0891b2', points: rateSeries(metrics, (p) => p.disk_read_bytes) },
+    { label: 'Write', color: '#db2777', points: rateSeries(metrics, (p) => p.disk_write_bytes) }
+  ]);
 
   let stale = $state(false);
   let refreshInterval: ReturnType<typeof setInterval>;
@@ -116,6 +139,28 @@
         </div>
       </div>
     </div>
+
+    <!-- Resource usage -->
+    {#if hasMetrics}
+      <div class="mb-6 rounded-lg bg-white p-6 shadow">
+        <h2 class="mb-1 text-xl font-semibold text-gray-900">Resource usage</h2>
+        <p class="mb-4 text-xs text-gray-500">
+          Sampled once per minute over the last 7 days. CPU is the average utilization across each
+          interval; network and disk I/O are throughput derived from cumulative counters.
+        </p>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <MetricSparkline title="CPU" series={cpuSeries} format={formatPercent} />
+          <MetricSparkline
+            title="Memory"
+            series={memSeries}
+            format={formatBytes}
+            unit={memLimit > 0 ? `limit ${formatBytes(memLimit)}` : 'unlimited'}
+          />
+          <MetricSparkline title="Network" series={netSeries} format={formatRate} />
+          <MetricSparkline title="Disk I/O" series={diskSeries} format={formatRate} />
+        </div>
+      </div>
+    {/if}
 
     {#if container.State.Error || (container.State.Status && container.State.Status !== 'running' && container.State.Status !== 'created')}
       <div class="mb-6 rounded-lg border border-red-300 bg-red-50 p-6 shadow">

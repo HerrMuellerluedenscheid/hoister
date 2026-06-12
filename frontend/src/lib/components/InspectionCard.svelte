@@ -2,12 +2,23 @@
   import * as Card from '$lib/components/ui/card/index.js';
   import { onDestroy, onMount } from 'svelte';
   import type { ContainerStateResponse } from '../../bindings/ContainerStateResponse';
+  import type { LatestMetricResponse } from '../../bindings/LatestMetricResponse';
+  import { formatBytes, formatPercent, memoryFraction } from '$lib/format';
 
-  const { inspection_data }: { inspection_data: ContainerStateResponse } = $props();
+  const {
+    inspection_data,
+    latest
+  }: { inspection_data: ContainerStateResponse; latest?: LatestMetricResponse } = $props();
 
   const inspection = $derived(inspection_data.container_inspections);
   const hoisterEnabled = $derived(inspection.Config.Labels?.['hoister.enable'] === 'true');
-  const hoisterBackupVolumes = $derived(inspection.Config.Labels?.['hoister.backup-volumes'] === 'true');
+  const hoisterBackupVolumes = $derived(
+    inspection.Config.Labels?.['hoister.backup-volumes'] === 'true'
+  );
+
+  const memFraction = $derived(
+    latest ? memoryFraction(latest.mem_bytes, latest.mem_limit_bytes) : null
+  );
 
   let uptime = $state(getUptime(inspection_data.container_inspections.State.StartedAt));
   let lastUpdatedAgo = $state(getTimeAgo(inspection_data.last_updated));
@@ -75,7 +86,11 @@
   href="/containers/{inspection_data.hostname}/{inspection_data.project_name}/{inspection_data.service_name}"
   class="block"
 >
-  <Card.Root class="min-h-50 shadow-sm transition-shadow hover:shadow-md {stale ? 'opacity-50 grayscale' : ''}">
+  <Card.Root
+    class="min-h-50 shadow-sm transition-shadow hover:shadow-md {stale
+      ? 'opacity-50 grayscale'
+      : ''}"
+  >
     <Card.Header>
       <Card.Title class="flex items-center justify-between"
         >{inspection_data.service_name}
@@ -107,6 +122,38 @@
       <h3 class="font-mono text-sm font-medium text-gray-900">
         Container ID: {inspection.Id.slice(0, 12)}
       </h3>
+
+      {#if latest}
+        <div class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t pt-3">
+          <div>
+            <span class="text-xs text-gray-500">CPU</span>
+            <p class="font-mono text-sm font-semibold text-gray-900">
+              {formatPercent(latest.cpu_pct)}
+            </p>
+          </div>
+          <div>
+            <span class="text-xs text-gray-500">Memory</span>
+            <p class="font-mono text-sm font-semibold text-gray-900">
+              {formatBytes(latest.mem_bytes)}{#if memFraction !== null}<span
+                  class="ml-1 text-xs font-normal text-gray-400"
+                  >({formatPercent(memFraction * 100, 0)})</span
+                >{/if}
+            </p>
+          </div>
+          <div>
+            <span class="text-xs text-gray-500">Network</span>
+            <p class="font-mono text-sm text-gray-900">
+              ↓ {formatBytes(latest.net_rx_bytes)} · ↑ {formatBytes(latest.net_tx_bytes)}
+            </p>
+          </div>
+          <div>
+            <span class="text-xs text-gray-500">Disk</span>
+            <p class="font-mono text-sm text-gray-900">
+              R {formatBytes(latest.disk_read_bytes)} · W {formatBytes(latest.disk_write_bytes)}
+            </p>
+          </div>
+        </div>
+      {/if}
     </Card.Content>
     <Card.Footer>
       <div class="flex flex-wrap gap-2">

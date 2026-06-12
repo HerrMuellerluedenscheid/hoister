@@ -1086,9 +1086,9 @@ struct MetricPointResponse {
     #[ts(type = "number")]
     net_tx_bytes: u64,
     #[ts(type = "number")]
-    storage_read_bytes: u64,
+    disk_read_bytes: u64,
     #[ts(type = "number")]
-    storage_write_bytes: u64,
+    disk_write_bytes: u64,
 }
 
 #[derive(TS, Serialize)]
@@ -1117,9 +1117,9 @@ struct LatestMetricResponse {
     #[ts(type = "number")]
     net_tx_bytes: u64,
     #[ts(type = "number")]
-    storage_read_bytes: u64,
+    disk_read_bytes: u64,
     #[ts(type = "number")]
-    storage_write_bytes: u64,
+    disk_write_bytes: u64,
 }
 
 #[derive(TS, Serialize)]
@@ -1154,8 +1154,8 @@ async fn get_service_metrics<
             mem_limit_bytes: p.mem_limit_bytes,
             net_rx_bytes: p.net_rx_bytes,
             net_tx_bytes: p.net_tx_bytes,
-            storage_read_bytes: p.storage_read_bytes,
-            storage_write_bytes: p.storage_write_bytes,
+            disk_read_bytes: p.disk_read_bytes,
+            disk_write_bytes: p.disk_write_bytes,
         })
         .collect();
     Json(ApiResponse::success(ServiceMetricsResponse {
@@ -1195,8 +1195,8 @@ async fn get_latest_metrics<
             mem_limit_bytes: m.point.mem_limit_bytes,
             net_rx_bytes: m.point.net_rx_bytes,
             net_tx_bytes: m.point.net_tx_bytes,
-            storage_read_bytes: m.point.storage_read_bytes,
-            storage_write_bytes: m.point.storage_write_bytes,
+            disk_read_bytes: m.point.disk_read_bytes,
+            disk_write_bytes: m.point.disk_write_bytes,
         })
         .collect();
     Json(LatestMetricsResponse(latest)).into_response()

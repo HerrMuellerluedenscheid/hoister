@@ -79,5 +79,9 @@ CREATE TABLE service_metrics (
     cpu_pct REAL NOT NULL,
     mem_bytes BIGINT NOT NULL,
     mem_limit_bytes BIGINT NOT NULL,
+    net_rx_bytes BIGINT NOT NULL DEFAULT 0,
+    net_tx_bytes BIGINT NOT NULL DEFAULT 0,
+    disk_read_bytes BIGINT NOT NULL DEFAULT 0,
+    disk_write_bytes BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (service_id, recorded_at)
 );

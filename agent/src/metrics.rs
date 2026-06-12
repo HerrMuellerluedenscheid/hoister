@@ -11,7 +11,7 @@
 //! an instantaneous snapshot. cgroup CPU usage is a monotonic counter, so the
 //! delta of `total_usage` (and of `system_cpu_usage`) between two consecutive
 //! ticks yields the exact mean CPU% over the whole minute — see
-//! [`windowed_cpu_pct`]. Memory and the network/storage counters are taken as
+//! [`windowed_cpu_pct`]. Memory and the network/disk counters are taken as
 //! the latest reading on each tick.
 
 use crate::HoisterError;
@@ -160,16 +160,26 @@ fn sample_from_stats(
         })
         .unwrap_or((0, 0));
 
-    let storage_read_bytes = stats
-        .storage_stats
+    // Disk I/O from cgroup block-I/O accounting — the "BLOCK I/O" figure in
+    // `docker stats`. `storage_stats` is Windows-only, so on Linux we read
+    // `blkio_stats.io_service_bytes_recursive`, which is the one blkio field
+    // populated on both cgroup v1 and v2. cgroup v1 labels ops "Read"/"Write";
+    // v2 uses lowercase, so match case-insensitively.
+    let (disk_read_bytes, disk_write_bytes) = stats
+        .blkio_stats
         .as_ref()
-        .and_then(|s| s.read_size_bytes)
-        .unwrap_or(0);
-    let storage_write_bytes = stats
-        .storage_stats
-        .as_ref()
-        .and_then(|s| s.write_size_bytes)
-        .unwrap_or(0);
+        .and_then(|b| b.io_service_bytes_recursive.as_ref())
+        .map(|entries| {
+            entries.iter().fold((0u64, 0u64), |(read, write), e| {
+                let v = e.value.unwrap_or(0);
+                match e.op.as_deref() {
+                    Some(op) if op.eq_ignore_ascii_case("read") => (read + v, write),
+                    Some(op) if op.eq_ignore_ascii_case("write") => (read, write + v),
+                    _ => (read, write),
+                }
+            })
+        })
+        .unwrap_or((0, 0));
 
     Some((
         ContainerMetricSample {
@@ -178,8 +188,8 @@ fn sample_from_stats(
             mem_limit_bytes,
             net_rx_bytes,
             net_tx_bytes,
-            storage_read_bytes,
-            storage_write_bytes,
+            disk_read_bytes,
+            disk_write_bytes,
         },
         cur,
     ))

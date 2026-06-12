@@ -44,12 +44,13 @@ pub struct ContainerMetricSample {
     /// Total bytes transmitted across all network interfaces since container start.
     #[serde(default)]
     pub net_tx_bytes: u64,
-    /// Total bytes read from storage (Windows-only; always 0 on Linux).
+    /// Total bytes read from disk since container start (Linux block I/O via
+    /// cgroup `blkio_stats` — the "BLOCK I/O" figure in `docker stats`).
     #[serde(default)]
-    pub storage_read_bytes: u64,
-    /// Total bytes written to storage (Windows-only; always 0 on Linux).
+    pub disk_read_bytes: u64,
+    /// Total bytes written to disk since container start (Linux block I/O).
     #[serde(default)]
-    pub storage_write_bytes: u64,
+    pub disk_write_bytes: u64,
 }
 
 /// Body of POST /container/metrics/{hostname}/{project_name}.
