@@ -1,0 +1,17 @@
+# Local development stack — Postgres only.
+# The controller runs natively via `just dev-controller-cloud`.
+services:
+  backend-db:
+    image: postgres:18.3-alpine
+    restart: unless-stopped
+    ports:
+      - "6432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: happyhoistering43123
+      POSTGRES_DB: hoister
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql
+
+volumes:
+  postgres-dev-data:

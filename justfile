@@ -73,8 +73,9 @@ dev-controller-cloud:
     export HOISTER_CONTROLLER_TLS_KEY_PATH=certs/server-key.pem
     export HOISTER_CONTROLLER_TLS_CERT_PATH=certs/server.pem
     export HOISTER_CONTROLLER_DATABASE_PATH="${DATABASE_URL:-/tmp/hoister-dev.sqlite}"
+    export HOISTER_CONTROLLER_TOKEN_PEPPER=localdev
     export RUST_LOG=debug
-    docker compose -f docker-compose.cloud.yaml up -d
+    docker compose -f docker-compose.dev.yaml up -d
     cargo run --bin controller
 
 dev-hoister:
@@ -122,7 +123,7 @@ test-message:
 
 migrate-postgresql:
     #!/usr/bin/env bash
-    docker compose -f docker-compose.cloud.yaml up -d
+    docker compose -f docker-compose.dev.yaml up -d
 
     cd controller
     set -a
