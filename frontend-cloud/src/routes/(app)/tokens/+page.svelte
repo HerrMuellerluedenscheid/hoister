@@ -7,6 +7,7 @@
 	let comment = $state('');
 	let creating = $state(false);
 	let deletingId = $state<string | null>(null);
+	let confirmingId = $state<string | null>(null);
 	let copied = $state(false);
 
 	const justCreated = $derived(form?.created ?? null);
@@ -149,26 +150,48 @@
 								</td>
 								<td class="px-4 py-3 text-xs text-ink-faint">{formatDate(token.created_at)}</td>
 								<td class="px-4 py-3 text-right">
-									<form
-										method="POST"
-										action="?/delete"
-										use:enhance={() => {
-											deletingId = token.id;
-											return async ({ update }) => {
-												await update();
-												deletingId = null;
-											};
-										}}
-									>
-										<input type="hidden" name="id" value={token.id} />
-										<button
-											type="submit"
-											disabled={deletingId === token.id}
-											class="rounded-md border border-error-border px-3 py-1 text-xs font-medium text-error transition hover:bg-error-bg disabled:opacity-50"
+									{#if confirmingId === token.id}
+									<div class="flex items-center justify-end gap-2">
+										<span class="text-xs text-ink-muted">Delete this token?</span>
+										<form
+											method="POST"
+											action="?/delete"
+											use:enhance={() => {
+												deletingId = token.id;
+												confirmingId = null;
+												return async ({ update }) => {
+													await update();
+													deletingId = null;
+												};
+											}}
 										>
-											{deletingId === token.id ? 'Deleting…' : 'Delete'}
+											<input type="hidden" name="id" value={token.id} />
+											<button
+												type="submit"
+												disabled={deletingId === token.id}
+												class="rounded-md border border-error-border bg-error-bg px-3 py-1 text-xs font-medium text-error transition hover:opacity-80 disabled:opacity-50"
+											>
+												{deletingId === token.id ? 'Deleting…' : 'Confirm'}
+											</button>
+										</form>
+										<button
+											type="button"
+											onclick={() => (confirmingId = null)}
+											class="rounded-md border border-line-subtle px-3 py-1 text-xs font-medium text-ink-secondary transition hover:border-line-active"
+										>
+											Cancel
 										</button>
-									</form>
+									</div>
+								{:else}
+									<button
+										type="button"
+										disabled={deletingId === token.id}
+										onclick={() => (confirmingId = token.id)}
+										class="rounded-md border border-error-border px-3 py-1 text-xs font-medium text-error transition hover:bg-error-bg disabled:opacity-50"
+									>
+										{deletingId === token.id ? 'Deleting…' : 'Delete'}
+									</button>
+								{/if}
 								</td>
 							</tr>
 						{/each}
