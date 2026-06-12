@@ -808,6 +808,25 @@ impl ContainerStateRepository for Postgresql {
                 return;
             }
         };
+        for (service_name, state) in &req.services {
+            let image = state
+                .inspect
+                .config
+                .as_ref()
+                .and_then(|c| c.image.as_deref())
+                .or(state.inspect.image.as_deref())
+                .unwrap_or("unknown");
+            if let Err(e) = self
+                .upsert_service(project_id, service_name, &ImageName::new(image))
+                .await
+            {
+                error!(
+                    "add_container_state upsert_service {} failed: {e:?}",
+                    service_name.as_str()
+                );
+            }
+        }
+
         if let Err(e) = sqlx::query(
             "INSERT INTO compose_state (project_id, services, last_updated)
                  VALUES ($1, $2::jsonb, NOW())
