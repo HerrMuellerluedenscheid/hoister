@@ -6,6 +6,13 @@
 //! Kept separate from `monitor` because it runs on a coarser cadence (once a
 //! minute vs the 5s state heartbeat): a stats sample is comparatively
 //! expensive and per-minute resolution is plenty for trend graphs.
+//!
+//! CPU is reported as the *average* utilization over each sample interval, not
+//! an instantaneous snapshot. cgroup CPU usage is a monotonic counter, so the
+//! delta of `total_usage` (and of `system_cpu_usage`) between two consecutive
+//! ticks yields the exact mean CPU% over the whole minute — see
+//! [`windowed_cpu_pct`]. Memory and the network/storage counters are taken as
+//! the latest reading on each tick.
 
 use crate::HoisterError;
 use crate::docker::get_service_identifier;
@@ -26,13 +33,28 @@ use tokio::time;
 /// resolution keeps the stored time series small while still showing trends.
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(60);
 
+/// Cumulative CPU counters carried between ticks so we can compute the average
+/// utilization over the whole interval rather than the ~1s window inside a
+/// single stats frame. All three come straight out of one Docker stats reading.
+#[derive(Clone, Copy)]
+struct CpuCounters {
+    /// Total CPU time the container has consumed since start (nanoseconds).
+    total: u64,
+    /// Total system-wide CPU time over the same epoch (nanoseconds).
+    system: u64,
+    /// Number of CPUs visible to the container at this reading.
+    online_cpus: u32,
+}
+
 async fn collect_samples(
     project_name: &ProjectName,
     docker: &Docker,
+    prev_cpu: &mut HashMap<ServiceName, CpuCounters>,
 ) -> Result<HashMap<ServiceName, ContainerMetricSample>, HoisterError> {
     let containers = list_tracked_containers(project_name, docker).await?;
 
     let mut samples = HashMap::new();
+    let mut seen = std::collections::HashSet::new();
     for container in containers {
         let Some(container_id) = &container.id else {
             continue;
@@ -51,7 +73,10 @@ async fn collect_samples(
         let mut stream = docker.stats(container_id, Some(options)).take(1);
         match stream.next().await {
             Some(Ok(stats)) => {
-                if let Some(sample) = sample_from_stats(&stats) {
+                let prev = prev_cpu.get(&service_identifier).copied();
+                if let Some((sample, cur)) = sample_from_stats(&stats, prev) {
+                    seen.insert(service_identifier.clone());
+                    prev_cpu.insert(service_identifier.clone(), cur);
                     samples.insert(service_identifier, sample);
                 }
             }
@@ -60,13 +85,24 @@ async fn collect_samples(
         }
     }
 
+    // Drop carried CPU state for services that are no longer tracked so the
+    // map can't grow without bound across redeploys.
+    prev_cpu.retain(|service, _| seen.contains(service));
+
     Ok(samples)
 }
 
-/// Turn a raw Docker stats sample into the wire sample, computing CPU% the way
-/// `docker stats` does. Returns `None` when the payload lacks the deltas we
-/// need (e.g. a container that just stopped, or a Windows container).
-fn sample_from_stats(stats: &ContainerStatsResponse) -> Option<ContainerMetricSample> {
+/// Turn a raw Docker stats sample into the wire sample, computing CPU% as the
+/// average over the interval since `prev` (the counters captured on the last
+/// tick for this service). On the first observation, or after a counter reset,
+/// it falls back to the in-frame precpu delta so the tick still reports a
+/// figure. Returns `None` when the payload lacks the fields we need (e.g. a
+/// container that just stopped, or a Windows container), otherwise the wire
+/// sample paired with the cumulative counters to carry into the next tick.
+fn sample_from_stats(
+    stats: &ContainerStatsResponse,
+    prev: Option<CpuCounters>,
+) -> Option<(ContainerMetricSample, CpuCounters)> {
     let cpu = stats.cpu_stats.as_ref()?;
     let precpu = stats.precpu_stats.as_ref();
     let mem = stats.memory_stats.as_ref()?;
@@ -89,7 +125,15 @@ fn sample_from_stats(stats: &ContainerStatsResponse) -> Option<ContainerMetricSa
         .unwrap_or(1)
         .max(1);
 
-    let cpu_pct = cpu_percent(cpu_total, pre_cpu_total, system, pre_system, online_cpus);
+    let cur = CpuCounters {
+        total: cpu_total,
+        system,
+        online_cpus,
+    };
+    // Average over the inter-tick window when we have a prior; otherwise the
+    // single-frame precpu delta as a one-tick bootstrap.
+    let in_frame = cpu_percent(cpu_total, pre_cpu_total, system, pre_system, online_cpus);
+    let cpu_pct = windowed_cpu_pct(prev.as_ref(), &cur, in_frame);
 
     let mem_limit_bytes = mem.limit.unwrap_or(0);
     let mem_bytes = mem.usage.map(|usage| {
@@ -127,15 +171,35 @@ fn sample_from_stats(stats: &ContainerStatsResponse) -> Option<ContainerMetricSa
         .and_then(|s| s.write_size_bytes)
         .unwrap_or(0);
 
-    Some(ContainerMetricSample {
-        cpu_pct,
-        mem_bytes,
-        mem_limit_bytes,
-        net_rx_bytes,
-        net_tx_bytes,
-        storage_read_bytes,
-        storage_write_bytes,
-    })
+    Some((
+        ContainerMetricSample {
+            cpu_pct,
+            mem_bytes,
+            mem_limit_bytes,
+            net_rx_bytes,
+            net_tx_bytes,
+            storage_read_bytes,
+            storage_write_bytes,
+        },
+        cur,
+    ))
+}
+
+/// Average CPU% over the interval between `prev` and `cur` cumulative counters.
+/// Falls back to `in_frame` (the single-frame precpu delta) when there is no
+/// usable prior — the first observation of a service, or a counter reset where
+/// the totals went backwards (container restart).
+fn windowed_cpu_pct(prev: Option<&CpuCounters>, cur: &CpuCounters, in_frame: f64) -> f64 {
+    match prev {
+        Some(prev) if cur.total >= prev.total && cur.system >= prev.system => cpu_percent(
+            cur.total,
+            prev.total,
+            cur.system,
+            prev.system,
+            cur.online_cpus,
+        ),
+        _ => in_frame,
+    }
 }
 
 /// CPU percentage using the standard Docker formula:
@@ -204,11 +268,14 @@ pub(crate) async fn start(
     info!("Starting metrics collector (interval: {SAMPLE_INTERVAL:?})");
     let docker = Docker::connect_with_socket_defaults()?;
     let mut interval = time::interval(SAMPLE_INTERVAL);
+    // Cumulative CPU counters from the previous tick, per service, so CPU% is
+    // an average over the whole interval rather than a sub-second snapshot.
+    let mut prev_cpu: HashMap<ServiceName, CpuCounters> = HashMap::new();
 
     loop {
         interval.tick().await;
 
-        match collect_samples(&project_name, &docker).await {
+        match collect_samples(&project_name, &docker, &mut prev_cpu).await {
             Ok(samples) if samples.is_empty() => {
                 debug!("No metrics samples collected this tick");
             }
@@ -264,5 +331,52 @@ mod tests {
         // Counters going backwards (container restart) must not go negative.
         let pct = cpu_percent(5, 10, 200, 100, 1);
         assert_eq!(pct, 0.0);
+    }
+
+    #[test]
+    fn windowed_uses_inter_tick_delta_when_prior_present() {
+        // 1 CPU; over the interval the container used 30ms of a 100ms system
+        // window -> 30% average, independent of the in-frame fallback value.
+        let prev = CpuCounters {
+            total: 10_000_000,
+            system: 1_000_000_000,
+            online_cpus: 1,
+        };
+        let cur = CpuCounters {
+            total: 40_000_000,
+            system: 1_100_000_000,
+            online_cpus: 1,
+        };
+        let pct = windowed_cpu_pct(Some(&prev), &cur, 99.0);
+        assert!((pct - 30.0).abs() < 1e-6, "got {pct}");
+    }
+
+    #[test]
+    fn windowed_falls_back_on_first_observation() {
+        let cur = CpuCounters {
+            total: 40_000_000,
+            system: 1_100_000_000,
+            online_cpus: 1,
+        };
+        let pct = windowed_cpu_pct(None, &cur, 12.5);
+        assert_eq!(pct, 12.5);
+    }
+
+    #[test]
+    fn windowed_falls_back_on_counter_reset() {
+        // Container restarted: current totals are below the carried prior, so
+        // a windowed delta would be meaningless -> use the in-frame fallback.
+        let prev = CpuCounters {
+            total: 40_000_000,
+            system: 1_100_000_000,
+            online_cpus: 1,
+        };
+        let cur = CpuCounters {
+            total: 5_000_000,
+            system: 1_200_000_000,
+            online_cpus: 1,
+        };
+        let pct = windowed_cpu_pct(Some(&prev), &cur, 7.5);
+        assert_eq!(pct, 7.5);
     }
 }
