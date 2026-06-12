@@ -103,10 +103,38 @@ fn sample_from_stats(stats: &ContainerStatsResponse) -> Option<ContainerMetricSa
         usage.saturating_sub(cache)
     })?;
 
+    let (net_rx_bytes, net_tx_bytes) = stats
+        .networks
+        .as_ref()
+        .map(|nets| {
+            nets.values().fold((0u64, 0u64), |(rx, tx), iface| {
+                (
+                    rx + iface.rx_bytes.unwrap_or(0),
+                    tx + iface.tx_bytes.unwrap_or(0),
+                )
+            })
+        })
+        .unwrap_or((0, 0));
+
+    let storage_read_bytes = stats
+        .storage_stats
+        .as_ref()
+        .and_then(|s| s.read_size_bytes)
+        .unwrap_or(0);
+    let storage_write_bytes = stats
+        .storage_stats
+        .as_ref()
+        .and_then(|s| s.write_size_bytes)
+        .unwrap_or(0);
+
     Some(ContainerMetricSample {
         cpu_pct,
         mem_bytes,
         mem_limit_bytes,
+        net_rx_bytes,
+        net_tx_bytes,
+        storage_read_bytes,
+        storage_write_bytes,
     })
 }
 

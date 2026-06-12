@@ -1075,12 +1075,20 @@ async fn post_container_metrics<
 struct MetricPointResponse {
     recorded_at: DateTime<Utc>,
     cpu_pct: f64,
-    // u64 in the domain; JSON-serialized as a plain number. Memory in bytes
-    // never approaches 2^53, so `number` is safe and avoids `bigint` in TS.
+    // u64 in the domain; JSON-serialized as a plain number. Memory/network/storage
+    // in bytes never approaches 2^53, so `number` is safe and avoids `bigint` in TS.
     #[ts(type = "number")]
     mem_bytes: u64,
     #[ts(type = "number")]
     mem_limit_bytes: u64,
+    #[ts(type = "number")]
+    net_rx_bytes: u64,
+    #[ts(type = "number")]
+    net_tx_bytes: u64,
+    #[ts(type = "number")]
+    storage_read_bytes: u64,
+    #[ts(type = "number")]
+    storage_write_bytes: u64,
 }
 
 #[derive(TS, Serialize)]
@@ -1104,6 +1112,14 @@ struct LatestMetricResponse {
     mem_bytes: u64,
     #[ts(type = "number")]
     mem_limit_bytes: u64,
+    #[ts(type = "number")]
+    net_rx_bytes: u64,
+    #[ts(type = "number")]
+    net_tx_bytes: u64,
+    #[ts(type = "number")]
+    storage_read_bytes: u64,
+    #[ts(type = "number")]
+    storage_write_bytes: u64,
 }
 
 #[derive(TS, Serialize)]
@@ -1136,6 +1152,10 @@ async fn get_service_metrics<
             cpu_pct: p.cpu_pct,
             mem_bytes: p.mem_bytes,
             mem_limit_bytes: p.mem_limit_bytes,
+            net_rx_bytes: p.net_rx_bytes,
+            net_tx_bytes: p.net_tx_bytes,
+            storage_read_bytes: p.storage_read_bytes,
+            storage_write_bytes: p.storage_write_bytes,
         })
         .collect();
     Json(ApiResponse::success(ServiceMetricsResponse {
@@ -1173,6 +1193,10 @@ async fn get_latest_metrics<
             cpu_pct: m.point.cpu_pct,
             mem_bytes: m.point.mem_bytes,
             mem_limit_bytes: m.point.mem_limit_bytes,
+            net_rx_bytes: m.point.net_rx_bytes,
+            net_tx_bytes: m.point.net_tx_bytes,
+            storage_read_bytes: m.point.storage_read_bytes,
+            storage_write_bytes: m.point.storage_write_bytes,
         })
         .collect();
     Json(LatestMetricsResponse(latest)).into_response()

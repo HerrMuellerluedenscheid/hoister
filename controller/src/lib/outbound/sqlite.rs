@@ -907,8 +907,9 @@ impl MetricsRepository for Sqlite {
             // the same guard the old container_state FK provided.
             match sqlx::query(
                 "INSERT OR IGNORE INTO service_metrics
-                    (service_id, recorded_at, cpu_pct, mem_bytes, mem_limit_bytes)
-                 SELECT s.id, ?, ?, ?, ?
+                    (service_id, recorded_at, cpu_pct, mem_bytes, mem_limit_bytes,
+                     net_rx_bytes, net_tx_bytes, storage_read_bytes, storage_write_bytes)
+                 SELECT s.id, ?, ?, ?, ?, ?, ?, ?, ?
                  FROM service s
                  JOIN project p ON s.project_id = p.id
                  JOIN host h ON p.host_id = h.id
@@ -918,6 +919,10 @@ impl MetricsRepository for Sqlite {
             .bind(_sample.cpu_pct)
             .bind(_sample.mem_bytes as i64)
             .bind(_sample.mem_limit_bytes as i64)
+            .bind(_sample.net_rx_bytes as i64)
+            .bind(_sample.net_tx_bytes as i64)
+            .bind(_sample.storage_read_bytes as i64)
+            .bind(_sample.storage_write_bytes as i64)
             .bind(&req.user_id)
             .bind(req.hostname.as_str())
             .bind(req.project_name.as_str())
@@ -970,8 +975,10 @@ impl MetricsRepository for Sqlite {
         service_name: &ServiceName,
         since: chrono::DateTime<chrono::Utc>,
     ) -> Vec<MetricPoint> {
-        let rows: Vec<(String, f64, i64, i64)> = match sqlx::query_as(
-            "SELECT sm.recorded_at, sm.cpu_pct, sm.mem_bytes, sm.mem_limit_bytes
+        #[allow(clippy::type_complexity)]
+        let rows: Vec<(String, f64, i64, i64, i64, i64, i64, i64)> = match sqlx::query_as(
+            "SELECT sm.recorded_at, sm.cpu_pct, sm.mem_bytes, sm.mem_limit_bytes,
+                    sm.net_rx_bytes, sm.net_tx_bytes, sm.storage_read_bytes, sm.storage_write_bytes
                 FROM service_metrics sm
                 JOIN service s ON sm.service_id = s.id
                 JOIN project p ON s.project_id = p.id
@@ -997,20 +1004,47 @@ impl MetricsRepository for Sqlite {
 
         rows.into_iter()
             .map(
-                |(recorded_at, cpu_pct, mem_bytes, mem_limit_bytes)| MetricPoint {
+                |(
+                    recorded_at,
+                    cpu_pct,
+                    mem_bytes,
+                    mem_limit_bytes,
+                    net_rx_bytes,
+                    net_tx_bytes,
+                    storage_read_bytes,
+                    storage_write_bytes,
+                )| MetricPoint {
                     recorded_at: parse_ts(&recorded_at),
                     cpu_pct,
                     mem_bytes: mem_bytes.max(0) as u64,
                     mem_limit_bytes: mem_limit_bytes.max(0) as u64,
+                    net_rx_bytes: net_rx_bytes.max(0) as u64,
+                    net_tx_bytes: net_tx_bytes.max(0) as u64,
+                    storage_read_bytes: storage_read_bytes.max(0) as u64,
+                    storage_write_bytes: storage_write_bytes.max(0) as u64,
                 },
             )
             .collect()
     }
 
     async fn get_latest_metrics(&self, user_id: &str) -> Vec<LatestMetric> {
-        let rows: Vec<(String, String, String, String, f64, i64, i64)> = match sqlx::query_as(
+        #[allow(clippy::type_complexity)]
+        let rows: Vec<(
+            String,
+            String,
+            String,
+            String,
+            f64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+        )> = match sqlx::query_as(
             "SELECT h.hostname, p.name, s.name, sm.recorded_at,
-                    sm.cpu_pct, sm.mem_bytes, sm.mem_limit_bytes
+                    sm.cpu_pct, sm.mem_bytes, sm.mem_limit_bytes,
+                    sm.net_rx_bytes, sm.net_tx_bytes, sm.storage_read_bytes, sm.storage_write_bytes
                 FROM service_metrics sm
                 JOIN service s ON sm.service_id = s.id
                 JOIN project p ON s.project_id = p.id
@@ -1042,6 +1076,10 @@ impl MetricsRepository for Sqlite {
                     cpu_pct,
                     mem_bytes,
                     mem_limit_bytes,
+                    net_rx_bytes,
+                    net_tx_bytes,
+                    storage_read_bytes,
+                    storage_write_bytes,
                 )| {
                     LatestMetric {
                         hostname: HostName::new(hostname),
@@ -1052,6 +1090,10 @@ impl MetricsRepository for Sqlite {
                             cpu_pct,
                             mem_bytes: mem_bytes.max(0) as u64,
                             mem_limit_bytes: mem_limit_bytes.max(0) as u64,
+                            net_rx_bytes: net_rx_bytes.max(0) as u64,
+                            net_tx_bytes: net_tx_bytes.max(0) as u64,
+                            storage_read_bytes: storage_read_bytes.max(0) as u64,
+                            storage_write_bytes: storage_write_bytes.max(0) as u64,
                         },
                     }
                 },

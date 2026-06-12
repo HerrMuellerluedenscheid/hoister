@@ -38,6 +38,18 @@ pub struct ContainerMetricSample {
     pub mem_bytes: u64,
     /// Memory limit in bytes. `0` means unlimited.
     pub mem_limit_bytes: u64,
+    /// Total bytes received across all network interfaces since container start.
+    #[serde(default)]
+    pub net_rx_bytes: u64,
+    /// Total bytes transmitted across all network interfaces since container start.
+    #[serde(default)]
+    pub net_tx_bytes: u64,
+    /// Total bytes read from storage (Windows-only; always 0 on Linux).
+    #[serde(default)]
+    pub storage_read_bytes: u64,
+    /// Total bytes written to storage (Windows-only; always 0 on Linux).
+    #[serde(default)]
+    pub storage_write_bytes: u64,
 }
 
 /// Body of POST /container/metrics/{hostname}/{project_name}.
