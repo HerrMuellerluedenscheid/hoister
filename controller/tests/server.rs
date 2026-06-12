@@ -10,6 +10,7 @@ mod tests {
         ServiceName,
     };
 
+    use controller::domain::billing::ports::BillingService as _;
     use controller::domain::billing::service::Service as BillingService;
     use controller::domain::container_state::service::Service as ContainerStateService;
     use controller::domain::deployments::models::deployment::{
@@ -73,6 +74,12 @@ mod tests {
             email: None,
             dashboard_url: "https://hoister.io".to_string(),
         };
+        // Seed the synthetic "local" user. In production the auth middleware
+        // upserts the user on every request (see `upsert_user` calls in
+        // server.rs); tests that hit the repository directly bypass that, and
+        // with `PRAGMA foreign_keys = ON` the `host.user_id -> users(id)` FK
+        // would otherwise reject any host/project insert.
+        state.billing_service.upsert_user(TEST_USER).await;
         let agent = create_agent_router(state.clone()).await;
         let internal = create_internal_router(state, InternalSecret(None)).await;
         (agent, internal, db_path)
@@ -289,8 +296,13 @@ mod tests {
         let host = "test-host";
         let project = "tests-project";
 
-        // Seed a project by reporting (empty) container state via the agent.
-        let state_body = serde_json::json!({ "project_name": project, "payload": {} });
+        // Seed a project with a "web" service by reporting container state via
+        // the agent. The service row must exist for the metrics insert below to
+        // resolve it (the insert is a no-op for unknown services).
+        let state_body = serde_json::json!({
+            "project_name": project,
+            "payload": { "web": { "inspect": {} } }
+        });
         let response = agent
             .clone()
             .oneshot(

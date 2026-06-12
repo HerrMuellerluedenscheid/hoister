@@ -3,4 +3,4 @@ import type { HostName } from "./HostName";
 import type { ProjectName } from "./ProjectName";
 import type { ServiceName } from "./ServiceName";
 
-export type LatestMetricResponse = { hostname: HostName, project_name: ProjectName, service_name: ServiceName, recorded_at: string, cpu_pct: number, mem_bytes: number, mem_limit_bytes: number, };
+export type LatestMetricResponse = { hostname: HostName, project_name: ProjectName, service_name: ServiceName, recorded_at: string, cpu_pct: number, mem_bytes: number, mem_limit_bytes: number, net_rx_bytes: number, net_tx_bytes: number, disk_read_bytes: number, disk_write_bytes: number, };
