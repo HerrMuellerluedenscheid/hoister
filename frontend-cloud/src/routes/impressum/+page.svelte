@@ -53,8 +53,8 @@
 			<div class="space-y-1 text-zinc-300">
 				<p>
 					E-Mail: <a
-						href="mailto:hello@vectorandveneer.de"
-						class="text-indigo-400 hover:text-indigo-300">hello@vectorandveneer.de</a
+						href="mailto:info@vectorandveneer.com"
+						class="text-indigo-400 hover:text-indigo-300">info@vectorandveneer.com</a
 					>
 				</p>
 			</div>
