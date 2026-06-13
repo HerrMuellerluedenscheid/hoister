@@ -20,11 +20,10 @@ pub async fn audit_log_middleware(
 ) -> Response {
     let started = Instant::now();
     let method = request.method().clone();
-    let path = request
-        .uri()
-        .path_and_query()
-        .map(|p| p.as_str().to_string())
-        .unwrap_or_else(|| request.uri().path().to_string());
+    // Log the path only, never the query string: tokens, signed URLs or other
+    // sensitive identifiers a future feature might place in a query must not
+    // land in INFO logs (GDPR data minimisation).
+    let path = request.uri().path().to_string();
 
     let user_id = user
         .as_ref()
