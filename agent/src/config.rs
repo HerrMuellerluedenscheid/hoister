@@ -233,7 +233,7 @@ pub(crate) struct Controller {
     pub(crate) ca_cert_path: Option<String>,
 }
 
-fn default_controller_url() -> Url {
+pub(crate) fn default_controller_url() -> Url {
     Url::parse(DEFAULT_CONTROLLER_URL).expect("default controller URL parses")
 }
 

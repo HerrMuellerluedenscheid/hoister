@@ -155,7 +155,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     if let Some(controller_config) = &config.controller {
         let url_str = controller_config.url.as_str();
-        if url_str.starts_with(config::DEFAULT_CONTROLLER_URL) {
+        // Compare the parsed host exactly — a `starts_with` on the URL string
+        // would also match a look-alike like `api.hoister.io.evil.example`
+        // (CWE-1023).
+        let is_hosted =
+            controller_config.url.host_str() == config::default_controller_url().host_str();
+        if is_hosted {
             info!(
                 "Mode: hosted — reporting to the hoister.io cloud at {}. Set HOISTER_CONTROLLER_URL to use a self-hosted controller, or unset HOISTER_CONTROLLER_TOKEN for standalone (no telemetry).",
                 url_str
