@@ -5,6 +5,7 @@
 	import PendingUpdates from '$lib/components/PendingUpdates.svelte';
 	import RedactedText from '$lib/components/RedactedText.svelte';
 	import TimeSeriesChart from '$lib/components/TimeSeriesChart.svelte';
+	import type { MetricPointResponse } from '../../../../../../bindings/MetricPointResponse';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -25,11 +26,47 @@
 		metricPoints.length > 0 ? metricPoints[metricPoints.length - 1].mem_limit_bytes : 0
 	);
 
+	// Network and disk are cumulative byte counters since container start, so a
+	// raw plot just ramps upward. Differentiate against the previous sample to
+	// recover throughput in bytes/second; the first sample has no predecessor
+	// and a counter that goes backwards (container restart) is clamped to 0.
+	function rateSeries(
+		points: MetricPointResponse[],
+		field: (p: MetricPointResponse) => number
+	): { t: number; v: number }[] {
+		const out: { t: number; v: number }[] = [];
+		for (let i = 1; i < points.length; i++) {
+			const t = Date.parse(points[i].recorded_at);
+			const seconds = (t - Date.parse(points[i - 1].recorded_at)) / 1000;
+			if (seconds <= 0) continue;
+			const delta = field(points[i]) - field(points[i - 1]);
+			out.push({ t, v: delta > 0 ? delta / seconds : 0 });
+		}
+		return out;
+	}
+
+	const netSeries = $derived([
+		{ label: 'RX', color: '#34d399', points: rateSeries(metricPoints, (p) => p.net_rx_bytes) },
+		{ label: 'TX', color: '#fbbf24', points: rateSeries(metricPoints, (p) => p.net_tx_bytes) }
+	]);
+	const diskSeries = $derived([
+		{ label: 'Read', color: '#38bdf8', points: rateSeries(metricPoints, (p) => p.disk_read_bytes) },
+		{
+			label: 'Write',
+			color: '#f472b6',
+			points: rateSeries(metricPoints, (p) => p.disk_write_bytes)
+		}
+	]);
+
 	function formatBytes(bytes: number): string {
 		if (bytes <= 0) return '0 B';
 		const units = ['B', 'KB', 'MB', 'GB', 'TB'];
 		const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
 		return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+	}
+
+	function formatRate(bytesPerSecond: number): string {
+		return `${formatBytes(bytesPerSecond)}/s`;
 	}
 
 	const hostname = $derived(data.inspections?.hostname);
@@ -177,6 +214,8 @@
 							formatValue={formatBytes}
 							max={memLimit > 0 ? memLimit : undefined}
 						/>
+						<TimeSeriesChart series={netSeries} label="Network" formatValue={formatRate} />
+						<TimeSeriesChart series={diskSeries} label="Disk I/O" formatValue={formatRate} />
 					</div>
 				{:else}
 					<p class="mt-2 text-sm text-ink-faint">

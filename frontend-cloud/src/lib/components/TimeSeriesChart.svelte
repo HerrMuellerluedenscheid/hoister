@@ -1,17 +1,24 @@
 <script lang="ts">
 	/**
-	 * Dependency-free SVG line/area chart for a single metric over time.
-	 * The parent maps domain points to `{ t, v }` (t = epoch ms, v = value) and
-	 * supplies a value formatter. Renders responsively via a fixed viewBox so
-	 * we avoid pulling in a charting library.
+	 * Dependency-free SVG line/area chart for one or more metric series sharing a
+	 * y-scale (e.g. network rx + tx, disk read + write). The parent maps domain
+	 * points to `{ t, v }` (t = epoch ms, v = value) and supplies a value
+	 * formatter. Renders responsively via a fixed viewBox so we avoid pulling in
+	 * a charting library.
 	 */
 	interface Point {
 		t: number;
 		v: number;
 	}
+	interface Series {
+		label: string;
+		color: string;
+		points: Point[];
+	}
 
 	let {
 		points,
+		series,
 		label,
 		color = 'var(--color-brand-accent)',
 		formatValue = (v: number) => v.toFixed(1),
@@ -19,12 +26,25 @@
 		// omitted the axis auto-scales to the data's max.
 		max = undefined
 	}: {
-		points: Point[];
+		// Single-series shorthand; `series` takes precedence when provided.
+		points?: Point[];
+		series?: Series[];
 		label: string;
 		color?: string;
 		formatValue?: (v: number) => string;
 		max?: number | undefined;
 	} = $props();
+
+	// Normalize to a list of series, each sorted by time. The single-series
+	// `points`/`color` props collapse into a one-element list.
+	const resolved = $derived<Series[]>(
+		series && series.length > 0
+			? series.map((s) => ({ ...s, points: [...s.points].sort((a, b) => a.t - b.t) }))
+			: [{ label, color, points: [...(points ?? [])].sort((a, b) => a.t - b.t) }]
+	);
+
+	// A legend only earns its space when there's more than one line.
+	const showLegend = $derived(resolved.length > 1);
 
 	// viewBox coordinate space. Scales to the container width via CSS.
 	const W = 600;
@@ -33,24 +53,18 @@
 	const plotW = W - PAD.left - PAD.right;
 	const plotH = H - PAD.top - PAD.bottom;
 
-	const sorted = $derived([...points].sort((a, b) => a.t - b.t));
+	const allPoints = $derived(resolved.flatMap((s) => s.points));
 
 	const stats = $derived.by(() => {
-		if (sorted.length === 0) return null;
-		const vs = sorted.map((p) => p.v);
-		const tMin = sorted[0].t;
-		const tMax = sorted[sorted.length - 1].t;
+		if (allPoints.length === 0) return null;
+		const ts = allPoints.map((p) => p.t);
+		const vs = allPoints.map((p) => p.v);
+		const tMin = Math.min(...ts);
+		const tMax = Math.max(...ts);
 		const vMaxData = Math.max(...vs);
+		// Share one upper bound across series so the lines are comparable.
 		const vMax = Math.max(max ?? 0, vMaxData, 1e-9);
-		return {
-			tMin,
-			tMax,
-			tSpan: Math.max(tMax - tMin, 1),
-			vMax,
-			last: vs[vs.length - 1],
-			min: Math.min(...vs),
-			peak: vMaxData
-		};
+		return { tMin, tMax, tSpan: Math.max(tMax - tMin, 1), vMax };
 	});
 
 	function x(t: number): number {
@@ -62,16 +76,23 @@
 		return PAD.top + plotH - (v / s.vMax) * plotH;
 	}
 
-	const linePath = $derived.by(() => {
-		if (!stats || sorted.length === 0) return '';
-		return sorted.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(p.t)},${y(p.v)}`).join(' ');
-	});
+	function linePath(pts: Point[]): string {
+		if (!stats || pts.length === 0) return '';
+		return pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(p.t)},${y(p.v)}`).join(' ');
+	}
 
-	const areaPath = $derived.by(() => {
-		if (!stats || sorted.length === 0) return '';
-		const top = sorted.map((p) => `L${x(p.t)},${y(p.v)}`).join(' ');
-		return `M${x(sorted[0].t)},${PAD.top + plotH} ${top} L${x(sorted[sorted.length - 1].t)},${PAD.top + plotH} Z`;
-	});
+	function areaPath(pts: Point[]): string {
+		if (!stats || pts.length === 0) return '';
+		const top = pts.map((p) => `L${x(p.t)},${y(p.v)}`).join(' ');
+		return `M${x(pts[0].t)},${PAD.top + plotH} ${top} L${x(pts[pts.length - 1].t)},${PAD.top + plotH} Z`;
+	}
+
+	function last(pts: Point[]): number {
+		return pts.length ? pts[pts.length - 1].v : 0;
+	}
+	function peak(pts: Point[]): number {
+		return pts.length ? Math.max(...pts.map((p) => p.v)) : 0;
+	}
 
 	// Three horizontal gridlines at 0, 50%, 100% of the y-axis.
 	const yTicks = $derived.by(() => {
@@ -87,35 +108,78 @@
 			minute: '2-digit'
 		});
 
-	// Hover state.
-	let hover = $state<{ x: number; y: number; p: Point } | null>(null);
+	// Hover state: a shared vertical cursor plus the nearest sample per series.
+	let hover = $state<{
+		x: number;
+		t: number;
+		items: { color: string; label: string; py: number; v: number }[];
+	} | null>(null);
+
+	function nearestInSeries(pts: Point[], targetT: number): Point | null {
+		if (pts.length === 0) return null;
+		let n = pts[0];
+		for (const p of pts) if (Math.abs(p.t - targetT) < Math.abs(n.t - targetT)) n = p;
+		return n;
+	}
 
 	function onMove(e: PointerEvent) {
-		if (!stats || sorted.length === 0) return;
+		if (!stats || allPoints.length === 0) return;
 		const svg = e.currentTarget as SVGSVGElement;
 		const rect = svg.getBoundingClientRect();
 		// Map client x into viewBox x, then into the data domain.
 		const vbX = ((e.clientX - rect.left) / rect.width) * W;
 		const frac = Math.min(Math.max((vbX - PAD.left) / plotW, 0), 1);
 		const targetT = stats.tMin + frac * stats.tSpan;
-		// Nearest point by time.
-		let nearest = sorted[0];
-		for (const p of sorted) {
-			if (Math.abs(p.t - targetT) < Math.abs(nearest.t - targetT)) nearest = p;
+		// Snap the cursor to the nearest actual sample time for a crisp readout.
+		let snapped = targetT;
+		let bestDiff = Infinity;
+		for (const p of allPoints) {
+			const d = Math.abs(p.t - targetT);
+			if (d < bestDiff) {
+				bestDiff = d;
+				snapped = p.t;
+			}
 		}
-		hover = { x: x(nearest.t), y: y(nearest.v), p: nearest };
+		const items = resolved
+			.map((s) => {
+				const p = nearestInSeries(s.points, snapped);
+				return p ? { color: s.color, label: s.label, py: y(p.v), v: p.v } : null;
+			})
+			.filter((i): i is NonNullable<typeof i> => i !== null);
+		hover = items.length ? { x: x(snapped), t: snapped, items } : null;
 	}
+
+	const tooltip = $derived(
+		hover
+			? hover.items
+					.map((it) => (showLegend ? `${it.label} ` : '') + formatValue(it.v))
+					.join(' · ') + ` · ${fmtTime(hover.t)}`
+			: ''
+	);
 </script>
 
 <div class="rounded-xl border border-line bg-card p-4">
-	<div class="mb-2 flex items-baseline justify-between">
+	<div class="mb-2 flex items-baseline justify-between gap-3">
 		<h3 class="text-sm font-medium text-ink-secondary">{label}</h3>
-		{#if stats}
+		{#if stats && !showLegend}
 			<span class="font-mono text-xs text-ink-muted">
-				now {formatValue(stats.last)} · peak {formatValue(stats.peak)}
+				now {formatValue(last(resolved[0].points))} · peak {formatValue(peak(resolved[0].points))}
 			</span>
 		{/if}
 	</div>
+
+	{#if stats && showLegend}
+		<div class="mb-2 flex flex-wrap gap-x-4 gap-y-1">
+			{#each resolved as s}
+				<div class="flex items-center gap-1.5">
+					<span class="inline-block h-2 w-2 rounded-full" style="background-color: {s.color}"
+					></span>
+					<span class="text-xs text-ink-muted">{s.label}</span>
+					<span class="font-mono text-xs text-ink-secondary">{formatValue(last(s.points))}</span>
+				</div>
+			{/each}
+		</div>
+	{/if}
 
 	{#if !stats}
 		<div class="flex h-40 items-center justify-center text-sm text-ink-ghost">No data</div>
@@ -151,8 +215,10 @@
 				{fmtTime(stats.tMax)}
 			</text>
 
-			<path d={areaPath} fill={color} fill-opacity="0.12" />
-			<path d={linePath} fill="none" stroke={color} stroke-width="1.5" />
+			{#each resolved as s}
+				<path d={areaPath(s.points)} fill={s.color} fill-opacity={showLegend ? 0.06 : 0.12} />
+				<path d={linePath(s.points)} fill="none" stroke={s.color} stroke-width="1.5" />
+			{/each}
 
 			{#if hover}
 				<line
@@ -164,14 +230,14 @@
 					stroke-width="1"
 					stroke-dasharray="3 3"
 				/>
-				<circle cx={hover.x} cy={hover.y} r="3" fill={color} />
+				{#each hover.items as it}
+					<circle cx={hover.x} cy={it.py} r="3" fill={it.color} />
+				{/each}
 			{/if}
 		</svg>
 
 		{#if hover}
-			<p class="mt-1 text-center font-mono text-xs text-ink-muted">
-				{formatValue(hover.p.v)} · {fmtTime(hover.p.t)}
-			</p>
+			<p class="mt-1 text-center font-mono text-xs text-ink-muted">{tooltip}</p>
 		{/if}
 	{/if}
 </div>
