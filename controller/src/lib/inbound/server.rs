@@ -907,6 +907,25 @@ async fn post_container_state<
     StatusCode::OK.into_response()
 }
 
+async fn post_container_state_heartbeat<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+    BS: BillingService,
+    MS: MetricsService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+    Path((hostname, project_name)): Path<(HostName, ProjectName)>,
+) -> Response {
+    state
+        .container_state_service
+        .touch_container_state(&user_id, &hostname, &project_name)
+        .await;
+    StatusCode::OK.into_response()
+}
+
 #[derive(TS, Serialize)]
 #[ts(export)]
 struct ContainerStateResponse {
@@ -1343,6 +1362,10 @@ pub async fn create_agent_router<
         .route(
             "/container/state/{hostname}/{project_name}",
             post(post_container_state::<DS, CS, TS, NS, BS, MS>),
+        )
+        .route(
+            "/container/state/{hostname}/{project_name}/heartbeat",
+            post(post_container_state_heartbeat::<DS, CS, TS, NS, BS, MS>),
         )
         .route(
             "/container/metrics/{hostname}/{project_name}",

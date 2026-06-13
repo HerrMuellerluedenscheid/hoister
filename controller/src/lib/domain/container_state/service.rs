@@ -52,4 +52,15 @@ impl<CR: ContainerStateRepository> ContainerStateService for Service<CR> {
             .delete_project(user_id, hostname, project_name)
             .await
     }
+
+    async fn touch_container_state(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+    ) {
+        self.container_state_repository
+            .touch_container_state(user_id, hostname, project_name)
+            .await
+    }
 }

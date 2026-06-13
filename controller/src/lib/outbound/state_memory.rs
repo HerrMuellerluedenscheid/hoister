@@ -68,6 +68,22 @@ impl ContainerStateRepository for StateMemory {
         entry.last_updated = Utc::now();
     }
 
+    async fn touch_container_state(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+    ) {
+        let mut state = self.state.write().await;
+        if let Some(entry) = state
+            .get_mut(user_id)
+            .and_then(|d| d.get_mut(hostname))
+            .and_then(|p| p.get_mut(project_name))
+        {
+            entry.last_updated = Utc::now();
+        }
+    }
+
     async fn delete_project(
         &self,
         user_id: &str,

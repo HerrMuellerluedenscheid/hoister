@@ -9,6 +9,8 @@ use hoister_shared::{HostName, ProjectName, ServiceName};
 use log::{debug, error, info, warn};
 use reqwest::Url;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::time::Duration;
 use tokio::time;
 
@@ -325,26 +327,56 @@ async fn send_to_backend(
     client: &reqwest::Client,
     controller_url: &Url,
     token: Option<&str>,
-    project_name: ProjectName,
-    hostname: HostName,
-    states: &HashMap<ServiceName, ServiceState>,
+    project_name: &ProjectName,
+    hostname: &HostName,
+    body: Vec<u8>,
 ) -> Result<(), reqwest::Error> {
     let url = controller_url
         .join(format!("container/state/{}/{}", hostname.0, project_name.0).as_str())
         .expect("failed to join url");
 
-    let request = PostContainerStateRequest {
-        project_name,
-        payload: states.clone(),
-    };
-
-    let mut req = client.post(url).json(&request);
+    let mut req = client
+        .post(url)
+        .header("Content-Type", "application/json")
+        .body(body);
     if let Some(token) = token {
         req = req.bearer_auth(token);
     }
     let response = req.send().await?;
     response.error_for_status()?;
     Ok(())
+}
+
+async fn send_heartbeat(
+    client: &reqwest::Client,
+    controller_url: &Url,
+    token: Option<&str>,
+    project_name: &ProjectName,
+    hostname: &HostName,
+) -> Result<(), reqwest::Error> {
+    let url = controller_url
+        .join(
+            format!(
+                "container/state/{}/{}/heartbeat",
+                hostname.0, project_name.0
+            )
+            .as_str(),
+        )
+        .expect("failed to join url");
+
+    let mut req = client.post(url);
+    if let Some(token) = token {
+        req = req.bearer_auth(token);
+    }
+    let response = req.send().await?;
+    response.error_for_status()?;
+    Ok(())
+}
+
+fn hash_bytes(bytes: &[u8]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    hasher.finish()
 }
 
 pub(crate) async fn start(
@@ -361,27 +393,56 @@ pub(crate) async fn start(
     );
     let docker = Docker::connect_with_socket_defaults()?;
     let mut interval = time::interval(Duration::from_secs(60));
+    let mut prev_hash: Option<u64> = None;
 
     loop {
         interval.tick().await;
 
         match fetch_container_info(&project_name, &docker, report_logs).await {
             Ok(current_states) => {
+                let request = PostContainerStateRequest {
+                    project_name: project_name.clone(),
+                    payload: current_states,
+                };
+                let body = match serde_json::to_vec(&request) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        error!("Failed to serialize state: {e}");
+                        continue;
+                    }
+                };
+                let hash = hash_bytes(&body);
+                if prev_hash == Some(hash) {
+                    debug!("State unchanged, sending heartbeat");
+                    if let Err(e) = send_heartbeat(
+                        &client,
+                        controller_url,
+                        token.as_deref(),
+                        &project_name,
+                        &hostname,
+                    )
+                    .await
+                    {
+                        error!("Failed to send heartbeat: {e}");
+                    }
+                    continue;
+                }
                 if let Err(e) = send_to_backend(
                     &client,
                     controller_url,
                     token.as_deref(),
-                    project_name.clone(),
-                    hostname.clone(),
-                    &current_states,
+                    &project_name,
+                    &hostname,
+                    body,
                 )
                 .await
                 {
                     error!("Failed to send to backend: {e}");
                 } else {
+                    prev_hash = Some(hash);
                     debug!(
                         "Successfully sent {} containers to backend",
-                        current_states.len()
+                        request.payload.len()
                     );
                 }
             }

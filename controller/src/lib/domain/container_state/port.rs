@@ -25,6 +25,16 @@ pub trait ContainerStateRepository: Send + Sync + 'static + Clone {
         hostname: &HostName,
         project_name: &ProjectName,
     ) -> impl Future<Output = bool> + Send;
+    /// Refresh `last_updated` for an existing (host, project) without writing
+    /// any state. Used by the agent heartbeat so the staleness indicator stays
+    /// green when state is unchanged and the full POST is suppressed.
+    /// No-ops when the entry doesn't exist yet.
+    fn touch_container_state(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+    ) -> impl Future<Output = ()> + Send;
 }
 
 pub trait ContainerStateService: Send + Sync + 'static + Clone {
@@ -49,4 +59,10 @@ pub trait ContainerStateService: Send + Sync + 'static + Clone {
         hostname: &HostName,
         project_name: &ProjectName,
     ) -> impl Future<Output = bool> + Send;
+    fn touch_container_state(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+    ) -> impl Future<Output = ()> + Send;
 }

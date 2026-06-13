@@ -844,6 +844,32 @@ impl ContainerStateRepository for Sqlite {
         }
     }
 
+    async fn touch_container_state(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+    ) {
+        let now = chrono::Utc::now().to_rfc3339();
+        if let Err(e) = sqlx::query(
+            "UPDATE compose_state SET last_updated = ?
+             WHERE project_id = (
+                 SELECT p.id FROM project p
+                 JOIN host h ON p.host_id = h.id
+                 WHERE p.user_id = ? AND h.hostname = ? AND p.name = ?
+             )",
+        )
+        .bind(&now)
+        .bind(user_id)
+        .bind(hostname.as_str())
+        .bind(project_name.as_str())
+        .execute(&self.pool)
+        .await
+        {
+            error!("touch_container_state failed: {e:?}");
+        }
+    }
+
     async fn delete_project(
         &self,
         user_id: &str,

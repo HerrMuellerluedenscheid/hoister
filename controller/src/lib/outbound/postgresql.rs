@@ -846,6 +846,30 @@ impl ContainerStateRepository for Postgresql {
         }
     }
 
+    async fn touch_container_state(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+    ) {
+        if let Err(e) = sqlx::query(
+            "UPDATE compose_state SET last_updated = NOW()
+             WHERE project_id = (
+                 SELECT p.id FROM project p
+                 JOIN host h ON p.host_id = h.id
+                 WHERE p.user_id = $1 AND h.hostname = $2 AND p.name = $3
+             )",
+        )
+        .bind(user_id)
+        .bind(hostname.as_str())
+        .bind(project_name.as_str())
+        .execute(&self.pool)
+        .await
+        {
+            error!("touch_container_state failed: {e:?}");
+        }
+    }
+
     async fn delete_project(
         &self,
         user_id: &str,

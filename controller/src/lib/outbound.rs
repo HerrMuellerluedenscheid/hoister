@@ -369,6 +369,34 @@ impl ContainerStateRepository for Database {
             }
         }
     }
+
+    async fn touch_container_state(
+        &self,
+        user_id: &str,
+        hostname: &HostName,
+        project_name: &ProjectName,
+    ) {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as ContainerStateRepository>::touch_container_state(
+                    db,
+                    user_id,
+                    hostname,
+                    project_name,
+                )
+                .await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as ContainerStateRepository>::touch_container_state(
+                    db,
+                    user_id,
+                    hostname,
+                    project_name,
+                )
+                .await
+            }
+        }
+    }
 }
 
 impl MetricsRepository for Database {
