@@ -59,7 +59,9 @@ export type NotifierSummaryConfig =
 	| { kind: 'webhook'; url_host: string; headers_set: boolean };
 
 export interface Notifier {
-	id: number;
+	/** Controller-side UUID. Treat as an opaque string — never coerce to a
+	 * number (a UUID like `761e0c6f-…` would silently truncate to `761`). */
+	id: string;
 	kind: NotifierKind;
 	config: NotifierSummaryConfig;
 	enabled: boolean;
@@ -112,7 +114,7 @@ export async function createNotifier(
 	return { ok: true, notifier };
 }
 
-export async function deleteNotifier(userId: string, notifierId: number): Promise<boolean> {
+export async function deleteNotifier(userId: string, notifierId: string): Promise<boolean> {
 	if (!BACKEND_URL) throw error(500, 'Backend URL not configured');
 	const response = await fetch(`${BACKEND_URL}/notifiers/${notifierId}`, {
 		method: 'DELETE',
@@ -127,7 +129,7 @@ export type TestNotifierResult = { ok: true } | { ok: false; error: string };
 
 export async function testNotifier(
 	userId: string,
-	notifierId: number
+	notifierId: string
 ): Promise<TestNotifierResult> {
 	if (!BACKEND_URL) throw error(500, 'Backend URL not configured');
 	const response = await fetch(`${BACKEND_URL}/notifiers/${notifierId}/test`, {
@@ -142,7 +144,7 @@ export async function testNotifier(
 
 export async function setNotifierEnabled(
 	userId: string,
-	notifierId: number,
+	notifierId: string,
 	enabled: boolean
 ): Promise<boolean> {
 	if (!BACKEND_URL) throw error(500, 'Backend URL not configured');

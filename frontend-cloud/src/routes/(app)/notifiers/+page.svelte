@@ -34,7 +34,7 @@
 
 	let kind = $state<NotifierKind>('telegram');
 	let creating = $state(false);
-	let busyId = $state<number | null>(null);
+	let busyId = $state<string | null>(null);
 
 	const selectedAllowed = $derived(allowed.has(kind));
 

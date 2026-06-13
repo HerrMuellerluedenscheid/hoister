@@ -184,8 +184,8 @@ export const actions: Actions = {
 
 		const form = await request.formData();
 		const raw = form.get('id');
-		const id = typeof raw === 'string' ? Number.parseInt(raw, 10) : NaN;
-		if (!Number.isFinite(id)) return fail(400, { deleteError: 'Invalid notifier id' });
+		const id = typeof raw === 'string' ? raw.trim() : '';
+		if (!id) return fail(400, { deleteError: 'Invalid notifier id' });
 
 		try {
 			const ok = await deleteNotifier(auth.userId, id);
@@ -202,8 +202,8 @@ export const actions: Actions = {
 
 		const form = await request.formData();
 		const raw = form.get('id');
-		const id = typeof raw === 'string' ? Number.parseInt(raw, 10) : NaN;
-		if (!Number.isFinite(id)) return fail(400, { toggleError: 'Invalid notifier id' });
+		const id = typeof raw === 'string' ? raw.trim() : '';
+		if (!id) return fail(400, { toggleError: 'Invalid notifier id' });
 		const enabled = form.get('enabled') === 'true';
 
 		try {
@@ -221,8 +221,8 @@ export const actions: Actions = {
 
 		const form = await request.formData();
 		const raw = form.get('id');
-		const id = typeof raw === 'string' ? Number.parseInt(raw, 10) : NaN;
-		if (!Number.isFinite(id)) return fail(400, { testError: 'Invalid notifier id' });
+		const id = typeof raw === 'string' ? raw.trim() : '';
+		if (!id) return fail(400, { testError: 'Invalid notifier id' });
 
 		try {
 			const result = await testNotifier(auth.userId, id);
