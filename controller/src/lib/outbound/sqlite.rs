@@ -43,7 +43,10 @@ impl Sqlite {
         token_pepper: Vec<u8>,
         aead: crate::outbound::secrets::Aead,
     ) -> Result<Self, SqlxError> {
-        info!("Connecting to database: {database_url}");
+        info!(
+            "Connecting to database: {}",
+            crate::outbound::redact_db_url(database_url)
+        );
         if !sqlx::Sqlite::database_exists(database_url).await? {
             sqlx::Sqlite::create_database(database_url).await?;
         }

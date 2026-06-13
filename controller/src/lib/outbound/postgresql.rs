@@ -64,7 +64,10 @@ impl Postgresql {
         token_pepper: Vec<u8>,
         aead: crate::outbound::secrets::Aead,
     ) -> Result<Self, SqlxError> {
-        info!("Connecting to database: {database_url}");
+        info!(
+            "Connecting to database: {}",
+            crate::outbound::redact_db_url(database_url)
+        );
         let pool = PgPool::connect(database_url).await?;
         Ok(Self {
             pool,

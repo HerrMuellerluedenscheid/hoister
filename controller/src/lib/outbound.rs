@@ -27,6 +27,20 @@ use log::info;
 use postgresql::Postgresql;
 use sqlite::Sqlite;
 
+/// Mask the password in a database URL before logging it (CWE-532). Postgres
+/// URLs carry the password inline (`postgres://user:pass@host/db`); sqlite URLs
+/// are file paths with no password and pass through unchanged.
+pub(crate) fn redact_db_url(url: &str) -> String {
+    match url::Url::parse(url) {
+        Ok(mut parsed) if parsed.password().is_some() => {
+            let _ = parsed.set_password(Some("***"));
+            parsed.to_string()
+        }
+        Ok(_) => url.to_string(),
+        Err(_) => "<unparseable database url>".to_string(),
+    }
+}
+
 /// A database connection that can be either SQLite or PostgreSQL,
 /// selected at runtime based on the URL scheme.
 #[derive(Clone)]
@@ -44,12 +58,12 @@ impl Database {
         aead: crate::outbound::secrets::Aead,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         if url.starts_with("postgres") {
-            info!("Using PostgreSQL backend: {url}");
+            info!("Using PostgreSQL backend: {}", redact_db_url(url));
             let repo = Postgresql::new(url, token_pepper, aead).await?;
             repo.migrate().await?;
             Ok(Self::Postgresql(repo))
         } else {
-            info!("Using SQLite backend: {url}");
+            info!("Using SQLite backend: {}", redact_db_url(url));
             let repo = Sqlite::new(url, token_pepper, aead).await?;
             repo.migrate().await?;
             Ok(Self::Sqlite(repo))
