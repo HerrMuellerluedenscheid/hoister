@@ -3,7 +3,7 @@
 
 services:
   hoister-agent:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ../../certs/ca.pem:/certs/ca.pem:ro

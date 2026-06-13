@@ -134,7 +134,7 @@
 			</h2>
 			<p class="mb-3 text-zinc-400">
 				Wenn Sie den Hoister-Agent (<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs"
-					>emrius11/hoister</code
+					>hoister/hoister</code
 				>) so konfigurieren, dass er sich mit dieser gehosteten Controller-Instanz verbindet (<code
 					class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs"
 					>HOISTER_CONTROLLER_URL=https://api.hoister.io</code

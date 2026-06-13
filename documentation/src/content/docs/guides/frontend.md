@@ -19,7 +19,7 @@ services:
       - "hoister.enable=true"  # let Hoister manage this service
 
   hoister:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
@@ -31,14 +31,14 @@ services:
       - "hoister.hide=true"  # keep Hoister's own containers out of the dashboard
 
   hoister-controller:
-    image: emrius11/hoister-controller:latest
+    image: hoister/hoister-controller:latest
     volumes:
       - controller-data:/data  # to persist deployments across restarts
     labels:
       - "hoister.hide=true"
 
   hoister-frontend:
-    image: emrius11/hoister-frontend:latest
+    image: hoister/hoister-frontend:latest
     ports:
       - "3000:3000"
     environment:

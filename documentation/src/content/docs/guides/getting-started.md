@@ -14,7 +14,7 @@ services:
       - "hoister.enable=true"   # <-- This label tells Hoister to manage this container
 
   hoister:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:

@@ -3,7 +3,7 @@
 
 services:
   hoister-controller:
-    image: emrius11/hoister-controller:latest
+    image: hoister/hoister-controller:latest
     build:
       context: ../..
       dockerfile: controller/Dockerfile
@@ -17,7 +17,7 @@ services:
       HOISTER_CONTROLLER_TLS_KEY_PATH: /certs/server-key.pem
 
   hoister-frontend:
-    image: emrius11/hoister-frontend:latest
+    image: hoister/hoister-frontend:latest
     build:
       context: ../../frontend
     ports:

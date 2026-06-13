@@ -41,7 +41,7 @@ services:
       - hoister-frontend-cloud
 
   hoister-controller:
-    image: emrius11/hoister-controller-cloud:latest
+    image: hoister/hoister-controller-cloud:latest
     build:
       context: .
       dockerfile: controller/Dockerfile.cloud
@@ -73,7 +73,7 @@ services:
       - backend-db
 
   hoister-frontend-cloud:
-    image: emrius11/hoister-frontend-cloud:latest
+    image: hoister/hoister-frontend-cloud:latest
     build:
       context: frontend-cloud
       dockerfile: Dockerfile

@@ -4,7 +4,7 @@ description: Choose between hosted, self-hosted, and standalone agent deployment
 ---
 
 The Hoister agent runs in one of three modes depending on which environment
-variables you set. The same image (`emrius11/hoister:latest`) supports all
+variables you set. The same image (`hoister/hoister:latest`) supports all
 three; no rebuild is needed.
 
 ## Hosted (default)
@@ -17,7 +17,7 @@ view your dashboard.
 ```yaml title="docker-compose.yml"
 services:
   hoister:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
@@ -56,7 +56,7 @@ controller URL:
 ```yaml title="docker-compose.yml"
 services:
   hoister:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
@@ -66,7 +66,7 @@ services:
       HOISTER_CONTROLLER_TOKEN: "your-shared-secret"
 
   hoister-controller:
-    image: emrius11/hoister-controller:latest
+    image: hoister/hoister-controller:latest
     # ... see the Dashboard guide for the full setup
 ```
 
@@ -81,7 +81,7 @@ stack and updates containers locally.
 ```yaml title="docker-compose.yml"
 services:
   hoister:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:

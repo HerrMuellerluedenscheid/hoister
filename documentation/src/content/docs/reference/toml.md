@@ -149,7 +149,7 @@ Save the file as `hoister.toml` and mount it into the container:
 
 ```yaml title="docker-compose.yml"
   hoister:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./hoister.toml:/hoister.toml

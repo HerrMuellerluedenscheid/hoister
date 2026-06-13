@@ -22,7 +22,7 @@
 
 	const composeSnippet = `services:
   hoister:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
@@ -176,7 +176,7 @@
 			<p class="mt-3 text-xs text-ink-faint">
 				The <code class="rounded bg-element px-1 py-0.5 font-mono">HOISTER_CONTROLLER_URL</code>
 				override will become unnecessary once the public
-				<code class="rounded bg-element px-1 py-0.5 font-mono">emrius11/hoister:latest</code>
+				<code class="rounded bg-element px-1 py-0.5 font-mono">hoister/hoister:latest</code>
 				image is bumped to the cloud-aware build.
 			</p>
 		</div>

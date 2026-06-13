@@ -1,6 +1,6 @@
 services:
   hoister:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     build:
       context: .
       dockerfile: agent/Dockerfile
@@ -14,7 +14,7 @@ services:
     #   HOISTER_CONTROLLER_CA_CERT_PATH: /certs/ca.pem  # TLS: trust custom CA
 
   hoister-controller:
-    image: emrius11/hoister-controller:latest
+    image: hoister/hoister-controller:latest
     build:
       context: .
       dockerfile: controller/Dockerfile
@@ -32,7 +32,7 @@ services:
 #      - ./certs:/certs:ro  # TLS: mount certs directory
 
   hoister-frontend:
-    image: emrius11/hoister-frontend:latest
+    image: hoister/hoister-frontend:latest
     build:
       context: frontend
     labels:

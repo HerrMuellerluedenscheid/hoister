@@ -22,7 +22,7 @@ name: multi-agent-test
 services:
   # ── Controller ──────────────────────────────────────────────
   hoister-controller:
-    image: emrius11/hoister-controller:latest
+    image: hoister/hoister-controller:latest
     build:
       context: ..
       dockerfile: controller/Dockerfile
@@ -37,7 +37,7 @@ services:
 
   # ── Frontend ────────────────────────────────────────────────
   hoister-frontend:
-    image: emrius11/hoister-frontend:latest
+    image: hoister/hoister-frontend:latest
     build:
       context: ../frontend
     ports:
@@ -54,7 +54,7 @@ services:
 
   # ── Agent: host-alpha ───────────────────────────────────────
   hoister-alpha:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     build:
       context: ..
       dockerfile: agent/Dockerfile
@@ -72,7 +72,7 @@ services:
 
   # ── Agent: host-beta ────────────────────────────────────────
   hoister-beta:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ../certs/ca.pem:/certs/ca.pem:ro
@@ -87,7 +87,7 @@ services:
 
   # ── Agent: host-gamma ───────────────────────────────────────
   hoister-gamma:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ../certs/ca.pem:/certs/ca.pem:ro

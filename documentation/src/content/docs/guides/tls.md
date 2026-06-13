@@ -46,7 +46,7 @@ Mount the server certificate and private key into the controller container, and 
 ```yaml title="docker-compose.yml"
 services:
   hoister-controller:
-    image: emrius11/hoister-controller:latest
+    image: hoister/hoister-controller:latest
     volumes:
       - controller-data:/data
       - ./certs:/certs:ro
@@ -64,7 +64,7 @@ Mount the CA certificate into the agent container and set the environment variab
 ```yaml title="docker-compose.yml"
 services:
   hoister:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./certs/ca.pem:/certs/ca.pem:ro
@@ -82,7 +82,7 @@ The frontend also connects to the controller. Mount the CA certificate and set `
 ```yaml title="docker-compose.yml"
 services:
   hoister-frontend:
-    image: emrius11/hoister-frontend:latest
+    image: hoister/hoister-frontend:latest
     volumes:
       - ./certs/ca.pem:/certs/ca.pem:ro
     environment:
@@ -95,7 +95,7 @@ services:
 ```yaml title="docker-compose.yml"
 services:
   hoister:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./certs/ca.pem:/certs/ca.pem:ro
@@ -107,7 +107,7 @@ services:
       HOISTER_CONTROLLER_CA_CERT_PATH: /certs/ca.pem
 
   hoister-controller:
-    image: emrius11/hoister-controller:latest
+    image: hoister/hoister-controller:latest
     volumes:
       - controller-data:/data
       - ./certs:/certs:ro
@@ -116,7 +116,7 @@ services:
       HOISTER_CONTROLLER_TLS_KEY_PATH: /certs/server-key.pem
 
   hoister-frontend:
-    image: emrius11/hoister-frontend:latest
+    image: hoister/hoister-frontend:latest
     ports:
       - "3000:3000"
     volumes:

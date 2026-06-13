@@ -24,7 +24,7 @@ on:
         description: 'Registry username'
         required: false
         type: string
-        default: 'emrius11'
+        default: 'hoister'
       platforms:
         description: 'Target platforms (comma-separated)'
         required: false

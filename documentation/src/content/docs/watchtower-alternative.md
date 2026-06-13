@@ -99,7 +99,7 @@ does. Drop the Watchtower service and add Hoister:
 ```yaml title="docker-compose.yml"
 services:
   hoister:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:

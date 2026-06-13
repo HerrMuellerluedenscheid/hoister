@@ -21,7 +21,7 @@ services:
       - "hoister.enable=true"
 
   hoister:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:

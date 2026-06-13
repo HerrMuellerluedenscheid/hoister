@@ -21,7 +21,7 @@ jobs:
     with:
       context: .
       dockerfile: agent/Dockerfile
-      image_name: emrius11/hoister
+      image_name: hoister/hoister
     secrets:
       registry_password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
@@ -30,7 +30,7 @@ jobs:
     with:
       context: .
       dockerfile: controller/Dockerfile
-      image_name: emrius11/hoister-controller
+      image_name: hoister/hoister-controller
     secrets:
       registry_password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
@@ -39,7 +39,7 @@ jobs:
     with:
       context: frontend
       dockerfile: frontend/Dockerfile
-      image_name: emrius11/hoister-frontend
+      image_name: hoister/hoister-frontend
       runs-on: 'ubuntu-24.04'
     secrets:
       registry_password: ${{ secrets.DOCKERHUB_PASSWORD }}
@@ -49,7 +49,7 @@ jobs:
     with:
       context: frontend-cloud
       dockerfile: frontend-cloud/Dockerfile
-      image_name: emrius11/hoister-frontend-cloud
+      image_name: hoister/hoister-frontend-cloud
       runs-on: 'ubuntu-24.04'
     secrets:
       registry_password: ${{ secrets.DOCKERHUB_PASSWORD }}

@@ -3,7 +3,7 @@
 
 services:
   hoister-agent:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     build:
       context: ../..
       dockerfile: agent/Dockerfile

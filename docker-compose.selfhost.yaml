@@ -17,7 +17,7 @@ services:
   # The Hoister agent: watches the Docker socket, applies updates and rollbacks,
   # and reports container state to the self-hosted controller.
   hoister:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
@@ -36,7 +36,7 @@ services:
 
   # Aggregates rollout results and container stats from all agents.
   hoister-controller:
-    image: emrius11/hoister-controller:latest
+    image: hoister/hoister-controller:latest
     restart: unless-stopped
     volumes:
       - controller-data:/data  # persist deployments across restarts
@@ -51,7 +51,7 @@ services:
 
   # Web dashboard for the controller.
   hoister-frontend:
-    image: emrius11/hoister-frontend:latest
+    image: hoister/hoister-frontend:latest
     restart: unless-stopped
     ports:
       - "3000:3000"

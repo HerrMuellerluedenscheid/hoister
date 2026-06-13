@@ -33,12 +33,12 @@ Deploy the controller and frontend on a central host. See the [Dashboard](/guide
 ```yaml title="docker-compose.yml (central host)"
 services:
   hoister-controller:
-    image: emrius11/hoister-controller:latest
+    image: hoister/hoister-controller:latest
     volumes:
       - controller-data:/data
 
   hoister-frontend:
-    image: emrius11/hoister-frontend:latest
+    image: hoister/hoister-frontend:latest
     ports:
       - "3000:3000"
     environment:
@@ -59,7 +59,7 @@ On each host, deploy a hoister agent and point it at the controller. Set `HOISTE
 ```yaml title="docker-compose.yml (host-alpha)"
 services:
   hoister:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
@@ -83,7 +83,7 @@ A second host in the same project. The controller will show both hosts side by s
 ```yaml title="docker-compose.yml (host-beta)"
 services:
   hoister:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
@@ -107,7 +107,7 @@ A different project on a third host.
 ```yaml title="docker-compose.yml (host-gamma)"
 services:
   hoister:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
@@ -152,7 +152,7 @@ Agents report all containers in their Docker Compose project. To hide Hoister's 
 ```yaml
 services:
   hoister:
-    image: emrius11/hoister:latest
+    image: hoister/hoister:latest
     labels:
       - "hoister.hide=true"
 ```
