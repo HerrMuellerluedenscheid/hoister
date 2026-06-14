@@ -100,6 +100,9 @@
 	<footer class="border-t border-zinc-800 py-5 text-center text-xs text-zinc-600">
 		Hoister — open source on GitHub ·
 		<a href="/impressum" class="hover:text-zinc-400">Impressum</a> ·
-		<a href="/datenschutz" class="hover:text-zinc-400">Datenschutz</a>
+		<a href="/datenschutz" class="hover:text-zinc-400">Datenschutz</a> ·
+		<a href="/nutzungsbedingungen" class="hover:text-zinc-400">Nutzungsbedingungen</a> ·
+		<a href="/privacy" class="hover:text-zinc-400">Privacy (EN)</a> ·
+		<a href="/terms" class="hover:text-zinc-400">Terms (EN)</a>
 	</footer>
 </div>

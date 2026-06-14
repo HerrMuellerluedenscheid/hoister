@@ -166,7 +166,8 @@
 					<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">webhook</code> und
 					ähnliches) werden vor der Übermittlung im Agent durch
 					<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">***REDACTED***</code>
-					ersetzt.
+					ersetzt. Diese Erkennungsliste lässt sich um eigene Schlüssel erweitern (siehe Hinweis
+					unten).
 				</li>
 				<li>
 					<span class="text-zinc-300">Deployment-Ereignisse</span> – Erfolgreiche oder fehlgeschlagene
@@ -185,6 +186,34 @@
 					enthalten — aktivieren Sie diese Option nur, wenn Sie das akzeptieren.
 				</li>
 			</ul>
+			<div class="mt-4 rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 text-zinc-400">
+				<p class="mb-2 font-medium text-zinc-300">
+					Ihre Verantwortung für sensible Daten
+				</p>
+				<p>
+					Wir möchten ausdrücklich <strong>keine</strong> sensiblen Daten (Passwörter, Tokens,
+					Schlüssel o. ä.) erhalten. Die schlüsselbasierte Redaction ist eine Heuristik und kann
+					nicht jede geheime Variable zuverlässig erkennen. Sie sind dafür verantwortlich
+					sicherzustellen, dass keine Geheimnisse an den Dienst übermittelt werden: Erweitern Sie
+					die Redaction-Liste über
+					<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">redact_keywords</code>
+					(in der
+					<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">hoister.toml</code>)
+					bzw. die kommagetrennte Umgebungsvariable
+					<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs"
+						>HOISTER_REDACT_KEYWORDS</code
+					>
+					um Ihre eigenen Schlüssel und vermeiden Sie es, Geheimnisse im Klartext in
+					Umgebungsvariablen, Container-Labels oder Befehlszeilen-Argumenten abzulegen. So gelangen
+					sensible Werte gar nicht erst auf unsere Server. Details:
+					<a
+						href="https://docs.hoister.io/guides/monitoring/#custom-redaction-keywords"
+						class="text-indigo-400 hover:text-indigo-300"
+						target="_blank"
+						rel="noopener noreferrer">docs.hoister.io/guides/monitoring</a
+					>.
+				</p>
+			</div>
 			<p class="mt-4 text-zinc-400">
 				<span class="text-zinc-300">Zweck:</span> Anzeige des Status Ihrer Container und
 				Deployment-Historie in Ihrem Dashboard.<br />
@@ -407,6 +436,8 @@
 		Hoister — open source on GitHub ·
 		<a href="/impressum" class="hover:text-zinc-400">Impressum</a> ·
 		<a href="/datenschutz" class="hover:text-zinc-400">Datenschutz</a> ·
-		<a href="/privacy" class="hover:text-zinc-400">Privacy (EN)</a>
+		<a href="/nutzungsbedingungen" class="hover:text-zinc-400">Nutzungsbedingungen</a> ·
+		<a href="/privacy" class="hover:text-zinc-400">Privacy (EN)</a> ·
+		<a href="/terms" class="hover:text-zinc-400">Terms (EN)</a>
 	</footer>
 </div>

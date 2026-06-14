@@ -169,7 +169,8 @@
 					<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">webhook</code> and the
 					like) are replaced with
 					<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">***REDACTED***</code>
-					in the agent before transmission.
+					in the agent before transmission. This detection list can be extended with your own keys
+					(see the note below).
 				</li>
 				<li>
 					<span class="text-zinc-300">Deployment events</span> – successful or failed container
@@ -188,6 +189,31 @@
 					that.
 				</li>
 			</ul>
+			<div class="mt-4 rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 text-zinc-400">
+				<p class="mb-2 font-medium text-zinc-300">Your responsibility for sensitive data</p>
+				<p>
+					We expressly do <strong>not</strong> want to receive sensitive data (passwords, tokens,
+					keys, and the like). The key-based redaction is a heuristic and cannot reliably detect
+					every secret variable. You are responsible for ensuring that no secrets are transmitted to
+					the Service: extend the redaction list via
+					<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">redact_keywords</code>
+					(in
+					<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">hoister.toml</code>) or the
+					comma-separated environment variable
+					<code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs"
+						>HOISTER_REDACT_KEYWORDS</code
+					>
+					with your own keys, and avoid placing plaintext secrets in environment variables, container
+					labels, or command-line arguments. This keeps sensitive values from ever reaching our
+					servers. Details:
+					<a
+						href="https://docs.hoister.io/guides/monitoring/#custom-redaction-keywords"
+						class="text-indigo-400 hover:text-indigo-300"
+						target="_blank"
+						rel="noopener noreferrer">docs.hoister.io/guides/monitoring</a
+					>.
+				</p>
+			</div>
 			<p class="mt-4 text-zinc-400">
 				<span class="text-zinc-300">Purpose:</span> displaying the status of your containers and
 				deployment history in your dashboard.<br />
@@ -404,6 +430,8 @@
 		Hoister — open source on GitHub ·
 		<a href="/impressum" class="hover:text-zinc-400">Impressum</a> ·
 		<a href="/datenschutz" class="hover:text-zinc-400">Datenschutz</a> ·
-		<a href="/privacy" class="hover:text-zinc-400">Privacy (EN)</a>
+		<a href="/nutzungsbedingungen" class="hover:text-zinc-400">Nutzungsbedingungen</a> ·
+		<a href="/privacy" class="hover:text-zinc-400">Privacy (EN)</a> ·
+		<a href="/terms" class="hover:text-zinc-400">Terms (EN)</a>
 	</footer>
 </div>
