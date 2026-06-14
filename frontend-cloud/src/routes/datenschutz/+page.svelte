@@ -27,11 +27,12 @@
 			</svg>
 			<span class="text-lg font-semibold tracking-tight">Hoister</span>
 		</a>
+		<a href="/privacy" class="text-sm text-zinc-500 hover:text-zinc-300">English</a>
 	</header>
 
 	<main class="mx-auto w-full max-w-2xl flex-1 px-8 py-12">
 		<h1 class="mb-2 text-3xl font-bold tracking-tight">Datenschutzerklärung</h1>
-		<p class="mb-10 text-sm text-zinc-500">Stand: Mai 2026</p>
+		<p class="mb-10 text-sm text-zinc-500">Stand: Juni 2026</p>
 
 		<!-- 1 -->
 		<section class="mb-8">
@@ -71,6 +72,11 @@
 				<li>
 					<span class="text-zinc-300">Authentifizierungs-Sitzungsdaten</span> – verschlüsselte Session-Tokens,
 					die in Cookies gespeichert werden, um Sie während einer Sitzung eingeloggt zu halten.
+				</li>
+				<li>
+					<span class="text-zinc-300">Konfiguration von Benachrichtigungs-Integrationen</span> – die
+					Zugangsdaten, die Sie zum Verbinden eines Messaging-Dienstes angeben (z. B. Slack-Webhook-URLs,
+					Discord-Bot-Tokens oder -Webhook-URLs, Kanal-Bezeichner, E-Mail-Empfänger). Siehe Abschnitt 6.
 				</li>
 			</ul>
 		</section>
@@ -209,7 +215,80 @@
 
 		<!-- 6 -->
 		<section class="mb-8">
-			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">6. Cookies</h2>
+			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
+				6. Benachrichtigungs-Integrationen (Slack, Discord, E-Mail u. a.)
+			</h2>
+			<p class="mb-3 text-zinc-400">
+				Optional können Sie einen oder mehrere Messaging-Dienste mit Ihrem Konto verbinden, damit
+				Hoister Sie über Deployment-Ereignisse (verfügbare Updates, erfolgreiche Updates,
+				Rollbacks) benachrichtigt. Unterstützt werden u. a. <span class="text-zinc-300"
+					>Slack, Discord, Telegram, Microsoft Teams, Matrix, Mattermost, Rocket.Chat, Google
+					Chat, Gotify, ntfy, Pushover, E-Mail sowie generische Webhooks</span
+				>. Diese Funktion ist optional und nur aktiv, wenn Sie eine Integration einrichten.
+			</p>
+
+			<p class="mb-1 font-medium text-zinc-300">Was wir speichern</p>
+			<p class="mb-3 text-zinc-400">
+				Pro Integration speichern wir die von Ihnen angegebenen Zugangsdaten, die zum Zustellen der
+				Nachricht erforderlich sind – etwa eine Webhook-URL, einen Bot-Token, eine Kanal- oder
+				Raum-Kennung oder eine E-Mail-Adresse. Diese Daten sind ausschließlich Ihrer Nutzer-ID
+				zugeordnet und werden nur serverseitig verwendet; im Dashboard werden Geheimnisse (Tokens,
+				vollständige Webhook-URLs) nicht zurückgegeben, sondern nur als „gesetzt“ markiert.
+				Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung). Speicherdauer: bis Sie die
+				Integration löschen bzw. bis zur Löschung Ihres Kontos.
+			</p>
+
+			<p class="mb-1 font-medium text-zinc-300">Slack („Add to Slack“)</p>
+			<p class="mb-3 text-zinc-400">
+				Verbinden Sie Slack über den „Add to Slack“-Button, durchlaufen Sie den OAuth-Ablauf von
+				Slack. Nach Ihrer Zustimmung erhalten wir von Slack eine eingehende Webhook-URL und den
+				Namen des Zielkanals und speichern diese als Slack-Integration. Wir fragen keinen Zugriff
+				auf Ihre Nachrichten oder weitere Workspace-Daten an. Es gelten die
+				<a
+					href="https://slack.com/trust/privacy/privacy-policy"
+					class="text-indigo-400 hover:text-indigo-300"
+					target="_blank"
+					rel="noopener noreferrer">Datenschutzbestimmungen von Slack</a
+				>.
+			</p>
+
+			<p class="mb-1 font-medium text-zinc-300">Discord</p>
+			<p class="mb-3 text-zinc-400">
+				Für Discord geben Sie entweder eine eingehende Webhook-URL oder einen Bot-Token samt
+				Kanal-ID an. Damit stellt Hoister die Benachrichtigungen im von Ihnen gewählten Kanal zu.
+				Es gelten die
+				<a
+					href="https://discord.com/privacy"
+					class="text-indigo-400 hover:text-indigo-300"
+					target="_blank"
+					rel="noopener noreferrer">Datenschutzbestimmungen von Discord</a
+				>.
+			</p>
+
+			<p class="mb-1 font-medium text-zinc-300">Welche Daten übermittelt werden</p>
+			<p class="mb-3 text-zinc-400">
+				Tritt ein Deployment-Ereignis ein, sendet Hoister an die von Ihnen konfigurierten Dienste
+				eine Benachrichtigung mit Image-Name, Image-Digest, Projekt- und Service-Name sowie
+				Hostname des betroffenen Containers. Diese Übermittlung erfolgt auf Ihre Weisung an die von
+				Ihnen ausgewählten Empfänger. Die jeweiligen Anbieter (Slack, Discord usw.) verarbeiten
+				diese Inhalte nach ihren eigenen Datenschutzbestimmungen; bei US-Anbietern kann dies eine
+				Übermittlung in ein Drittland bedeuten. Da Sie den Empfänger selbst bestimmen, liegt diese
+				Übermittlung in Ihrer Verantwortung.
+			</p>
+
+			<p class="mb-1 font-medium text-zinc-300">E-Mail-Versand: Resend</p>
+			<p class="text-zinc-400">
+				Für E-Mail-Benachrichtigungen nutzen wir den Versanddienstleister <span class="text-zinc-300"
+					>Resend</span
+				> (Resend, Inc., USA) als Auftragsverarbeiter. An Resend werden die Empfänger-E-Mail-Adresse
+				und der Inhalt der Benachrichtigung übergeben. Die Übermittlung in die USA erfolgt auf
+				Grundlage von Standardvertragsklauseln (Art. 46 Abs. 2 lit. c DSGVO).
+			</p>
+		</section>
+
+		<!-- 7 -->
+		<section class="mb-8">
+			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">7. Cookies</h2>
 			<p class="mb-3 text-zinc-400">
 				Diese Website setzt ausschließlich <span class="text-zinc-300"
 					>technisch notwendige Cookies</span
@@ -234,33 +313,40 @@
 							<td class="px-4 py-3">Authentifizierungs-Session</td>
 							<td class="px-4 py-3">Sitzung</td>
 						</tr>
-						<tr>
+						<tr class="border-b border-zinc-800/50">
 							<td class="px-4 py-3 font-mono text-xs">__client_uat</td>
 							<td class="px-4 py-3">Clerk</td>
 							<td class="px-4 py-3">Sitzungs-Verifizierung</td>
 							<td class="px-4 py-3">1 Jahr</td>
+						</tr>
+						<tr>
+							<td class="px-4 py-3 font-mono text-xs">slack_oauth_state</td>
+							<td class="px-4 py-3">Hoister</td>
+							<td class="px-4 py-3">CSRF-Schutz während der Slack-Verbindung</td>
+							<td class="px-4 py-3">kurzlebig</td>
 						</tr>
 					</tbody>
 				</table>
 			</div>
 		</section>
 
-		<!-- 7 -->
-		<section class="mb-8">
-			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
-				7. Weitergabe von Daten
-			</h2>
-			<p class="text-zinc-400">
-				Eine Weitergabe Ihrer personenbezogenen Daten an Dritte findet nicht statt, außer an Clerk
-				als Auftragsverarbeiter (siehe Abschnitt 4) und soweit wir gesetzlich dazu verpflichtet
-				sind.
-			</p>
-		</section>
-
 		<!-- 8 -->
 		<section class="mb-8">
 			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
-				8. Ihre Rechte
+				8. Weitergabe von Daten
+			</h2>
+			<p class="text-zinc-400">
+				Eine Weitergabe Ihrer personenbezogenen Daten an Dritte findet nicht statt, außer an unsere
+				Auftragsverarbeiter (Clerk für Authentifizierung, siehe Abschnitt 4; Resend für
+				E-Mail-Versand, siehe Abschnitt 6), an die von Ihnen selbst eingerichteten
+				Messaging-Dienste (siehe Abschnitt 6) sowie soweit wir gesetzlich dazu verpflichtet sind.
+			</p>
+		</section>
+
+		<!-- 9 -->
+		<section class="mb-8">
+			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
+				9. Ihre Rechte
 			</h2>
 			<p class="mb-3 text-zinc-400">
 				Sie haben gegenüber uns folgende Rechte hinsichtlich Ihrer personenbezogenen Daten:
@@ -281,10 +367,10 @@
 			</p>
 		</section>
 
-		<!-- 9 -->
+		<!-- 10 -->
 		<section class="mb-8">
 			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
-				9. Beschwerderecht bei der Aufsichtsbehörde
+				10. Beschwerderecht bei der Aufsichtsbehörde
 			</h2>
 			<p class="mb-3 text-zinc-400">
 				Sie haben das Recht, sich bei einer Datenschutz-Aufsichtsbehörde über die Verarbeitung Ihrer
@@ -305,10 +391,10 @@
 			</div>
 		</section>
 
-		<!-- 10 -->
+		<!-- 11 -->
 		<section class="mb-8">
 			<h2 class="mb-3 text-sm font-semibold tracking-widest text-zinc-500 uppercase">
-				10. Aktualität dieser Erklärung
+				11. Aktualität dieser Erklärung
 			</h2>
 			<p class="text-zinc-400">
 				Wir behalten uns vor, diese Datenschutzerklärung bei Änderungen des Dienstes oder der
@@ -320,6 +406,7 @@
 	<footer class="border-t border-zinc-800 py-5 text-center text-xs text-zinc-600">
 		Hoister — open source on GitHub ·
 		<a href="/impressum" class="hover:text-zinc-400">Impressum</a> ·
-		<a href="/datenschutz" class="hover:text-zinc-400">Datenschutz</a>
+		<a href="/datenschutz" class="hover:text-zinc-400">Datenschutz</a> ·
+		<a href="/privacy" class="hover:text-zinc-400">Privacy (EN)</a>
 	</footer>
 </div>
