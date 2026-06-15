@@ -157,6 +157,7 @@ async fn fetch_container_info(
 
                     redact_credentials(&mut inspect);
                     strip_health_check_output(&mut inspect);
+                    prune_inspect(&mut inspect);
                     states.insert(
                         service_identifier.clone(),
                         ServiceState { inspect, last_logs },
@@ -298,6 +299,46 @@ fn strip_health_check_output(inspect: &mut ContainerInspectResponse) {
     }
 }
 
+/// Drop inspect fields the controller and dashboard never read before the
+/// payload leaves the host. This shrinks the request and — more importantly —
+/// removes large, map-heavy sub-objects (notably `HostConfig`) that bloat every
+/// poll, so the diff/heartbeat compression in [`start`] has less surface to
+/// churn on.
+///
+/// The **keep-list** is everything currently consumed downstream:
+///   - top level: `Id`, `Created`, `State`, `Image`, `Name`, `RestartCount`,
+///     `Mounts`, `Config`, `NetworkSettings`
+///   - `Config`: `Labels`, `Image`, `Cmd`, `WorkingDir`, `Hostname`, `Env`
+///     (the controller reads `Config.Image`; the dashboard reads the rest)
+///   - `State` and `NetworkSettings` are kept whole — they're small and stable.
+///
+/// If the dashboard or controller starts reading a new field, add it back here.
+fn prune_inspect(inspect: &mut ContainerInspectResponse) {
+    inspect.path = None;
+    inspect.args = None;
+    inspect.resolv_conf_path = None;
+    inspect.hostname_path = None;
+    inspect.hosts_path = None;
+    inspect.log_path = None;
+    inspect.driver = None;
+    inspect.platform = None;
+    inspect.image_manifest_descriptor = None;
+    inspect.mount_label = None;
+    inspect.process_label = None;
+    inspect.app_armor_profile = None;
+    inspect.exec_ids = None;
+    inspect.host_config = None;
+    inspect.graph_driver = None;
+    inspect.size_rw = None;
+    inspect.size_root_fs = None;
+
+    if let Some(config) = inspect.config.as_mut() {
+        // Unused maps; dropping them also keeps key-order churn off the wire.
+        config.exposed_ports = None;
+        config.volumes = None;
+    }
+}
+
 fn redact_credentials(inspect: &mut ContainerInspectResponse) {
     if let Some(config) = inspect.config.as_mut()
         && let Some(env_vars) = config.env.as_mut()
@@ -404,7 +445,17 @@ pub(crate) async fn start(
                     project_name: project_name.clone(),
                     payload: current_states,
                 };
-                let body = match serde_json::to_vec(&request) {
+                // Route through `serde_json::Value` (a sorted `BTreeMap`, since
+                // serde_json is built without `preserve_order`) so object keys
+                // are emitted in a stable order. bollard deserializes inspect
+                // fields like `Config.Labels` and `NetworkSettings.Networks`
+                // into `HashMap`s whose iteration order is randomized per
+                // instance; serializing the struct directly would reshuffle keys
+                // on every poll, changing the hash even when nothing changed and
+                // defeating the diff/heartbeat compression below.
+                let body = match serde_json::to_value(&request)
+                    .and_then(|value| serde_json::to_vec(&value))
+                {
                     Ok(b) => b,
                     Err(e) => {
                         error!("Failed to serialize state: {e}");
