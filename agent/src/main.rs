@@ -10,6 +10,8 @@ mod sse;
 use bollard::Docker;
 
 use bollard::query_parameters::EventsOptions;
+#[cfg(feature = "cli")]
+use clap::Parser;
 use log::{debug, error, info, warn};
 
 use bollard::errors::Error as BollardError;
@@ -35,9 +37,33 @@ use crate::notifications::{
 use crate::sse::SSEHandler;
 use hoister_shared::ProjectName;
 use std::error::Error;
+use std::path::PathBuf;
 #[allow(unused_imports)]
 use std::{env, process};
 use tokio::sync::mpsc;
+
+/// Hoister agent — periodically checks for newer container images and updates
+/// the running containers, rolling back on failure.
+#[cfg(feature = "cli")]
+#[derive(Parser, Debug)]
+#[command(name = "hoister", version, about)]
+struct Cli {
+    /// Path to the TOML configuration file.
+    #[arg(short, long)]
+    config: PathBuf,
+}
+
+/// Resolve the config path. With the `cli` feature this comes from the
+/// command line; in the container build (feature off) it is the fixed path.
+#[cfg(feature = "cli")]
+fn config_path() -> PathBuf {
+    Cli::parse().config
+}
+
+#[cfg(not(feature = "cli"))]
+fn config_path() -> PathBuf {
+    PathBuf::from("/hoister.toml")
+}
 
 #[derive(Debug, Error)]
 enum HoisterError {
@@ -57,12 +83,22 @@ enum HoisterError {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
+    // Resolve the config path first so `-h`/`--help` and `--version` work
+    // (when the `cli` feature is on) without touching Docker or the config file.
+    let config_path = config_path();
+
     #[cfg(target_os = "linux")]
     set_group_id();
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
-    let config_path = "/hoister.toml";
-    let mut config = config::load_config(config_path.as_ref()).await;
+    if !config_path.exists() {
+        error!(
+            "Config file not found at {}. Pass a different path with --config <path>.",
+            config_path.display()
+        );
+        process::exit(1);
+    }
+    let mut config = config::load_config(&config_path).await;
 
     // If no hostname was configured, ask the Docker daemon for the host's name
     // (equivalent to `docker info --format '{{.Name}}'`). This gives a stable,

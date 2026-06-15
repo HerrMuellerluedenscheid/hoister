@@ -12,5 +12,6 @@ log = "0.4.28"
 env_logger = "0.11.8"
 bollard = { version = "0.19.3", features = ["rustls"] }
 chatterbox = { version = "2.9.0" }
+clap = { version = "4.5", features = ["derive"] }
 figment2 = { version = "0.11.4", features = ["toml"] }
 serde = { version = "1.0.228" }

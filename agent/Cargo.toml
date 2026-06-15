@@ -7,12 +7,19 @@ description = "simple continuous CD container upgrades"
 repository = "https://github.com/HerrMuellerluedenscheid/hoister"
 authors = ["marius.kriegerowski@gmail.com"]
 
+[features]
+# CLI argument parsing (`--config`, `-h`, `--version`) for standalone use.
+# The container build disables this and reads the hardcoded config path.
+default = ["cli"]
+cli = ["dep:clap"]
+
 [dependencies]
 tokio = {workspace = true}
 log = {workspace = true}
 env_logger = { workspace = true }
 bollard = {workspace = true}
 chatterbox = {workspace = true}
+clap = { workspace = true, optional = true }
 figment2 = { workspace = true }
 
 hoister_shared = {path = "../hoister_shared"}

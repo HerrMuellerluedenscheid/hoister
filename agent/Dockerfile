@@ -3,7 +3,7 @@ FROM rust:alpine AS builder
 WORKDIR /app
 COPY . .
 RUN apk add --no-cache musl-dev
-RUN cargo build --bin hoister --release
+RUN cargo build --bin hoister --release --no-default-features
 
 FROM busybox:latest as shell-builder
 FROM scratch AS runner
