@@ -6,6 +6,13 @@ description: Keep track of all monitored services
 The Hoister container is stateless and does not store any info about updates. But it can forward the update events to the
 hoister controller service. The dashboard is a frontend for this service to keep track of all monitored services and updates.
 
+![Containers overview grouped by project, each card showing image, uptime and update status](../../../assets/screenshots/containers_overview.png)
+
+Every rollout the agents report shows up in the **Recent deployments** feed, grouped by host and service, with the
+image digest and whether the update succeeded, failed or was rolled back.
+
+![Recent deployments table listing host, project, service, status and date](../../../assets/screenshots/recent_deployments_table.png)
+
 The example below runs the whole stack on a single host: the agent, the controller and the dashboard, plus an `app`
 service to watch. Point the agent at the local controller with `HOISTER_CONTROLLER_URL` so it reports there instead of
 the hosted cloud.

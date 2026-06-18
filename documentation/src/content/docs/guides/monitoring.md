@@ -17,6 +17,8 @@ Hoister samples each container's CPU and memory usage roughly once a minute and
 forwards it to the controller, which stores a 7-day history and renders CPU/memory
 graphs on the container detail page and a usage panel on the dashboard.
 
+![Resource usage panel showing CPU, memory, network and disk I/O charts over the last 7 days](../../../assets/screenshots/resource_usage.png)
+
 **Metrics are enabled by default.** To turn them off:
 
 ```toml title="hoister.toml"

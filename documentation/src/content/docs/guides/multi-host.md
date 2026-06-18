@@ -26,6 +26,10 @@ Hoister supports running multiple agents on different hosts, each monitoring its
 
 Each agent identifies itself with a **hostname** and a **project name**. The controller uses these to distinguish which containers belong to which host and project.
 
+The dashboard also surfaces the other services sharing a container's Docker network, with their project and IP address, making it easy to see what each host is running.
+
+![Services on this network panel listing sibling services with their project and IP address](../../../assets/screenshots/services_on_network.png)
+
 ## Controller and frontend
 
 Deploy the controller and frontend on a central host. See the [Dashboard](/guides/frontend) guide for the basics.

@@ -14,6 +14,11 @@ range of channels:
 You can configure as many channels as you like — every configured dispatcher
 receives every event.
 
+When using the [cloud dashboard](/guides/frontend/), notifiers can be added and
+tested directly from the **Notifiers** page — including a two-click Slack install.
+
+![Notifiers page with the Add to Slack button, an add-notifier form and a table of configured notifiers](../../../assets/screenshots/notification_meu.png)
+
 ## Configuring dispatchers
 
 Notifiers are configured under `[dispatcher.*]` tables in your `hoister.toml`.

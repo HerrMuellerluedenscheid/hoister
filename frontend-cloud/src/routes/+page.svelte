@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Show, SignInButton, UserButton } from 'svelte-clerk';
 	import SEO from '$lib/components/SEO.svelte';
+	import Carousel from '$lib/components/Carousel.svelte';
 	import { SITE_URL } from '$lib/seo';
 
 	const description =
@@ -151,6 +152,17 @@
 				<div class="text-sm leading-relaxed text-ink-muted">{feature.desc}</div>
 			</div>
 		{/each}
+	</section>
+
+	<!-- Screenshot carousel -->
+	<section class="mx-auto mb-20 w-full max-w-4xl px-8">
+		<div class="mb-6 text-center">
+			<h2 class="text-2xl font-bold tracking-tight text-ink">See it in action</h2>
+			<p class="mt-2 text-sm text-ink-muted">
+				A dashboard for every container, deployment and metric across your hosts.
+			</p>
+		</div>
+		<Carousel />
 	</section>
 
 	<!-- Connect your stack -->
