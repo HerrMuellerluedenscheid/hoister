@@ -30,6 +30,7 @@ use crate::domain::tokens::ports::TokenService;
 use crate::inbound::audit_log::audit_log_middleware;
 use crate::inbound::notifier_validation::validate_config as validate_notifier_config;
 use crate::inbound::rate_limit::{RateLimiter, rate_limit_middleware};
+use crate::outbound::logs_memory::LogsMemory;
 use crate::outbound::notification_dispatch::{
     EmailDispatchConfig, dispatch_one_async, dispatch_to_all,
 };
@@ -42,7 +43,7 @@ use crate::sse::{ControllerEvent, UserScopedEvent, sse_handler};
 /// product limits.
 const AGENT_BODY_LIMIT: usize = 1024 * 1024;
 use chatterbox::message::Message;
-use hoister_shared::wire::PostContainerMetricsRequest;
+use hoister_shared::wire::{PostContainerLogsRequest, PostContainerMetricsRequest};
 use hoister_shared::{
     CreateDeployment, DeploymentStatus, HostName, ProjectName, ServiceName,
     deployment_email_subject,
@@ -83,6 +84,9 @@ pub struct AppState<
     pub api_secret: Option<String>,
     pub event_tx: broadcast::Sender<UserScopedEvent>,
     pub pending_updates: PendingUpdatesMemory,
+    /// Ephemeral, per-user store of on-demand container logs. In memory only —
+    /// logs are never persisted (they can carry secrets). See `LogsMemory`.
+    pub logs: LogsMemory,
     /// Controller-wide email (Resend) delivery settings, or `None` when not
     /// configured. Email notifiers can't dispatch without this.
     pub email: Option<EmailDispatchConfig>,
@@ -1317,6 +1321,87 @@ async fn apply_pending_update<
     StatusCode::OK.into_response()
 }
 
+// ── On-demand container logs ──────────────────────────────────────────────────
+// Logs are pulled live from the agent only when the dashboard asks for them and
+// held in memory for a few minutes — never written to the database, since they
+// can carry secrets. The agent answers a request only if it was started with
+// HOISTER_REPORT_LOGS=true; otherwise no log entry ever arrives and the read
+// endpoint keeps returning 404.
+
+/// Agent endpoint: receive a forwarded log tail (the answer to a `RequestLogs`
+/// event) and stash it in the ephemeral per-user store.
+async fn post_container_logs<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+    BS: BillingService,
+    MS: MetricsService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+    Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
+    Json(payload): Json<PostContainerLogsRequest>,
+) -> Response {
+    state
+        .logs
+        .set(&user_id, hostname, project_name, service_name, payload.logs)
+        .await;
+    StatusCode::OK.into_response()
+}
+
+/// Internal endpoint: ask the user's agents to ship the current log tail for one
+/// service. Fire-and-forget over SSE — the browser then polls
+/// `get_container_logs`. Returns 202 even when no agent is currently connected.
+async fn request_container_logs<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+    BS: BillingService,
+    MS: MetricsService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+    Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
+) -> StatusCode {
+    let event = ControllerEvent::RequestLogs((hostname, project_name, service_name));
+    let _ = state.event_tx.send((user_id, event));
+    StatusCode::ACCEPTED
+}
+
+#[derive(TS, Serialize)]
+#[ts(export)]
+struct ContainerLogsResponse {
+    logs: String,
+    received_at: DateTime<Utc>,
+}
+
+/// Internal endpoint: read the most recently forwarded log tail for one service.
+/// 404s until the agent has answered the request (or after the entry expires).
+async fn get_container_logs<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+    BS: BillingService,
+    MS: MetricsService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+    Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
+) -> Result<Json<ApiResponse<ContainerLogsResponse>>, StatusCode> {
+    let entry = state
+        .logs
+        .get(&user_id, &hostname, &project_name, &service_name)
+        .await
+        .ok_or(StatusCode::NOT_FOUND)?;
+    Ok(Json(ApiResponse::success(ContainerLogsResponse {
+        logs: entry.logs,
+        received_at: entry.received_at,
+    })))
+}
+
 /// Internal endpoint: delete a user and all their data via CASCADE.
 /// Called by the BFF after it has verified a Clerk `user.deleted` webhook.
 /// The BFF sets `X-User-Id` to the deleted user's Clerk ID before calling
@@ -1370,6 +1455,10 @@ pub async fn create_agent_router<
         .route(
             "/container/metrics/{hostname}/{project_name}",
             post(post_container_metrics::<DS, CS, TS, NS, BS, MS>),
+        )
+        .route(
+            "/container/logs/{hostname}/{project_name}/{service_name}",
+            post(post_container_logs::<DS, CS, TS, NS, BS, MS>),
         )
         .route(
             "/pending-updates",
@@ -1473,6 +1562,16 @@ pub async fn create_internal_router<
         .route(
             "/container/metrics/{hostname}/{project_name}/{service_name}",
             get(get_service_metrics::<DS, CS, TS, NS, BS, MS>),
+        )
+        // On-demand logs: the browser POSTs `.../request` to trigger an SSE
+        // log request to the agent, then polls the GET to read the answer.
+        .route(
+            "/container/logs/{hostname}/{project_name}/{service_name}/request",
+            post(request_container_logs::<DS, CS, TS, NS, BS, MS>),
+        )
+        .route(
+            "/container/logs/{hostname}/{project_name}/{service_name}",
+            get(get_container_logs::<DS, CS, TS, NS, BS, MS>),
         )
         // Pending-update read/apply mirrored from the agent router so the
         // BFF can drive them. Writes (POST /pending-updates) stay agent-only.

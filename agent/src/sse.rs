@@ -1,6 +1,6 @@
 use crate::docker::DockerHandler;
-use hoister_shared::HostName;
-use hoister_shared::wire::ControllerEvent;
+use hoister_shared::wire::{ControllerEvent, PostContainerLogsRequest};
+use hoister_shared::{HostName, ProjectName, ServiceName};
 use log::{info, warn};
 use reqwest::Client;
 use std::sync::Arc;
@@ -9,11 +9,21 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::{Duration, sleep};
 use tokio_stream::StreamExt;
+use url::Url;
 
 pub struct SSEHandler {
     docker: Arc<DockerHandler>,
     rx: mpsc::Receiver<ControllerEvent>,
     hostname: HostName,
+    /// Mirror of `HOISTER_REPORT_LOGS`. Log requests are ignored unless set,
+    /// since container logs can carry secrets keyword redaction won't catch.
+    report_logs: bool,
+    /// Used to ship requested logs back to the controller.
+    client: Client,
+    /// Base controller URL (e.g. `https://api.hoister.io/`), the same one the
+    /// monitor POSTs container state to.
+    controller_url: Url,
+    token: Option<String>,
 }
 
 impl SSEHandler {
@@ -21,11 +31,19 @@ impl SSEHandler {
         docker: Arc<DockerHandler>,
         rx: mpsc::Receiver<ControllerEvent>,
         hostname: HostName,
+        report_logs: bool,
+        client: Client,
+        controller_url: Url,
+        token: Option<String>,
     ) -> Self {
         Self {
             docker,
             rx,
             hostname,
+            report_logs,
+            client,
+            controller_url,
+            token,
         }
     }
 
@@ -61,8 +79,72 @@ impl SSEHandler {
                         }
                     }
                 }
+                ControllerEvent::RequestLogs((target_host, project_name, service_name)) => {
+                    if target_host == self.hostname {
+                        self.handle_log_request(&project_name, &service_name).await;
+                    }
+                }
             }
         }
+    }
+
+    /// Honour an on-demand `RequestLogs` event: fetch the service's current log
+    /// tail and ship it to the controller's in-memory store. Gated on
+    /// `report_logs` so an operator who never opted in leaks nothing, even if
+    /// someone triggers a request from the dashboard.
+    async fn handle_log_request(&self, project_name: &ProjectName, service_name: &ServiceName) {
+        if !self.report_logs {
+            info!(
+                "Ignoring log request for service {} — set HOISTER_REPORT_LOGS=true to enable",
+                service_name.as_str()
+            );
+            return;
+        }
+
+        // Always answer the request, even with an empty body, so the dashboard
+        // can distinguish "no logs" from "still waiting".
+        let logs = self
+            .docker
+            .fetch_service_logs(project_name, service_name)
+            .await
+            .unwrap_or_default();
+
+        if let Err(e) = self
+            .post_requested_logs(project_name, service_name, logs)
+            .await
+        {
+            warn!(
+                "Failed to ship requested logs for service {}: {e}",
+                service_name.as_str()
+            );
+        }
+    }
+
+    async fn post_requested_logs(
+        &self,
+        project_name: &ProjectName,
+        service_name: &ServiceName,
+        logs: String,
+    ) -> Result<(), SSEError> {
+        let url = self
+            .controller_url
+            .join(&format!(
+                "container/logs/{}/{}/{}",
+                self.hostname.as_str(),
+                project_name.as_str(),
+                service_name.as_str()
+            ))
+            .expect("controller log URL should be valid");
+
+        let mut req = self
+            .client
+            .post(url)
+            .json(&PostContainerLogsRequest { logs });
+        if let Some(token) = &self.token {
+            req = req.bearer_auth(token);
+        }
+        req.send().await?.error_for_status()?;
+        Ok(())
     }
 }
 

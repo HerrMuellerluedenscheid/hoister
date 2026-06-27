@@ -9,6 +9,7 @@ use controller::inbound::server::{
     AppState, InternalSecret, create_agent_router, create_internal_router,
 };
 use controller::outbound::Database;
+use controller::outbound::logs_memory::LogsMemory;
 use controller::outbound::pending_updates_memory::PendingUpdatesMemory;
 use controller::sse::UserScopedEvent;
 use log::{info, warn};
@@ -70,6 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = Database::connect(&config.database_path, token_pepper.into_bytes(), aead).await?;
 
     let pending_updates = PendingUpdatesMemory::default();
+    let logs = LogsMemory::default();
 
     // Email (Resend) delivery is controller-wide: users supply only a
     // recipient. Both the API key and the From identity must be present; a
@@ -103,6 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         api_secret: config.api_secret.clone(),
         event_tx,
         pending_updates,
+        logs,
         email,
         dashboard_url: config.dashboard_url.clone(),
     };
