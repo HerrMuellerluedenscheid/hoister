@@ -167,11 +167,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         config.report_logs,
     ));
 
-    let mut sse_handler = SSEHandler::new(docker.clone(), rx_sse, config.hostname.clone());
-    tokio::spawn(async move {
-        sse_handler.start().await;
-    });
-
     let project_name = match &config.project {
         Some(pn) => pn.clone(),
         // `get_project_name` already retries in-process with backoff; only bail
@@ -217,6 +212,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         let token_monitor = controller_config.token.clone();
         tokio::spawn(async move {
             sse::consume_sse(url_sse.as_str(), token_sse, tx_sse, sse_client).await
+        });
+
+        // SSE handler reacts to controller events (retries, apply-update, and
+        // on-demand log requests). It ships requested logs back to the
+        // controller, so it carries its own client/base-URL/token plus the
+        // `report_logs` gate. Only spawned when a controller is configured —
+        // there is no event source otherwise.
+        let mut sse_handler = SSEHandler::new(
+            docker.clone(),
+            rx_sse,
+            config.hostname.clone(),
+            report_logs,
+            http_client.clone(),
+            controller_config.url.clone(),
+            controller_config.token.clone(),
+        );
+        tokio::spawn(async move {
+            sse_handler.start().await;
         });
         let metrics_state = url_state.clone();
         let pn_state = pn.clone();

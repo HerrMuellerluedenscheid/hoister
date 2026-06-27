@@ -107,6 +107,55 @@
 						? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
 						: 'bg-line-subtle/40 text-ink-secondary border-line-subtle/40';
 	}
+
+	// ── On-demand ("live") logs ───────────────────────────────────────────────
+	// Logs are fetched only when the user asks: we POST a request (the controller
+	// relays it to the agent over SSE), then poll until the agent's answer lands.
+	// Nothing is persisted, and the agent only answers with HOISTER_REPORT_LOGS=true.
+	const logsUrl = $derived(
+		hostname && project_name && service_name
+			? `/containers/${encodeURIComponent(hostname)}/${encodeURIComponent(project_name)}/${encodeURIComponent(service_name)}/logs`
+			: null
+	);
+
+	let liveLogs = $state<string | null>(null);
+	let liveLogsAt = $state<string | null>(null);
+	let liveLogsLoading = $state(false);
+	let liveLogsError = $state<string | null>(null);
+
+	async function loadLiveLogs() {
+		if (!logsUrl || liveLogsLoading) return;
+		liveLogsLoading = true;
+		liveLogsError = null;
+		try {
+			// Note the timestamp of any already-cached tail so we can tell a fresh
+			// answer apart from a stale one left by an earlier request.
+			const before = await fetch(logsUrl);
+			const prev: string | null = before.ok ? ((await before.json())?.received_at ?? null) : null;
+
+			const requested = await fetch(logsUrl, { method: 'POST' });
+			if (!requested.ok) throw new Error('request rejected');
+
+			const deadline = Date.now() + 15_000;
+			while (Date.now() < deadline) {
+				await new Promise((r) => setTimeout(r, 1500));
+				const res = await fetch(logsUrl);
+				if (!res.ok) continue;
+				const body = await res.json();
+				if (body && body.received_at !== prev) {
+					liveLogs = body.logs;
+					liveLogsAt = body.received_at;
+					return;
+				}
+			}
+			liveLogsError =
+				'No logs came back. Make sure the agent on this host runs with HOISTER_REPORT_LOGS=true.';
+		} catch {
+			liveLogsError = 'Failed to load logs. Please try again.';
+		} finally {
+			liveLogsLoading = false;
+		}
+	}
 </script>
 
 <div class="px-4 py-6 sm:px-8 sm:py-10">
@@ -277,6 +326,55 @@
 						/></pre>
 				</section>
 			{/if}
+
+			<!-- Live logs (on-demand): pulled from the agent only when requested and
+			     never stored. Requires HOISTER_REPORT_LOGS=true on the agent. -->
+			<section class="rounded-xl border border-line bg-card p-5">
+				<div class="mb-1 flex items-center justify-between gap-3">
+					<h2 class="text-base font-semibold text-ink-code">Live logs (on demand)</h2>
+					<button
+						type="button"
+						onclick={loadLiveLogs}
+						disabled={liveLogsLoading || !logsUrl}
+						class="inline-flex items-center gap-2 rounded-lg border border-line bg-element px-3 py-1.5 text-xs font-medium text-ink-code transition hover:opacity-80 disabled:opacity-50"
+					>
+						{#if liveLogsLoading}
+							Fetching…
+						{:else if liveLogs !== null}
+							Refresh logs
+						{:else}
+							Load logs
+						{/if}
+					</button>
+				</div>
+				<p class="mb-3 text-xs text-ink-faint">
+					Fetched live from the agent on request and never stored. Requires
+					<code class="rounded bg-element px-1 py-0.5 font-mono">HOISTER_REPORT_LOGS=true</code>
+					on the agent. Secrets matching known sensitive env-var values are redacted.
+				</p>
+
+				{#if liveLogsError}
+					<div
+						class="rounded-lg border border-warning-border bg-warning-bg px-3 py-2 text-xs text-warning"
+					>
+						{liveLogsError}
+					</div>
+				{:else if liveLogs !== null}
+					{#if liveLogsAt}
+						<p class="mb-2 text-xs text-ink-ghost">As of {formatDate(liveLogsAt)}</p>
+					{/if}
+					{#if liveLogs.length > 0}
+						<pre
+							class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink-code"><RedactedText
+								text={liveLogs}
+							/></pre>
+					{:else}
+						<p class="text-sm text-ink-faint">The container produced no log output.</p>
+					{/if}
+				{:else if !liveLogsLoading}
+					<p class="text-sm text-ink-faint">Click “Load logs” to fetch the most recent output.</p>
+				{/if}
+			</section>
 
 			<!-- Health -->
 			{#if container.State?.Health}

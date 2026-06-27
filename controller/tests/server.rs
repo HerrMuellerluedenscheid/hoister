@@ -71,6 +71,7 @@ mod tests {
             api_secret: Some("tests-secret".to_string()),
             event_tx,
             pending_updates: Default::default(),
+            logs: Default::default(),
             email: None,
             dashboard_url: "https://hoister.io".to_string(),
         };

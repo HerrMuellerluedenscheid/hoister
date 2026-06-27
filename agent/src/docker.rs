@@ -803,6 +803,43 @@ impl DockerHandler {
         None
     }
 
+    /// Fetch a redacted log tail for one service on demand, e.g. in response to
+    /// a `ControllerEvent::RequestLogs`. Unlike the rollback path this ignores
+    /// the container's run-state — the operator asked for these logs explicitly.
+    /// Returns `None` when the service has no container or produced no output.
+    ///
+    /// Callers must gate this behind the `report_logs` flag; the method itself
+    /// does not, so it can also be used by code paths that have already checked.
+    pub(crate) async fn fetch_service_logs(
+        &self,
+        project: &ProjectName,
+        service_name: &ServiceName,
+    ) -> Option<String> {
+        let container_id = self
+            .find_container_by_service(project, service_name)
+            .await?;
+        let inspect = self
+            .docker
+            .inspect_container(
+                &container_id,
+                None::<bollard::query_parameters::InspectContainerOptions>,
+            )
+            .await
+            .ok()?;
+        // `fetch_log_tail` scrubs secrets sourced from the container's env before
+        // returning, using the un-redacted inspect we pass in here.
+        match crate::monitor::fetch_log_tail(&self.docker, &container_id, &inspect, 0).await {
+            Ok(logs) => logs,
+            Err(e) => {
+                warn!(
+                    "on-demand log fetch failed for service {}: {e}",
+                    service_name.as_str()
+                );
+                None
+            }
+        }
+    }
+
     pub(crate) async fn get_containers(
         &self,
         project_name: &ProjectName,

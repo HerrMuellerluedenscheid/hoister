@@ -60,9 +60,22 @@ pub struct PostContainerMetricsRequest {
     pub payload: HashMap<ServiceName, ContainerMetricSample>,
 }
 
+/// Body of POST /container/logs/{hostname}/{project_name}/{service_name}.
+/// A redacted log tail forwarded by the agent in response to a
+/// `ControllerEvent::RequestLogs`. The controller holds this in memory only —
+/// it is never written to the database.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PostContainerLogsRequest {
+    pub logs: String,
+}
+
 /// SSE events the controller broadcasts to subscribed agents.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum ControllerEvent {
     Retry((ProjectName, ContainerID)),
     ApplyUpdate((HostName, ProjectName, ServiceName)),
+    /// On-demand log request: ask the agent on `HostName` to ship the current
+    /// log tail for one service. Honoured only when that agent was started with
+    /// `HOISTER_REPORT_LOGS=true`; otherwise the agent ignores it.
+    RequestLogs((HostName, ProjectName, ServiceName)),
 }

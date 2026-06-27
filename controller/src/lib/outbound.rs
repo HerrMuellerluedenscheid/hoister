@@ -1,3 +1,4 @@
+pub mod logs_memory;
 pub mod notification_dispatch;
 pub mod pending_updates_memory;
 pub mod postgresql;
