@@ -42,14 +42,20 @@ use std::path::PathBuf;
 use std::{env, process};
 use tokio::sync::mpsc;
 
+/// Default config path, used when no `--config` is given on the command line and
+/// in the container build. A missing file is tolerated: configuration can be
+/// supplied entirely through `HOISTER_*` environment variables.
+const DEFAULT_CONFIG_PATH: &str = "/hoister.toml";
+
 /// Hoister agent — periodically checks for newer container images and updates
 /// the running containers, rolling back on failure.
 #[cfg(feature = "cli")]
 #[derive(Parser, Debug)]
 #[command(name = "hoister", version, about)]
 struct Cli {
-    /// Path to the TOML configuration file.
-    #[arg(short, long)]
+    /// Path to the TOML configuration file. Optional: configuration can also be
+    /// supplied entirely through HOISTER_* environment variables.
+    #[arg(short, long, default_value = DEFAULT_CONFIG_PATH)]
     config: PathBuf,
 }
 
@@ -62,7 +68,7 @@ fn config_path() -> PathBuf {
 
 #[cfg(not(feature = "cli"))]
 fn config_path() -> PathBuf {
-    PathBuf::from("/hoister.toml")
+    PathBuf::from(DEFAULT_CONFIG_PATH)
 }
 
 #[derive(Debug, Error)]
@@ -91,17 +97,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     set_group_id();
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
-    // Only enforce that the file exists when a path was explicitly requested via
-    // the CLI. In the container build the config is optional: figment merges in
-    // `HOISTER_*` env vars and defaults, so a missing `/hoister.toml` is fine.
-    #[cfg(feature = "cli")]
-    if !config_path.exists() {
-        error!(
-            "Config file not found at {}. Pass a different path with --config <path>.",
-            config_path.display()
-        );
-        process::exit(1);
-    }
+    // The config file is optional: figment merges in `HOISTER_*` env vars and
+    // defaults, so a missing file is fine and the agent can run from env alone.
     let mut config = config::load_config(&config_path).await;
 
     // If no hostname was configured, ask the Docker daemon for the host's name
