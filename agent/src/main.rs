@@ -91,6 +91,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     set_group_id();
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
+    // Only enforce that the file exists when a path was explicitly requested via
+    // the CLI. In the container build the config is optional: figment merges in
+    // `HOISTER_*` env vars and defaults, so a missing `/hoister.toml` is fine.
+    #[cfg(feature = "cli")]
     if !config_path.exists() {
         error!(
             "Config file not found at {}. Pass a different path with --config <path>.",
