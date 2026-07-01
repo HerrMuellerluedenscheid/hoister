@@ -321,7 +321,7 @@
 						known sensitive env-var values are redacted.
 					</p>
 					<pre
-						class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink-code"><RedactedText
+						class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink-ghost"><RedactedText
 							text={last_logs}
 						/></pre>
 				</section>
@@ -365,7 +365,7 @@
 					{/if}
 					{#if liveLogs.length > 0}
 						<pre
-							class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink-code"><RedactedText
+							class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink-ghost"><RedactedText
 								text={liveLogs}
 							/></pre>
 					{:else}

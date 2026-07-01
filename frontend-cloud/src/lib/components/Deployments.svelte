@@ -104,7 +104,7 @@
 									redacted.
 								</p>
 								<pre
-									class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink-code"><RedactedText
+									class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink-ghost"><RedactedText
 										text={item.logs}
 									/></pre>
 							</td>
