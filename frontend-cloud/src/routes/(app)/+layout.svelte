@@ -8,8 +8,9 @@
 	let { children } = $props();
 
 	const nav = [
-		{ href: '/dashboard', label: 'Dashboard' },
-		{ href: '/containers', label: 'Containers' },
+		{ href: '/containers', label: 'Projects' },
+		{ href: '/deployments', label: 'Deployments' },
+		{ href: '/resources', label: 'Resources' },
 		{ href: '/tokens', label: 'Tokens' },
 		{ href: '/notifiers', label: 'Notifiers' },
 		{ href: '/settings/plan', label: 'Plan' }
@@ -73,7 +74,7 @@
 				<path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
 			</svg>
 		</button>
-		<a href="/dashboard" class="flex items-center gap-2 font-semibold tracking-tight">
+		<a href="/containers" class="flex items-center gap-2 font-semibold tracking-tight">
 			<svg
 				class="h-6 w-6 text-brand-accent"
 				viewBox="0 0 24 24"
@@ -109,7 +110,7 @@
 			: '-translate-x-full'}"
 	>
 		<div class="mb-8 flex items-center justify-between">
-			<a href="/dashboard" class="flex items-center gap-2 font-semibold tracking-tight">
+			<a href="/containers" class="flex items-center gap-2 font-semibold tracking-tight">
 				<svg
 					class="h-6 w-6 text-brand-accent"
 					viewBox="0 0 24 24"

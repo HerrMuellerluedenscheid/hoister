@@ -1,8 +1,12 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import type { Deployment } from '../../bindings/Deployment';
 	import RedactedText from './RedactedText.svelte';
 
-	let { data }: { data: Deployment[] } = $props();
+	// `linkToContainer` makes each row navigate to the container the deployment
+	// happened on — used on the all-deployments list, off on the container page.
+	let { data, linkToContainer = false }: { data: Deployment[]; linkToContainer?: boolean } =
+		$props();
 
 	// Track which deployments have their captured failed-container logs expanded.
 	let expanded = $state<Set<bigint>>(new Set());
@@ -12,6 +16,12 @@
 		if (next.has(id)) next.delete(id);
 		else next.add(id);
 		expanded = next;
+	}
+
+	function containerHref(item: Deployment): string {
+		return `/containers/${encodeURIComponent(item.hostname)}/${encodeURIComponent(
+			item.project_name
+		)}/${encodeURIComponent(item.service_name)}`;
 	}
 </script>
 
@@ -48,7 +58,20 @@
 			</thead>
 			<tbody class="divide-y divide-line">
 				{#each data as item}
-					<tr class="transition-colors hover:bg-element/50">
+					<tr
+						class="transition-colors hover:bg-element/50 {linkToContainer ? 'cursor-pointer' : ''}"
+						role={linkToContainer ? 'link' : undefined}
+						tabindex={linkToContainer ? 0 : undefined}
+						onclick={linkToContainer ? () => goto(containerHref(item)) : undefined}
+						onkeydown={linkToContainer
+							? (e) => {
+									if (e.key === 'Enter' || e.key === ' ') {
+										e.preventDefault();
+										goto(containerHref(item));
+									}
+								}
+							: undefined}
+					>
 						<td class="px-6 py-4 text-sm whitespace-nowrap text-ink-muted">
 							{item.hostname}
 						</td>
@@ -85,7 +108,10 @@
 							{#if item.logs}
 								<button
 									type="button"
-									onclick={() => toggle(item.id)}
+									onclick={(e) => {
+										e.stopPropagation();
+										toggle(item.id);
+									}}
 									class="mt-2 text-xs text-brand-accent hover:text-brand-light"
 								>
 									{expanded.has(item.id) ? 'Hide logs' : 'View logs'}

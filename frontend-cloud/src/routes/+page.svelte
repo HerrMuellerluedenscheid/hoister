@@ -101,10 +101,10 @@
 			<Show when="signed-in">
 				{#snippet children()}
 					<a
-						href="/dashboard"
+						href="/containers"
 						class="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-stone-100 transition hover:bg-brand-hover"
 					>
-						Dashboard
+						Open app
 					</a>
 					<UserButton />
 				{/snippet}
@@ -134,10 +134,10 @@
 		<Show when="signed-in">
 			{#snippet children()}
 				<a
-					href="/dashboard"
+					href="/containers"
 					class="rounded-xl bg-brand px-6 pt-3 pb-3 mb-5 text-sm font-semibold text-stone-100 shadow-lg transition hover:bg-brand-hover active:scale-95"
 				>
-					Go to Dashboard →
+					Open app →
 				</a>
 			{/snippet}
 		</Show>

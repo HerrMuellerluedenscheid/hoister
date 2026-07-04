@@ -1,7 +1,7 @@
 import type { RequestHandler } from './$types';
 import { SITE_URL } from '$lib/seo';
 
-// Public, indexable routes only. Auth-gated app pages (/dashboard, /tokens, …)
+// Public, indexable routes only. Auth-gated app pages (/containers, /tokens, …)
 // and the legal pages (/impressum, /datenschutz) are noindex and excluded.
 const ROUTES = ['/'];
 
