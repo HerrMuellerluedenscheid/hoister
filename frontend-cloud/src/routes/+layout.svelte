@@ -24,7 +24,11 @@
 	});
 </script>
 
-<ClerkProvider publishableKey={env.PUBLIC_CLERK_PUBLISHABLE_KEY}>
+<ClerkProvider
+	publishableKey={env.PUBLIC_CLERK_PUBLISHABLE_KEY}
+	signUpFallbackRedirectUrl="/tokens"
+	signInFallbackRedirectUrl="/containers"
+>
 	{@render children()}
 	<CookieBanner />
 </ClerkProvider>
