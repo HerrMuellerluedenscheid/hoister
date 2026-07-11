@@ -16,7 +16,18 @@
 # Public dashboard.
 {$HOISTER_CLOUD_DOMAIN} {
 	encode zstd gzip
-	reverse_proxy hoister-frontend-cloud:3000
+
+	# Vulnerability scanners spray these paths across every public IP
+	# (WordPress, xmlrpc, .env, .git, PHP apps). Drop the connection so they
+	# never reach the SvelteKit app or clutter its logs.
+	@probes path /wp-admin/* /wp-login.php /xmlrpc.php /.env /.git/* /vendor/* *.php *.aspx
+	handle @probes {
+		abort
+	}
+
+	handle {
+		reverse_proxy hoister-frontend-cloud:3000
+	}
 
 	# Third parties allowed at runtime:
 	#   - Clerk (clerk.com / clerk.accounts.dev / clerk.hoister.io): auth SDK.
