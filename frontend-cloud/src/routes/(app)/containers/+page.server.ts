@@ -2,6 +2,7 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { deleteProject, getInspections } from '$lib/api/inspect';
 import { applyActionFromForm, getPendingUpdates } from '$lib/api/pendingUpdates';
+import { listTokens } from '$lib/api/tokens';
 import { startProCheckout } from '$lib/server/checkout';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -15,6 +16,20 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 	if (inspectionsResult.status === 'rejected') {
 		console.error('[containers] inspections fetch failed:', inspectionsResult.reason);
+	}
+
+	// A user with no token yet has nothing to do here — send them to onboarding.
+	// Only pay for the token lookup when there are no containers to show; an
+	// established user with a connected agent always has at least one inspection.
+	if (
+		inspectionsResult.status === 'fulfilled' &&
+		inspectionsResult.value.inspections.length === 0
+	) {
+		const tokens = await listTokens(auth.userId).catch((e) => {
+			console.error('[containers] token check failed:', e);
+			return null;
+		});
+		if (tokens && tokens.length === 0) throw redirect(303, '/tokens');
 	}
 
 	return {

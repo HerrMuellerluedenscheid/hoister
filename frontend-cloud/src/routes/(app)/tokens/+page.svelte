@@ -36,8 +36,7 @@
     security_opt:
       - no-new-privileges:true
     environment:
-      HOISTER_CONTROLLER_TOKEN: "${justCreated?.token ?? ''}"
-      HOISTER_HOSTNAME: "<this-host-name>"`);
+      HOISTER_CONTROLLER_TOKEN: "${justCreated?.token ?? ''}"`);
 
 	// The label that opts a container into Hoister management.
 	const labelSnippet = `services:
