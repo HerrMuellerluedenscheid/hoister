@@ -40,6 +40,6 @@
 	"dependencies": {
 		"posthog-js": "^1.386.6",
 		"stripe": "^17.7.0",
-		"svelte-clerk": "^1.1.9"
+		"svelte-clerk": "^1.1.10"
 	}
 }
