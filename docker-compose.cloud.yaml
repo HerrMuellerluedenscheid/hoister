@@ -33,7 +33,10 @@ services:
       HOISTER_CLOUD_API_DOMAIN: ${HOISTER_CLOUD_API_DOMAIN:?HOISTER_CLOUD_API_DOMAIN is required}
       HOISTER_CLOUD_LE_EMAIL: ${HOISTER_CLOUD_LE_EMAIL:?HOISTER_CLOUD_LE_EMAIL is required}
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Mount the directory (not the single file) so `caddy reload` picks up
+      # edits: a single-file bind mount pins to the inode at container start,
+      # and git rewrites the file with a new inode, leaving the container stale.
+      - ./deploy/caddy:/etc/caddy:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
