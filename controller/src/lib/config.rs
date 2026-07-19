@@ -98,6 +98,10 @@ fn default_dashboard_url() -> String {
     "https://hoister.io".to_string()
 }
 
+fn default_pending_update_ttl_secs() -> u64 {
+    crate::outbound::pending_updates_memory::DEFAULT_PENDING_UPDATE_TTL_SECS
+}
+
 pub fn get_config() -> Config {
     let config: Config = Figment::new()
         .merge(Env::prefixed("HOISTER_CONTROLLER_"))

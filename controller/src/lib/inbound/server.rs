@@ -1040,6 +1040,12 @@ async fn delete_project<
         .container_state_service
         .delete_project(&user_id, &hostname, &project_name)
         .await;
+    // Clear the project's pending updates even when no state row matched, so a
+    // lingering update whose state entry already aged out can still be removed.
+    state
+        .pending_updates
+        .remove_project(&user_id, &hostname, &project_name)
+        .await;
     if deleted {
         Ok(StatusCode::NO_CONTENT)
     } else {
