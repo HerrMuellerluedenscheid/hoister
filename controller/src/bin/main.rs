@@ -32,7 +32,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
     let config = get_config();
 
-    let (event_tx, _) = broadcast::channel::<UserScopedEvent>(100);
+    // Single broadcast channel shared by every tenant's SSE subscribers. Each
+    // subscriber filters to its own user_id, but they all read from the same
+    // ring buffer, so one tenant's burst counts against everyone's capacity. A
+    // subscriber that falls further behind than this many events gets a
+    // `Lagged` error and misses those events (see `sse::sse_handler`, which now
+    // survives that instead of dropping the stream). These events are
+    // human-triggered agent commands (ApplyUpdate / RequestLogs), so volume is
+    // low; a generous ring keeps lag from ever being reached in practice.
+    let (event_tx, _) = broadcast::channel::<UserScopedEvent>(1024);
 
     // HOISTER_CONTROLLER_TOKEN_PEPPER is the HMAC key for agent-token storage.
     // Without it, hashes degrade to unsalted SHA-256, so a DB read alone is

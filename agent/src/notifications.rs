@@ -271,7 +271,7 @@ async fn send_to_controller(
         Some(ref controller) => {
             debug!(
                 "sending deployment request to controller: {}",
-                &controller.url
+                controller.url
             );
             let token = controller.token.as_deref().unwrap_or_default();
             (&controller.url, token)

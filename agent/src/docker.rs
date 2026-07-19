@@ -522,14 +522,14 @@ impl DockerHandler {
             vec![]
         };
 
-        info!("Stopping container {:?}...", &container_id);
+        info!("Stopping container {:?}...", container_id);
         let options_stop_container = StopContainerOptionsBuilder::new().t(30).build();
         self.docker
             .stop_container(container_id, Some(options_stop_container.clone()))
             .await?;
 
         let backup_name = format!("{container_id}-backup");
-        debug!("rename old container to {}", &backup_name);
+        debug!("rename old container to {}", backup_name);
 
         let rename_options = RenameContainerOptions {
             name: backup_name.clone(),
