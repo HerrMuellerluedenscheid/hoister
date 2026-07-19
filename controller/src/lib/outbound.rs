@@ -4,7 +4,6 @@ pub mod pending_updates_memory;
 pub mod postgresql;
 pub mod secrets;
 pub mod sqlite;
-pub mod state_memory;
 
 use crate::domain::billing::models::{Plan, PlanError};
 use crate::domain::billing::ports::PlanRepository;
