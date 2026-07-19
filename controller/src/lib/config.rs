@@ -53,6 +53,14 @@ pub struct Config {
     /// to their own frontend origin. Env: `HOISTER_CONTROLLER_DASHBOARD_URL`.
     #[serde(default = "default_dashboard_url")]
     pub dashboard_url: String,
+    /// How long a reported pending update stays listed after the agent last
+    /// (re-)reported it. Agents re-report a still-available update on every
+    /// check tick, so this only expires entries that stopped being refreshed —
+    /// hostname changed, service removed, agent gone. Must comfortably exceed
+    /// the slowest agent check schedule; the default bridges a daily cron.
+    /// Env: `HOISTER_CONTROLLER_PENDING_UPDATE_TTL_SECS`.
+    #[serde(default = "default_pending_update_ttl_secs")]
+    pub pending_update_ttl_secs: u64,
     pub database_path: String,
     #[serde(default)]
     pub tls_cert_path: Option<PathBuf>,
@@ -88,6 +96,10 @@ fn default_internal_bind_addr() -> String {
 
 fn default_dashboard_url() -> String {
     "https://hoister.io".to_string()
+}
+
+fn default_pending_update_ttl_secs() -> u64 {
+    crate::outbound::pending_updates_memory::DEFAULT_PENDING_UPDATE_TTL_SECS
 }
 
 pub fn get_config() -> Config {

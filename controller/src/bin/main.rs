@@ -78,7 +78,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let db = Database::connect(&config.database_path, token_pepper.into_bytes(), aead).await?;
 
-    let pending_updates = PendingUpdatesMemory::default();
+    let pending_updates = PendingUpdatesMemory::new(chrono::Duration::seconds(
+        config.pending_update_ttl_secs as i64,
+    ));
     let logs = LogsMemory::default();
 
     // Email (Resend) delivery is controller-wide: users supply only a
