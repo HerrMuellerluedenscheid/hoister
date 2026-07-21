@@ -16,7 +16,7 @@
     "test": "npm run test:unit -- --run"
   },
   "devDependencies": {
-    "@eslint/compat": "^1.4.1",
+    "@eslint/compat": "^2.1.0",
     "@eslint/js": "^9.39.4",
     "@internationalized/date": "^3.12.2",
     "@lucide/svelte": "^0.544.0",
@@ -30,7 +30,7 @@
     "@vitest/browser": "^4.1.8",
     "bits-ui": "^2.18.1",
     "clsx": "^2.1.1",
-    "eslint": "^9.39.4",
+    "eslint": "^10.7.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-svelte": "^3.19.0",
     "globals": "^16.5.0",
