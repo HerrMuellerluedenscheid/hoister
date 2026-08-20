@@ -1,16 +1,15 @@
-# Build stage — use Bun to mirror the dev setup (bun.lock). Use the glibc
-# image (not -alpine): bun on musl intermittently segfaults during `bun run
-# build`. The build output is plain adapter-node JS, so the runtime stage
-# below still runs fine on node:alpine.
-FROM oven/bun:1 AS builder
+# Build stage — npm is the single source of truth for dependencies here
+# (package-lock.json). Dependabot only maintains the npm lockfile, so keeping
+# a second bun.lock alongside it drifted on every bump and broke the build.
+FROM node:24-slim AS builder
 
 WORKDIR /app
 
-COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
+COPY package.json package-lock.json ./
+RUN npm ci
 
 COPY . .
-RUN bun run build
+RUN npm run build
 
 # Production stage — Node runtime is enough to serve adapter-node output.
 FROM node:24-alpine
