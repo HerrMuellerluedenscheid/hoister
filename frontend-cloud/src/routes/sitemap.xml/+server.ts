@@ -7,7 +7,7 @@ const ROUTES = ['/'];
 
 // Served dynamically by adapter-node rather than prerendered: the payload is
 // tiny and on-demand rendering avoids the build-time prerender step (which
-// aborts under bun in the production image build).
+// aborts in the production image build).
 export const GET: RequestHandler = () => {
 	const urls = ROUTES.map(
 		(path) =>

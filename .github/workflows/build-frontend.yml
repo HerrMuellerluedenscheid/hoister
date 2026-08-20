@@ -39,3 +39,28 @@ jobs:
         working-directory: frontend
         run: npm run test
         continue-on-error: true
+
+  # frontend-cloud is built from package-lock.json only. `npm ci` hard-fails
+  # when package.json and the lockfile disagree, so a Dependabot PR that
+  # desyncs them goes red here instead of at `docker build` time on the VPS.
+  build-cloud:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: 'frontend-cloud/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: frontend-cloud
+        run: npm ci
+
+      - name: Build project
+        working-directory: frontend-cloud
+        run: npm run build
