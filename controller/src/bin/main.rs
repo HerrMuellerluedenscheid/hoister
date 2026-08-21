@@ -1,4 +1,5 @@
 use controller::config::get_config;
+use controller::domain::alerts::service::Service as AlertsServiceImpl;
 use controller::domain::billing::service::Service as BillingServiceImpl;
 use controller::domain::container_state::service::Service as ContainerStateService;
 use controller::domain::deployments::service::Service as DeploymentsService;
@@ -110,7 +111,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         token_service: Arc::new(TokenService::new(db.clone())),
         notifier_service: Arc::new(NotifierService::new(db.clone())),
         billing_service: Arc::new(BillingServiceImpl::new(db.clone())),
-        metrics_service: Arc::new(MetricsService::new(db)),
+        metrics_service: Arc::new(MetricsService::new(db.clone())),
+        alerts_service: Arc::new(AlertsServiceImpl::new(db)),
         #[cfg(feature = "self-hosted")]
         api_secret: config.api_secret.clone(),
         event_tx,

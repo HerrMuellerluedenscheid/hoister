@@ -13,6 +13,7 @@
 		{ href: '/resources', label: 'Resources' },
 		{ href: '/tokens', label: 'Tokens' },
 		{ href: '/notifiers', label: 'Notifiers' },
+		{ href: '/alerts', label: 'Alerts' },
 		{ href: '/settings/plan', label: 'Plan' }
 	];
 

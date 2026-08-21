@@ -103,6 +103,15 @@ webhook="https://chat.googleapis.com/v1/spaces/AAAAxxxxxxx/messages?key=XXXX&tok
 url="https://example.com/hooks/hoister"
 [dispatcher.webhook.headers]
 Authorization="Bearer your-token"
+
+# Metric alerts: notify (via the dispatchers above) when a container metric
+# stays above a threshold. See the "Metric alerts" section below.
+[[alert]]
+metric="cpu_pct"     # cpu_pct | mem_pct | mem_bytes
+threshold=80.0
+for="5m"             # sustained duration before firing (default 5m)
+cooldown="1h"        # optional: remind at most once per interval while firing
+service="web"        # optional: watch one compose service only
 ```
 
 ## Disable automatic rollout
@@ -130,6 +139,34 @@ report_logs = true       # turn failure-log forwarding on
 ```
 
 Both require a controller to be configured. See the [Metrics & log forwarding guide](/guides/monitoring/) for details and the security note on logs.
+
+## Metric alerts
+
+`[[alert]]` rules notify you through your configured dispatchers when a container metric stays at or above a threshold. They are evaluated locally against the same per-minute samples that power the dashboard graphs, so they also work **standalone** — no controller required (metrics never leave the host unless `report_metrics` is on and a controller is configured).
+
+```toml title="hoister.toml"
+[[alert]]
+metric="cpu_pct"     # CPU percentage, like `docker stats` (0..100 × cores)
+threshold=80.0
+for="5m"             # must be exceeded this long before firing; default 5m
+cooldown="1h"        # optional: remind at most once per hour while still firing
+
+[[alert]]
+metric="mem_pct"     # memory as % of the container's limit (needs a limit set)
+threshold=90.0
+service="db"         # optional: only watch this compose service
+
+[[alert]]
+metric="mem_bytes"   # absolute memory usage in bytes
+threshold=1073741824.0
+for=120              # durations also accept plain seconds
+```
+
+The temporal behaviour is deliberately spike-proof: a rule *fires* only once the threshold has been exceeded continuously for `for` (CPU samples are already averaged over the whole minute, so a sub-second spike can't trigger anything), and it *resolves* — with a second notification — only after the value has stayed below the threshold for the same duration. `cooldown` limits repeat reminders while a rule keeps firing; without it you get exactly one notification per episode.
+
+Durations accept plain seconds or an `s`/`m`/`h`/`d` suffix. Alert rules can only be set in the TOML file, not via environment variables.
+
+Users of the hosted dashboard can additionally manage alert rules at [hoister.io](https://hoister.io) under **Alerts** — those are evaluated by the cloud controller against the metrics your agents report and delivered through your configured notifiers.
 
 ## Custom redaction keywords
 

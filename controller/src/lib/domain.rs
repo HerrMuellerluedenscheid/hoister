@@ -1,3 +1,4 @@
+pub mod alerts;
 pub mod billing;
 pub mod container_state;
 pub mod deployments;

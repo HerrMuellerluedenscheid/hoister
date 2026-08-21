@@ -10,6 +10,7 @@ mod tests {
         ServiceName,
     };
 
+    use controller::domain::alerts::service::Service as AlertsService;
     use controller::domain::billing::ports::BillingService as _;
     use controller::domain::billing::service::Service as BillingService;
     use controller::domain::container_state::service::Service as ContainerStateService;
@@ -66,7 +67,8 @@ mod tests {
             token_service: Arc::new(TokenService::new(db.clone())),
             notifier_service: Arc::new(NotifierService::new(db.clone())),
             billing_service: Arc::new(BillingService::new(db.clone())),
-            metrics_service: Arc::new(MetricsService::new(db)),
+            metrics_service: Arc::new(MetricsService::new(db.clone())),
+            alerts_service: Arc::new(AlertsService::new(db)),
             #[cfg(feature = "self-hosted")]
             api_secret: Some("tests-secret".to_string()),
             event_tx,
@@ -420,5 +422,161 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
 
         assert_eq!(latest_metrics(&internal).await.len(), 0);
+    }
+
+    /// Alert-rule CRUD over the internal router, plus a metrics POST through
+    /// the agent router while a rule exists — evaluation runs on that path and
+    /// must never disturb ingestion. (The firing side-effect is a notifier
+    /// dispatch, which has no observable endpoint here; the evaluator itself
+    /// is covered by the domain unit tests.)
+    #[tokio::test]
+    async fn test_alert_rule_crud_and_evaluation_on_ingestion() {
+        let (agent, internal, _db) = setup_test_app().await;
+
+        let body = serde_json::json!({
+            "metric": "cpu_pct",
+            "threshold": 80.0,
+            "for_seconds": 0,
+            "service": "web",
+        });
+        let response = internal
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/alerts")
+                    .header("X-User-Id", TEST_USER)
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let created: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(created["data"]["metric"], "cpu_pct");
+        assert_eq!(created["data"]["enabled"], true);
+        let rule_id = created["data"]["id"].as_str().unwrap().to_string();
+
+        // The rule shows up in the listing.
+        let response = internal
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/alerts")
+                    .header("X-User-Id", TEST_USER)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let listed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(listed["data"].as_array().map(|a| a.len()), Some(1));
+
+        // Invalid rules are rejected with the validation message.
+        let bad = serde_json::json!({ "metric": "cpu_pct", "threshold": -5.0 });
+        let response = internal
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/alerts")
+                    .header("X-User-Id", TEST_USER)
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(bad.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        // Ingest a breaching sample through the agent router: evaluation runs
+        // on this request (the rule fires with for_seconds=0) and ingestion
+        // must still store the sample. Seed the state row first so the metric
+        // insert resolves the service.
+        let state_body = serde_json::json!({
+            "project_name": "alerts-project",
+            "payload": { "web": { "inspect": {} } }
+        });
+        let response = agent
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/container/state/test-host/alerts-project")
+                    .header("Authorization", "Bearer tests-secret")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(state_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let metrics_body = serde_json::json!({
+            "project_name": "alerts-project",
+            "payload": { "web": { "cpu_pct": 95.0, "mem_bytes": 1000, "mem_limit_bytes": 2000 } }
+        });
+        let response = agent
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/container/metrics/test-host/alerts-project")
+                    .header("Authorization", "Bearer tests-secret")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(metrics_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(latest_metrics(&internal).await.len(), 1);
+
+        // Disable, delete, and confirm the second delete 404s.
+        let response = internal
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/alerts/{rule_id}/enabled"))
+                    .header("X-User-Id", TEST_USER)
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(r#"{"enabled": false}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let response = internal
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/alerts/{rule_id}"))
+                    .header("X-User-Id", TEST_USER)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let response = internal
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/alerts/{rule_id}"))
+                    .header("X-User-Id", TEST_USER)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 }

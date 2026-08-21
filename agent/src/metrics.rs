@@ -1,7 +1,9 @@
 //! Opt-in container resource-usage collection. When the operator sets
 //! `HOISTER_REPORT_METRICS=true`, this samples Docker's `stats` endpoint for
 //! every tracked container on a fixed interval and ships CPU/memory figures
-//! to the controller, which persists them as a time series for graphing.
+//! to the controller, which persists them as a time series for graphing. The
+//! same samples feed the local `[[alert]]` rules (see [`crate::alerts`]), so
+//! the loop also runs sink-less when only alerts need the readings.
 //!
 //! Kept separate from `monitor` because it runs on a coarser cadence (once a
 //! minute vs the 5s state heartbeat): a stats sample is comparatively
@@ -15,18 +17,20 @@
 //! the latest reading on each tick.
 
 use crate::HoisterError;
+use crate::alerts::AlertEngine;
 use crate::docker::get_service_identifier;
 use crate::monitor::list_tracked_containers;
 use bollard::Docker;
 use bollard::models::ContainerStatsResponse;
 use bollard::query_parameters::StatsOptionsBuilder;
+use chatterbox::message::Dispatcher;
 use futures_util::StreamExt;
 use hoister_shared::wire::{ContainerMetricSample, PostContainerMetricsRequest};
 use hoister_shared::{HostName, ProjectName, ServiceName};
 use log::{debug, error, info};
 use reqwest::Url;
 use std::collections::HashMap;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time;
 
 /// How often we sample stats. Decoupled from the 5s state monitor — per-minute
@@ -268,12 +272,20 @@ async fn send_to_backend(
     Ok(())
 }
 
+/// Where collected samples are shipped when the operator opted into
+/// controller reporting. The sampling loop also runs sink-less when only
+/// `[[alert]]` rules need the readings.
+pub(crate) struct ControllerSink {
+    pub(crate) url: Url,
+    pub(crate) token: Option<String>,
+    pub(crate) client: reqwest::Client,
+}
+
 pub(crate) async fn start(
-    controller_url: &Url,
-    token: Option<String>,
+    sink: Option<ControllerSink>,
+    mut alerts: Option<(AlertEngine, Dispatcher)>,
     project_name: ProjectName,
     hostname: HostName,
-    client: reqwest::Client,
 ) -> Result<(), Box<dyn std::error::Error + 'static>> {
     info!("Starting metrics collector (interval: {SAMPLE_INTERVAL:?})");
     let docker = Docker::connect_with_socket_defaults()?;
@@ -286,23 +298,37 @@ pub(crate) async fn start(
         interval.tick().await;
 
         match collect_samples(&project_name, &docker, &mut prev_cpu).await {
-            Ok(samples) if samples.is_empty() => {
-                debug!("No metrics samples collected this tick");
-            }
             Ok(samples) => {
-                if let Err(e) = send_to_backend(
-                    &client,
-                    controller_url,
-                    token.as_deref(),
-                    project_name.clone(),
-                    hostname.clone(),
-                    &samples,
-                )
-                .await
-                {
-                    error!("Failed to send metrics to backend: {e}");
-                } else {
-                    debug!("Sent metrics for {} services", samples.len());
+                if let Some((engine, dispatcher)) = alerts.as_mut() {
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map(|d| d.as_secs() as i64)
+                        .unwrap_or(0);
+                    for message in engine.evaluate(&samples, now) {
+                        info!("metric alert: {}", message.title);
+                        if let Err(e) = dispatcher.dispatch(&message) {
+                            error!("Failed to dispatch metric alert: {e:?}");
+                        }
+                    }
+                }
+
+                if samples.is_empty() {
+                    debug!("No metrics samples collected this tick");
+                } else if let Some(sink) = &sink {
+                    if let Err(e) = send_to_backend(
+                        &sink.client,
+                        &sink.url,
+                        sink.token.as_deref(),
+                        project_name.clone(),
+                        hostname.clone(),
+                        &samples,
+                    )
+                    .await
+                    {
+                        error!("Failed to send metrics to backend: {e}");
+                    } else {
+                        debug!("Sent metrics for {} services", samples.len());
+                    }
                 }
             }
             Err(e) => error!("Error collecting metrics: {e}"),

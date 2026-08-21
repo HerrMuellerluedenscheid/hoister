@@ -5,6 +5,8 @@ pub mod postgresql;
 pub mod secrets;
 pub mod sqlite;
 
+use crate::domain::alerts::models::{AlertRule, AlertRuleError, CreateAlertRuleRequest};
+use crate::domain::alerts::port::AlertsRepository;
 use crate::domain::billing::models::{Plan, PlanError};
 use crate::domain::billing::ports::PlanRepository;
 use crate::domain::container_state::models::state::{
@@ -394,6 +396,94 @@ impl ContainerStateRepository for Database {
                     project_name,
                 )
                 .await
+            }
+        }
+    }
+}
+
+impl AlertsRepository for Database {
+    async fn list_rules(&self, user_id: &str) -> Result<Vec<AlertRule>, AlertRuleError> {
+        match self {
+            Self::Sqlite(db) => <Sqlite as AlertsRepository>::list_rules(db, user_id).await,
+            Self::Postgresql(db) => <Postgresql as AlertsRepository>::list_rules(db, user_id).await,
+        }
+    }
+
+    async fn create_rule(
+        &self,
+        user_id: &str,
+        req: CreateAlertRuleRequest,
+    ) -> Result<AlertRule, AlertRuleError> {
+        match self {
+            Self::Sqlite(db) => <Sqlite as AlertsRepository>::create_rule(db, user_id, req).await,
+            Self::Postgresql(db) => {
+                <Postgresql as AlertsRepository>::create_rule(db, user_id, req).await
+            }
+        }
+    }
+
+    async fn delete_rule(
+        &self,
+        user_id: &str,
+        rule_id: uuid::Uuid,
+    ) -> Result<bool, AlertRuleError> {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as AlertsRepository>::delete_rule(db, user_id, rule_id).await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as AlertsRepository>::delete_rule(db, user_id, rule_id).await
+            }
+        }
+    }
+
+    async fn set_enabled(
+        &self,
+        user_id: &str,
+        rule_id: uuid::Uuid,
+        enabled: bool,
+    ) -> Result<bool, AlertRuleError> {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as AlertsRepository>::set_enabled(db, user_id, rule_id, enabled).await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as AlertsRepository>::set_enabled(db, user_id, rule_id, enabled).await
+            }
+        }
+    }
+
+    async fn get_states(
+        &self,
+        rule_ids: &[uuid::Uuid],
+        hostname: &HostName,
+        project: &ProjectName,
+    ) -> Result<
+        std::collections::HashMap<(uuid::Uuid, ServiceName), hoister_shared::alerts::AlertState>,
+        AlertRuleError,
+    > {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as AlertsRepository>::get_states(db, rule_ids, hostname, project).await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as AlertsRepository>::get_states(db, rule_ids, hostname, project).await
+            }
+        }
+    }
+
+    async fn put_states(
+        &self,
+        hostname: &HostName,
+        project: &ProjectName,
+        states: &[(uuid::Uuid, ServiceName, hoister_shared::alerts::AlertState)],
+    ) -> Result<(), AlertRuleError> {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as AlertsRepository>::put_states(db, hostname, project, states).await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as AlertsRepository>::put_states(db, hostname, project, states).await
             }
         }
     }
