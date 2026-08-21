@@ -1,3 +1,5 @@
+use crate::domain::alerts::models::{AlertRule, AlertRuleError, CreateAlertRuleRequest};
+use crate::domain::alerts::port::AlertsRepository;
 use crate::domain::billing::models::{Plan, PlanError};
 use crate::domain::billing::ports::PlanRepository;
 use crate::domain::container_state::models::state::{
@@ -18,6 +20,7 @@ use crate::domain::notifiers::models::{Notifier, NotifierConfig, NotifierError, 
 use crate::domain::notifiers::ports::NotifierRepository;
 use crate::domain::tokens::models::{ApiToken, TokenError};
 use crate::domain::tokens::ports::TokenRepository;
+use hoister_shared::alerts::{AlertMetric, AlertState};
 use hoister_shared::{DeploymentStatus, HostName, ImageName, ProjectName, ServiceName};
 use log::error;
 use sqlx::{Error as SqlxError, PgPool, Row};
@@ -1113,5 +1116,199 @@ impl MetricsRepository for Postgresql {
                 },
             )
             .collect()
+    }
+}
+
+impl AlertsRepository for Postgresql {
+    async fn list_rules(&self, user_id: &str) -> Result<Vec<AlertRule>, AlertRuleError> {
+        let rows = sqlx::query(
+            "SELECT id, user_id, metric, threshold, for_seconds, cooldown_seconds,
+                    hostname, project, service, enabled, created_at::text AS created_at
+                FROM alert_rule
+                WHERE user_id = $1
+                ORDER BY created_at DESC, id DESC",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("list_rules failed: {e:?}");
+            AlertRuleError::UnknownError
+        })?;
+
+        let mut out = Vec::with_capacity(rows.len());
+        for r in rows {
+            let metric_str: String = r.get("metric");
+            let metric = AlertMetric::parse(&metric_str).ok_or_else(|| {
+                AlertRuleError::InvalidRule(format!("unknown metric {metric_str}"))
+            })?;
+            out.push(AlertRule {
+                id: r.get::<uuid::Uuid, _>("id"),
+                user_id: r.get("user_id"),
+                metric,
+                threshold: r.get("threshold"),
+                for_seconds: r.get::<i64, _>("for_seconds") as u64,
+                cooldown_seconds: r.get::<i64, _>("cooldown_seconds") as u64,
+                hostname: r.get::<Option<String>, _>("hostname").map(HostName::new),
+                project: r.get::<Option<String>, _>("project").map(ProjectName::new),
+                service: r.get::<Option<String>, _>("service").map(ServiceName::new),
+                enabled: r.get("enabled"),
+                created_at: r.get("created_at"),
+            });
+        }
+        Ok(out)
+    }
+
+    async fn create_rule(
+        &self,
+        user_id: &str,
+        req: CreateAlertRuleRequest,
+    ) -> Result<AlertRule, AlertRuleError> {
+        let id = uuid::Uuid::new_v4();
+        let row = sqlx::query(
+            "INSERT INTO alert_rule
+                (id, user_id, metric, threshold, for_seconds, cooldown_seconds,
+                 hostname, project, service)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                RETURNING created_at::text AS created_at",
+        )
+        .bind(id)
+        .bind(user_id)
+        .bind(req.metric.as_str())
+        .bind(req.threshold)
+        .bind(req.for_seconds as i64)
+        .bind(req.cooldown_seconds as i64)
+        .bind(req.hostname.as_ref().map(|h| h.as_str().to_string()))
+        .bind(req.project.as_ref().map(|p| p.as_str().to_string()))
+        .bind(req.service.as_ref().map(|s| s.as_str().to_string()))
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("create_rule failed: {e:?}");
+            AlertRuleError::UnknownError
+        })?;
+        Ok(AlertRule {
+            id,
+            user_id: user_id.to_string(),
+            metric: req.metric,
+            threshold: req.threshold,
+            for_seconds: req.for_seconds,
+            cooldown_seconds: req.cooldown_seconds,
+            hostname: req.hostname,
+            project: req.project,
+            service: req.service,
+            enabled: true,
+            created_at: row.get("created_at"),
+        })
+    }
+
+    async fn delete_rule(
+        &self,
+        user_id: &str,
+        rule_id: uuid::Uuid,
+    ) -> Result<bool, AlertRuleError> {
+        let result = sqlx::query("DELETE FROM alert_rule WHERE id = $1 AND user_id = $2")
+            .bind(rule_id)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                error!("delete_rule failed: {e:?}");
+                AlertRuleError::UnknownError
+            })?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn set_enabled(
+        &self,
+        user_id: &str,
+        rule_id: uuid::Uuid,
+        enabled: bool,
+    ) -> Result<bool, AlertRuleError> {
+        let result =
+            sqlx::query("UPDATE alert_rule SET enabled = $1 WHERE id = $2 AND user_id = $3")
+                .bind(enabled)
+                .bind(rule_id)
+                .bind(user_id)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| {
+                    error!("set_enabled failed: {e:?}");
+                    AlertRuleError::UnknownError
+                })?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn get_states(
+        &self,
+        rule_ids: &[uuid::Uuid],
+        hostname: &HostName,
+        project: &ProjectName,
+    ) -> Result<HashMap<(uuid::Uuid, ServiceName), AlertState>, AlertRuleError> {
+        if rule_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let rows = sqlx::query(
+            "SELECT rule_id, service, state FROM alert_state
+                WHERE hostname = $1 AND project = $2 AND rule_id = ANY($3)",
+        )
+        .bind(hostname.as_str())
+        .bind(project.as_str())
+        .bind(rule_ids)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("get_states failed: {e:?}");
+            AlertRuleError::UnknownError
+        })?;
+
+        let mut out = HashMap::with_capacity(rows.len());
+        for r in rows {
+            let raw: String = r.get("state");
+            let state: AlertState = serde_json::from_str(&raw).map_err(|e| {
+                error!("alert state deserialization failed: {e:?}");
+                AlertRuleError::UnknownError
+            })?;
+            out.insert(
+                (
+                    r.get::<uuid::Uuid, _>("rule_id"),
+                    ServiceName::new(r.get::<String, _>("service")),
+                ),
+                state,
+            );
+        }
+        Ok(out)
+    }
+
+    async fn put_states(
+        &self,
+        hostname: &HostName,
+        project: &ProjectName,
+        states: &[(uuid::Uuid, ServiceName, AlertState)],
+    ) -> Result<(), AlertRuleError> {
+        for (rule_id, service, state) in states {
+            let raw = serde_json::to_string(state).map_err(|e| {
+                error!("alert state serialization failed: {e:?}");
+                AlertRuleError::UnknownError
+            })?;
+            sqlx::query(
+                "INSERT INTO alert_state (rule_id, hostname, project, service, state, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, NOW())
+                    ON CONFLICT(rule_id, hostname, project, service)
+                    DO UPDATE SET state = excluded.state, updated_at = NOW()",
+            )
+            .bind(rule_id)
+            .bind(hostname.as_str())
+            .bind(project.as_str())
+            .bind(service.as_str())
+            .bind(&raw)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                error!("put_states failed: {e:?}");
+                AlertRuleError::UnknownError
+            })?;
+        }
+        Ok(())
     }
 }

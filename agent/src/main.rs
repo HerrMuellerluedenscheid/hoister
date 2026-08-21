@@ -1,4 +1,5 @@
 //! Fetch info of all running containers concurrently
+mod alerts;
 mod config;
 mod docker;
 mod ecr;
@@ -185,6 +186,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         },
     };
 
+    // Metric alert rules are evaluated locally against the stats samples and
+    // delivered through chatterbox, so they need a dispatcher to be of any
+    // use. Built here (after the project name is known) and handed to the
+    // metrics loop below — with or without a controller.
+    let alert_engine = if config.alerts.is_empty() {
+        None
+    } else {
+        match setup_dispatcher(&config) {
+            Some(dispatcher) => {
+                info!("{} metric alert rule(s) active", config.alerts.len());
+                Some((
+                    alerts::AlertEngine::new(
+                        &config.alerts,
+                        project_name.clone(),
+                        config.hostname.clone(),
+                    ),
+                    dispatcher,
+                ))
+            }
+            None => {
+                warn!(
+                    "[[alert]] rules are configured but no [dispatcher] is — metric alerts have nowhere to go and are disabled"
+                );
+                None
+            }
+        }
+    };
+
     if let Some(controller_config) = &config.controller {
         let url_str = controller_config.url.as_str();
         // Compare the parsed host exactly — a `starts_with` on the URL string
@@ -247,14 +276,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             .await
             .expect("Failed to start monitor");
         });
-        // Resource-usage collection is opt-in: it adds a per-minute stats call
-        // per container and ships CPU/memory figures the operator may not want
-        // leaving the host.
-        if report_metrics {
-            let metrics_client = http_client.clone();
-            let token_metrics = controller_config.token.clone();
+        // Resource-usage collection runs when metrics are reported to the
+        // controller and/or [[alert]] rules exist. The sink is only attached
+        // for the former, so an alert-only setup keeps the figures on-host.
+        if report_metrics || alert_engine.is_some() {
+            let sink = report_metrics.then(|| metrics::ControllerSink {
+                url: metrics_state,
+                token: controller_config.token.clone(),
+                client: http_client.clone(),
+            });
             tokio::spawn(async move {
-                metrics::start(&metrics_state, token_metrics, pn, hn, metrics_client)
+                metrics::start(sink, alert_engine, pn, hn)
                     .await
                     .expect("Failed to start metrics collector");
             });
@@ -263,6 +295,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         info!(
             "Mode: standalone — no controller configured, container state is not reported. Set HOISTER_CONTROLLER_TOKEN to enable the hosted dashboard."
         );
+        // [[alert]] rules work standalone: run the sampling loop without a
+        // reporting sink so the figures never leave the host.
+        if alert_engine.is_some() {
+            let pn = project_name.clone();
+            let hn = config.hostname.clone();
+            tokio::spawn(async move {
+                metrics::start(None, alert_engine, pn, hn)
+                    .await
+                    .expect("Failed to start metrics collector");
+            });
+        }
     }
 
     loop {

@@ -1,3 +1,4 @@
+use crate::domain::alerts::port::AlertsService;
 use crate::domain::billing::ports::BillingService;
 use crate::domain::container_state::port::ContainerStateService;
 use crate::domain::deployments::ports::DeploymentsService;
@@ -27,8 +28,9 @@ pub(crate) async fn sse_handler<
     NS: NotifierService,
     BS: BillingService,
     MS: MetricsService,
+    AS: AlertsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
     Extension(UserId(subscriber_user_id)): Extension<UserId>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let mut rx = state.event_tx.subscribe();

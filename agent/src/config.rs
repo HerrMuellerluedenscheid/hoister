@@ -4,6 +4,7 @@ use figment2::{
     Figment,
     providers::{Env, Format, Toml},
 };
+use hoister_shared::alerts::{AlertCondition, AlertMetric, parse_duration_secs};
 use hoister_shared::{HostName, ProjectName};
 use reqwest::Url;
 use serde::Deserialize;
@@ -197,6 +198,66 @@ pub(crate) struct Email {
     pub(crate) recipient: String,
 }
 
+/// One `[[alert]]` rule: notify through the configured dispatchers when a
+/// container metric stays at/above `threshold` for at least `for`. Durations
+/// accept plain seconds or a `s`/`m`/`h`/`d` suffix ("300", "5m"). Only
+/// configurable through the TOML file — figment's env provider can't populate
+/// an array of tables.
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct AlertRule {
+    pub(crate) metric: AlertMetric,
+    pub(crate) threshold: f64,
+    /// How long the threshold must be breached before the alert fires (and
+    /// stayed below it again before it resolves). Defaults to 5 minutes so a
+    /// single spiky sample never notifies.
+    #[serde(
+        rename = "for",
+        default = "default_alert_for",
+        deserialize_with = "duration_secs"
+    )]
+    pub(crate) for_seconds: u64,
+    /// Minimum time between repeat notifications while the alert keeps firing.
+    /// Defaults to 0: one notification per firing episode.
+    #[serde(rename = "cooldown", default, deserialize_with = "duration_secs")]
+    pub(crate) cooldown_seconds: u64,
+    /// Restrict the rule to one compose service; omit to watch all services.
+    pub(crate) service: Option<hoister_shared::ServiceName>,
+}
+
+impl AlertRule {
+    pub(crate) fn condition(&self) -> AlertCondition {
+        AlertCondition {
+            metric: self.metric,
+            threshold: self.threshold,
+            for_seconds: self.for_seconds,
+            cooldown_seconds: self.cooldown_seconds,
+        }
+    }
+}
+
+fn default_alert_for() -> u64 {
+    300
+}
+
+/// Accept a duration either as a plain integer (seconds) or as a string with
+/// an `s`/`m`/`h`/`d` suffix, e.g. `for = 300` or `for = "5m"`.
+fn duration_secs<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Raw {
+        Seconds(u64),
+        Human(String),
+    }
+    match Raw::deserialize(deserializer)? {
+        Raw::Seconds(n) => Ok(n),
+        Raw::Human(s) => parse_duration_secs(&s).ok_or_else(|| {
+            serde::de::Error::custom(format!(
+                "invalid duration {s:?}: use seconds or a s/m/h/d suffix like \"5m\""
+            ))
+        }),
+    }
+}
+
 #[derive(Deserialize, Debug, Clone)]
 pub(crate) struct Schedule {
     pub(crate) interval: Option<u64>,
@@ -286,6 +347,11 @@ pub(crate) struct Config {
     pub(crate) registry: Option<Registry>,
     pub(crate) controller: Option<Controller>,
     pub(crate) dispatcher: Option<Dispatcher>,
+    /// Metric alert rules (`[[alert]]` tables). Evaluated locally against the
+    /// per-minute stats samples and delivered through `dispatcher`, so they
+    /// work standalone — no controller required.
+    #[serde(default, rename = "alert")]
+    pub(crate) alerts: Vec<AlertRule>,
 }
 
 pub(crate) fn build_http_client(controller: &Option<Controller>) -> reqwest::Client {
@@ -517,6 +583,67 @@ mod tests {
                 config.controller.is_none(),
                 "no controller env vars should leave controller=None (standalone mode)"
             );
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn test_alert_rules_parse_with_defaults_and_durations() {
+        use figment2::Jail;
+        Jail::expect_with(|jail: &mut Jail| {
+            jail.create_file(
+                "config-test.toml",
+                r#"
+            [schedule]
+            interval=10
+
+            [[alert]]
+            metric="cpu_pct"
+            threshold=80.0
+            for="5m"
+            cooldown="1h"
+            service="web"
+
+            [[alert]]
+            metric="mem_pct"
+            threshold=90.0
+            for=120
+
+            [[alert]]
+            metric="mem_bytes"
+            threshold=1073741824.0
+            "#,
+            )?;
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let config = rt.block_on(load_config("config-test.toml".as_ref()));
+
+            assert_eq!(config.alerts.len(), 3);
+            let a = &config.alerts[0];
+            assert_eq!(a.metric, AlertMetric::CpuPct);
+            assert_eq!(a.for_seconds, 300);
+            assert_eq!(a.cooldown_seconds, 3600);
+            assert_eq!(a.service.as_ref().map(|s| s.as_str()), Some("web"));
+
+            let b = &config.alerts[1];
+            assert_eq!(b.metric, AlertMetric::MemPct);
+            assert_eq!(b.for_seconds, 120, "plain integers are seconds");
+            assert_eq!(b.cooldown_seconds, 0, "cooldown defaults to off");
+
+            let c = &config.alerts[2];
+            assert_eq!(c.for_seconds, 300, "`for` defaults to 5 minutes");
+            assert!(c.service.is_none());
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn test_no_alerts_is_the_default() {
+        use figment2::Jail;
+        Jail::expect_with(|jail: &mut Jail| {
+            jail.create_file("config-test.toml", "[schedule]\ninterval=10\n")?;
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let config = rt.block_on(load_config("config-test.toml".as_ref()));
+            assert!(config.alerts.is_empty());
             Ok(())
         });
     }

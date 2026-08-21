@@ -4,6 +4,7 @@ use sqlx::Type;
 use std::fmt::{Display, Formatter};
 use ts_rs::TS;
 
+pub mod alerts;
 pub mod wire;
 
 pub type ContainerID = String;
