@@ -5,6 +5,7 @@
   import MetricSparkline from '$lib/components/MetricSparkline.svelte';
   import { gaugeSeries, rateSeries } from '$lib/metrics';
   import { formatBytes, formatPercent, formatRate } from '$lib/format';
+  import { isStale } from '$lib/staleness';
   import { invalidateAll } from '$app/navigation';
   import { onDestroy, onMount } from 'svelte';
 
@@ -41,7 +42,7 @@
   let refreshInterval: ReturnType<typeof setInterval>;
 
   function checkStale() {
-    stale = new Date().getTime() - new Date(last_updated).getTime() > 60_000;
+    stale = isStale(last_updated);
   }
 
   onMount(() => {

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import type { ContainerStateResponse } from '../../bindings/ContainerStateResponse';
+	import { isStale } from '$lib/staleness';
 
 	const { inspection_data }: { inspection_data: ContainerStateResponse } = $props();
 
@@ -35,10 +36,6 @@
 		if (h > 0) return `${h}h ${m % 60}m`;
 		if (m > 0) return `${m}m ${s % 60}s`;
 		return `${s}s`;
-	}
-
-	function isStale(dateString: string, nowMs: number): boolean {
-		return nowMs - new Date(dateString).getTime() > 60_000;
 	}
 
 	function getTimeAgo(dateString: string, nowMs: number): string {

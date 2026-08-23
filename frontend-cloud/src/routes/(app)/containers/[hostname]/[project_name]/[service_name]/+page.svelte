@@ -5,6 +5,7 @@
 	import PendingUpdates from '$lib/components/PendingUpdates.svelte';
 	import RedactedText from '$lib/components/RedactedText.svelte';
 	import ServiceMetricsCharts from '$lib/components/ServiceMetricsCharts.svelte';
+	import { isStale } from '$lib/staleness';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -23,7 +24,7 @@
 	let now = $state(Date.now());
 	let refreshInterval: ReturnType<typeof setInterval>;
 
-	const stale = $derived(last_updated ? now - new Date(last_updated).getTime() > 60_000 : false);
+	const stale = $derived(last_updated ? isStale(last_updated, now) : false);
 
 	onMount(() => {
 		refreshInterval = setInterval(() => {
