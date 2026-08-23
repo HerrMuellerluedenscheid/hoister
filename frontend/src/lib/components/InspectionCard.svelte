@@ -4,6 +4,7 @@
   import type { ContainerStateResponse } from '../../bindings/ContainerStateResponse';
   import type { LatestMetricResponse } from '../../bindings/LatestMetricResponse';
   import { formatBytes, formatPercent, memoryFraction } from '$lib/format';
+  import { isStale } from '$lib/staleness';
 
   const {
     inspection_data,
@@ -56,12 +57,6 @@
     } else {
       return `${seconds}s`;
     }
-  }
-
-  function isStale(dateString: string): boolean {
-    const date = new Date(dateString);
-    const now = new Date();
-    return now.getTime() - date.getTime() > 60_000;
   }
 
   function getTimeAgo(dateString: string): string {
