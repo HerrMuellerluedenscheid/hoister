@@ -8,6 +8,9 @@
   import { invalidateAll } from '$app/navigation';
   import { onDestroy, onMount } from 'svelte';
 
+  // A service reports every 60s, so allow a little slack before flagging it as stale.
+  const STALE_AFTER_MS = 75_000;
+
   let { data }: { data: ContainerPageData } = $props();
   const container = $derived(data.inspections.container_inspections);
   const deployments = $derived(data.deployments.slice(0, 8));
@@ -41,7 +44,7 @@
   let refreshInterval: ReturnType<typeof setInterval>;
 
   function checkStale() {
-    stale = new Date().getTime() - new Date(last_updated).getTime() > 60_000;
+    stale = new Date().getTime() - new Date(last_updated).getTime() > STALE_AFTER_MS;
   }
 
   onMount(() => {

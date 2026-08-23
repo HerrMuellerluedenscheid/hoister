@@ -5,6 +5,9 @@
   import type { LatestMetricResponse } from '../../bindings/LatestMetricResponse';
   import { formatBytes, formatPercent, memoryFraction } from '$lib/format';
 
+  // A service reports every 60s, so allow a little slack before flagging it as stale.
+  const STALE_AFTER_MS = 75_000;
+
   const {
     inspection_data,
     latest
@@ -61,7 +64,7 @@
   function isStale(dateString: string): boolean {
     const date = new Date(dateString);
     const now = new Date();
-    return now.getTime() - date.getTime() > 60_000;
+    return now.getTime() - date.getTime() > STALE_AFTER_MS;
   }
 
   function getTimeAgo(dateString: string): string {

@@ -2,6 +2,9 @@
 	import { onDestroy, onMount } from 'svelte';
 	import type { ContainerStateResponse } from '../../bindings/ContainerStateResponse';
 
+	// A service reports every 60s, so allow a little slack before flagging it as stale.
+	const STALE_AFTER_MS = 75_000;
+
 	const { inspection_data }: { inspection_data: ContainerStateResponse } = $props();
 
 	const inspection = $derived(inspection_data.container_inspections);
@@ -38,7 +41,7 @@
 	}
 
 	function isStale(dateString: string, nowMs: number): boolean {
-		return nowMs - new Date(dateString).getTime() > 60_000;
+		return nowMs - new Date(dateString).getTime() > STALE_AFTER_MS;
 	}
 
 	function getTimeAgo(dateString: string, nowMs: number): string {

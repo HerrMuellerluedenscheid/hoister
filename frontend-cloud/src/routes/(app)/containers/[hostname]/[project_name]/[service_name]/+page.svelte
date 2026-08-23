@@ -7,6 +7,9 @@
 	import ServiceMetricsCharts from '$lib/components/ServiceMetricsCharts.svelte';
 	import type { PageProps } from './$types';
 
+	// A service reports every 60s, so allow a little slack before flagging it as stale.
+	const STALE_AFTER_MS = 75_000;
+
 	let { data, form }: PageProps = $props();
 
 	const container = $derived(data.inspections?.container_inspections);
@@ -23,7 +26,9 @@
 	let now = $state(Date.now());
 	let refreshInterval: ReturnType<typeof setInterval>;
 
-	const stale = $derived(last_updated ? now - new Date(last_updated).getTime() > 60_000 : false);
+	const stale = $derived(
+		last_updated ? now - new Date(last_updated).getTime() > STALE_AFTER_MS : false
+	);
 
 	onMount(() => {
 		refreshInterval = setInterval(() => {
