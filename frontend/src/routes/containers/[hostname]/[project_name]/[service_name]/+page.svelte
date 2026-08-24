@@ -2,6 +2,7 @@
   import type { ContainerPageData } from './+page.server';
   import Deployments from '$lib/components/Deployments.svelte';
   import RedactedText from '$lib/components/RedactedText.svelte';
+  import LogOutput from '$lib/components/LogOutput.svelte';
   import MetricSparkline from '$lib/components/MetricSparkline.svelte';
   import { gaugeSeries, rateSeries } from '$lib/metrics';
   import { formatBytes, formatPercent, formatRate } from '$lib/format';
@@ -203,7 +204,7 @@
           known sensitive env-var values are redacted.
         </p>
         <pre
-          class="max-h-96 overflow-auto rounded bg-gray-900 p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-gray-100"><RedactedText
+          class="max-h-96 overflow-auto rounded bg-gray-900 p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-gray-100"><LogOutput
             text={last_logs}
           /></pre>
       </div>

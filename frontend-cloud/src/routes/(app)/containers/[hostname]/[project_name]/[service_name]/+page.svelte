@@ -4,6 +4,7 @@
 	import Deployments from '$lib/components/Deployments.svelte';
 	import PendingUpdates from '$lib/components/PendingUpdates.svelte';
 	import RedactedText from '$lib/components/RedactedText.svelte';
+	import LogOutput from '$lib/components/LogOutput.svelte';
 	import ServiceMetricsCharts from '$lib/components/ServiceMetricsCharts.svelte';
 	import { isStale } from '$lib/staleness';
 	import type { PageProps } from './$types';
@@ -251,7 +252,7 @@
 						known sensitive env-var values are redacted.
 					</p>
 					<pre
-						class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink-ghost"><RedactedText
+						class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink-ghost"><LogOutput
 							text={last_logs}
 						/></pre>
 				</section>
@@ -295,7 +296,7 @@
 					{/if}
 					{#if liveLogs.length > 0}
 						<pre
-							class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink-ghost"><RedactedText
+							class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink-ghost"><LogOutput
 								text={liveLogs}
 							/></pre>
 					{:else}

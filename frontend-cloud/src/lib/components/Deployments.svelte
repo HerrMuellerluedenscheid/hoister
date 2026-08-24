@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import type { Deployment } from '../../bindings/Deployment';
-	import RedactedText from './RedactedText.svelte';
+	import LogOutput from './LogOutput.svelte';
 
 	// `linkToContainer` makes each row navigate to the container the deployment
 	// happened on — used on the all-deployments list, off on the container page.
@@ -130,7 +130,7 @@
 									redacted.
 								</p>
 								<pre
-									class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink-ghost"><RedactedText
+									class="max-h-96 overflow-auto rounded-lg bg-black p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink-ghost"><LogOutput
 										text={item.logs}
 									/></pre>
 							</td>

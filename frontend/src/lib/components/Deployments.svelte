@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import LogOutput from './LogOutput.svelte';
 
   let { data } = $props();
 </script>
@@ -80,7 +81,7 @@
                   <p
                     class="mt-1 max-w-md font-mono text-xs break-all whitespace-pre-wrap text-red-700"
                   >
-                    {item.logs}
+                    <LogOutput text={item.logs} />
                   </p>
                 {/if}
               </td>
