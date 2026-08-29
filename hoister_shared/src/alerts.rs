@@ -192,6 +192,63 @@ pub enum AlertEvent {
     Resolved { value: f64 },
 }
 
+/// Which transition an [`AlertEvent`] is, stripped of the observed value: the
+/// form the controller persists in its alert history and hands to the
+/// dashboard.
+#[derive(TS, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum AlertEventKind {
+    Fired,
+    StillFiring,
+    Resolved,
+}
+
+impl AlertEventKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AlertEventKind::Fired => "fired",
+            AlertEventKind::StillFiring => "still_firing",
+            AlertEventKind::Resolved => "resolved",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "fired" => Some(Self::Fired),
+            "still_firing" => Some(Self::StillFiring),
+            "resolved" => Some(Self::Resolved),
+            _ => None,
+        }
+    }
+
+    /// Whether the rule was still breaching at this transition — everything
+    /// but `Resolved`.
+    pub fn is_firing(&self) -> bool {
+        !matches!(self, AlertEventKind::Resolved)
+    }
+}
+
+impl AlertEvent {
+    /// The transition without its observed value.
+    pub fn kind(&self) -> AlertEventKind {
+        match self {
+            AlertEvent::Fired { .. } => AlertEventKind::Fired,
+            AlertEvent::StillFiring { .. } => AlertEventKind::StillFiring,
+            AlertEvent::Resolved { .. } => AlertEventKind::Resolved,
+        }
+    }
+
+    /// The metric reading that produced the transition.
+    pub fn value(&self) -> f64 {
+        match self {
+            AlertEvent::Fired { value }
+            | AlertEvent::StillFiring { value }
+            | AlertEvent::Resolved { value } => *value,
+        }
+    }
+}
+
 impl AlertState {
     /// Feed one observation (at unix-seconds `now`) into the state machine.
     /// Returns the transition to notify about, if any.
@@ -485,6 +542,24 @@ mod tests {
         assert_eq!(format_duration_secs(90), "1m 30s");
         assert_eq!(format_duration_secs(3600), "1h");
         assert_eq!(format_duration_secs(300), "5m");
+    }
+
+    #[test]
+    fn event_kind_roundtrips_and_classifies() {
+        for k in [
+            AlertEventKind::Fired,
+            AlertEventKind::StillFiring,
+            AlertEventKind::Resolved,
+        ] {
+            assert_eq!(AlertEventKind::parse(k.as_str()), Some(k));
+        }
+        assert_eq!(
+            AlertEvent::Fired { value: 9.0 }.kind(),
+            AlertEventKind::Fired
+        );
+        assert_eq!(AlertEvent::Resolved { value: 1.0 }.value(), 1.0);
+        assert!(AlertEventKind::StillFiring.is_firing());
+        assert!(!AlertEventKind::Resolved.is_firing());
     }
 
     #[test]

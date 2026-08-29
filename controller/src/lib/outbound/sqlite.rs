@@ -1,4 +1,7 @@
-use crate::domain::alerts::models::{AlertRule, AlertRuleError, CreateAlertRuleRequest};
+use crate::domain::alerts::models::{
+    AlertEventRecord, AlertRule, AlertRuleError, CreateAlertRuleRequest, MAX_HISTORY_EVENTS,
+    NewAlertEvent,
+};
 use crate::domain::alerts::port::AlertsRepository;
 use crate::domain::billing::models::{Plan, PlanError};
 use crate::domain::billing::ports::PlanRepository;
@@ -20,7 +23,8 @@ use crate::domain::notifiers::models::{Notifier, NotifierConfig, NotifierError, 
 use crate::domain::notifiers::ports::NotifierRepository;
 use crate::domain::tokens::models::{ApiToken, TokenError};
 use crate::domain::tokens::ports::TokenRepository;
-use hoister_shared::alerts::{AlertMetric, AlertState};
+use chrono::{DateTime, Utc};
+use hoister_shared::alerts::{AlertEventKind, AlertMetric, AlertState};
 use hoister_shared::{DeploymentStatus, HostName, ImageName, ProjectName, ServiceName};
 use log::error;
 use sqlx::migrate::MigrateDatabase;
@@ -1329,5 +1333,163 @@ impl AlertsRepository for Sqlite {
             })?;
         }
         Ok(())
+    }
+
+    async fn record_events(
+        &self,
+        user_id: &str,
+        events: &[NewAlertEvent],
+    ) -> Result<(), AlertRuleError> {
+        if events.is_empty() {
+            return Ok(());
+        }
+        let mut tx = self.pool.begin().await.map_err(|e| {
+            error!("record_events begin tx failed: {e:?}");
+            AlertRuleError::UnknownError
+        })?;
+        for e in events {
+            sqlx::query(
+                "INSERT INTO alert_event
+                    (id, user_id, rule_id, kind, metric, threshold, for_seconds,
+                     value, hostname, project, service, triggered_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(uuid::Uuid::new_v4())
+            .bind(user_id)
+            .bind(e.rule_id)
+            .bind(e.kind.as_str())
+            .bind(e.metric.as_str())
+            .bind(e.threshold)
+            .bind(e.for_seconds as i64)
+            .bind(e.value)
+            .bind(e.hostname.as_str())
+            .bind(e.project.as_str())
+            .bind(e.service.as_str())
+            .bind(e.triggered_at.to_rfc3339())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                error!("record_events insert failed: {e:?}");
+                AlertRuleError::UnknownError
+            })?;
+        }
+
+        // Opportunistic retention: trim the user's history back to the newest
+        // MAX_HISTORY_EVENTS rows. Runs only when something actually fired.
+        if let Err(e) = sqlx::query(
+            "DELETE FROM alert_event
+                WHERE user_id = ?
+                  AND id NOT IN (
+                    SELECT id FROM alert_event
+                        WHERE user_id = ?
+                        ORDER BY triggered_at DESC, id DESC
+                        LIMIT ?
+                  )",
+        )
+        .bind(user_id)
+        .bind(user_id)
+        .bind(MAX_HISTORY_EVENTS)
+        .execute(&mut *tx)
+        .await
+        {
+            error!("record_events prune failed: {e:?}");
+        }
+
+        tx.commit().await.map_err(|e| {
+            error!("record_events commit failed: {e:?}");
+            AlertRuleError::UnknownError
+        })
+    }
+
+    async fn list_events(
+        &self,
+        user_id: &str,
+        limit: i64,
+    ) -> Result<Vec<AlertEventRecord>, AlertRuleError> {
+        let rows = sqlx::query(
+            "SELECT id, rule_id, kind, metric, threshold, for_seconds, value,
+                    hostname, project, service, triggered_at
+                FROM alert_event
+                WHERE user_id = ?
+                ORDER BY triggered_at DESC, id DESC
+                LIMIT ?",
+        )
+        .bind(user_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("list_events failed: {e:?}");
+            AlertRuleError::UnknownError
+        })?;
+
+        let mut out = Vec::with_capacity(rows.len());
+        for r in rows {
+            let kind_str: String = r.get("kind");
+            let metric_str: String = r.get("metric");
+            // A row we can no longer interpret would break the whole listing;
+            // skip it instead and keep the rest of the history readable.
+            let (Some(kind), Some(metric)) = (
+                AlertEventKind::parse(&kind_str),
+                AlertMetric::parse(&metric_str),
+            ) else {
+                error!("skipping alert_event with kind={kind_str} metric={metric_str}");
+                continue;
+            };
+            out.push(AlertEventRecord {
+                id: r.get::<uuid::Uuid, _>("id"),
+                rule_id: r.get::<Option<uuid::Uuid>, _>("rule_id"),
+                kind,
+                metric,
+                threshold: r.get("threshold"),
+                for_seconds: r.get::<i64, _>("for_seconds") as u64,
+                value: r.get("value"),
+                hostname: HostName::new(r.get::<String, _>("hostname")),
+                project: ProjectName::new(r.get::<String, _>("project")),
+                service: ServiceName::new(r.get::<String, _>("service")),
+                triggered_at: parse_ts(&r.get::<String, _>("triggered_at")),
+            });
+        }
+        Ok(out)
+    }
+
+    async fn mark_seen(
+        &self,
+        user_id: &str,
+        session_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Option<DateTime<Utc>>, AlertRuleError> {
+        // One statement so two concurrent dashboard loads cannot interleave a
+        // read and a write and rotate the watermark twice. The CASE arms see
+        // the pre-update row, so an unchanged session leaves both timestamps
+        // exactly as they were.
+        let row = sqlx::query(
+            "INSERT INTO alert_seen
+                    (user_id, session_id, session_started_at, previous_session_started_at)
+                    VALUES (?, ?, ?, NULL)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    session_started_at = CASE
+                        WHEN alert_seen.session_id = excluded.session_id
+                        THEN alert_seen.session_started_at
+                        ELSE excluded.session_started_at END,
+                    previous_session_started_at = CASE
+                        WHEN alert_seen.session_id = excluded.session_id
+                        THEN alert_seen.previous_session_started_at
+                        ELSE alert_seen.session_started_at END,
+                    session_id = excluded.session_id
+                RETURNING previous_session_started_at",
+        )
+        .bind(user_id)
+        .bind(session_id)
+        .bind(now.to_rfc3339())
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("mark_seen failed: {e:?}");
+            AlertRuleError::UnknownError
+        })?;
+        Ok(row
+            .get::<Option<String>, _>("previous_session_started_at")
+            .map(|ts| parse_ts(&ts)))
     }
 }

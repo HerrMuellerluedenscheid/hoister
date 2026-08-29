@@ -5,7 +5,9 @@ pub mod postgresql;
 pub mod secrets;
 pub mod sqlite;
 
-use crate::domain::alerts::models::{AlertRule, AlertRuleError, CreateAlertRuleRequest};
+use crate::domain::alerts::models::{
+    AlertEventRecord, AlertRule, AlertRuleError, CreateAlertRuleRequest, NewAlertEvent,
+};
 use crate::domain::alerts::port::AlertsRepository;
 use crate::domain::billing::models::{Plan, PlanError};
 use crate::domain::billing::ports::PlanRepository;
@@ -484,6 +486,50 @@ impl AlertsRepository for Database {
             }
             Self::Postgresql(db) => {
                 <Postgresql as AlertsRepository>::put_states(db, hostname, project, states).await
+            }
+        }
+    }
+
+    async fn record_events(
+        &self,
+        user_id: &str,
+        events: &[NewAlertEvent],
+    ) -> Result<(), AlertRuleError> {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as AlertsRepository>::record_events(db, user_id, events).await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as AlertsRepository>::record_events(db, user_id, events).await
+            }
+        }
+    }
+
+    async fn list_events(
+        &self,
+        user_id: &str,
+        limit: i64,
+    ) -> Result<Vec<AlertEventRecord>, AlertRuleError> {
+        match self {
+            Self::Sqlite(db) => <Sqlite as AlertsRepository>::list_events(db, user_id, limit).await,
+            Self::Postgresql(db) => {
+                <Postgresql as AlertsRepository>::list_events(db, user_id, limit).await
+            }
+        }
+    }
+
+    async fn mark_seen(
+        &self,
+        user_id: &str,
+        session_id: &str,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>, AlertRuleError> {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as AlertsRepository>::mark_seen(db, user_id, session_id, now).await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as AlertsRepository>::mark_seen(db, user_id, session_id, now).await
             }
         }
     }

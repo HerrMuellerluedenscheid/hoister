@@ -2,7 +2,7 @@ use axum::extract::DefaultBodyLimit;
 use axum::response::IntoResponse;
 use axum::{
     Extension, Router,
-    extract::{Path, Request, State},
+    extract::{Path, Query, Request, State},
     http::StatusCode,
     middleware::{self, Next},
     response::{Json, Response},
@@ -13,7 +13,9 @@ use log::{debug, error};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::domain::alerts::models::{AlertRule, AlertRuleError, CreateAlertRuleRequest};
+use crate::domain::alerts::models::{
+    AlertEventRecord, AlertHistory, AlertRule, AlertRuleError, CreateAlertRuleRequest,
+};
 use crate::domain::alerts::port::AlertsService;
 use crate::domain::billing::models::{Plan, PlanStatus, Usage};
 use crate::domain::billing::ports::BillingService;
@@ -45,7 +47,7 @@ use crate::sse::{ControllerEvent, UserScopedEvent, sse_handler};
 /// product limits.
 const AGENT_BODY_LIMIT: usize = 1024 * 1024;
 use chatterbox::message::Message;
-use hoister_shared::alerts::{AlertMetric, AlertTarget, alert_message};
+use hoister_shared::alerts::{AlertEventKind, AlertMetric, AlertTarget, alert_message};
 use hoister_shared::wire::{PostContainerLogsRequest, PostContainerMetricsRequest};
 use hoister_shared::{
     CreateDeployment, DeploymentStatus, HostName, ProjectName, ServiceName,
@@ -1124,7 +1126,7 @@ async fn post_container_metrics<
     // fired/resolved transitions fan out to their notifiers in the
     // background (same path as deployment events), so a slow webhook never
     // delays the agent's POST.
-    let now = Utc::now().timestamp();
+    let now = Utc::now();
     let incidents = state
         .alerts_service
         .evaluate(&user_id, &hostname, &project_name, &payload.payload, now)
@@ -1667,6 +1669,117 @@ async fn set_alert_rule_enabled<
     }
 }
 
+/// Wire shape of one recorded alert transition for the dashboard's history.
+#[derive(TS, Serialize)]
+#[ts(export)]
+struct AlertEventResponse {
+    #[ts(type = "string")]
+    id: uuid::Uuid,
+    /// `null` once the rule behind this entry has been deleted.
+    #[ts(type = "string | null")]
+    rule_id: Option<uuid::Uuid>,
+    kind: AlertEventKind,
+    metric: AlertMetric,
+    threshold: f64,
+    /// The reading that produced the transition, in the metric's unit.
+    value: f64,
+    #[ts(type = "number")]
+    for_seconds: u64,
+    hostname: String,
+    project: String,
+    service: String,
+    triggered_at: DateTime<Utc>,
+    /// Whether this entry arrived since the user's previous login.
+    is_new: bool,
+}
+
+/// Wire shape of GET /alerts/events: the history plus what counts as new.
+#[derive(TS, Serialize)]
+#[ts(export)]
+struct AlertHistoryResponse {
+    /// Newest first.
+    events: Vec<AlertEventResponse>,
+    /// Start of the previous login session; `null` on a first-ever login,
+    /// where nothing is marked new.
+    new_since: Option<DateTime<Utc>>,
+    #[ts(type = "number")]
+    new_count: usize,
+}
+
+impl AlertHistoryResponse {
+    fn new(history: &AlertHistory) -> Self {
+        Self {
+            events: history
+                .events
+                .iter()
+                .map(|e| AlertEventResponse::new(e, history.is_new(e)))
+                .collect(),
+            new_since: history.new_since,
+            new_count: history.new_count(),
+        }
+    }
+}
+
+impl AlertEventResponse {
+    fn new(e: &AlertEventRecord, is_new: bool) -> Self {
+        Self {
+            id: e.id,
+            rule_id: e.rule_id,
+            kind: e.kind,
+            metric: e.metric,
+            threshold: e.threshold,
+            value: e.value,
+            for_seconds: e.for_seconds,
+            hostname: e.hostname.as_str().to_string(),
+            project: e.project.as_str().to_string(),
+            service: e.service.as_str().to_string(),
+            triggered_at: e.triggered_at,
+            is_new,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct AlertHistoryQuery {
+    /// The dashboard's current login session id. It is only ever compared to
+    /// the one stored for the user, to decide whether this is a new login and
+    /// the "new since" cutoff should move on. An empty value is treated like
+    /// any other id, so a caller without a session settles on one cutoff and
+    /// keeps it.
+    #[serde(default)]
+    session: String,
+}
+
+/// The user's alert history. Reading it advances the "new since your last
+/// login" cutoff, so only the dashboard's own page load should call it.
+async fn list_alert_events<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+    BS: BillingService,
+    MS: MetricsService,
+    AS: AlertsService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+    Query(query): Query<AlertHistoryQuery>,
+) -> Result<Json<ApiResponse<AlertHistoryResponse>>, StatusCode> {
+    match state
+        .alerts_service
+        .history(&user_id, &query.session, Utc::now())
+        .await
+    {
+        Ok(history) => Ok(Json(ApiResponse::success(AlertHistoryResponse::new(
+            &history,
+        )))),
+        Err(e) => {
+            error!("Error listing alert history: {e:?}");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
 /// Agent-facing router: publicly reachable (behind TLS), authenticated via `hst_` tokens.
 /// Handles writes from agents and SSE.
 pub async fn create_agent_router<
@@ -1789,6 +1902,10 @@ pub async fn create_internal_router<
         .route(
             "/alerts",
             post(create_alert_rule::<DS, CS, TS, NS, BS, MS, AS>),
+        )
+        .route(
+            "/alerts/events",
+            get(list_alert_events::<DS, CS, TS, NS, BS, MS, AS>),
         )
         .route(
             "/alerts/{id}",

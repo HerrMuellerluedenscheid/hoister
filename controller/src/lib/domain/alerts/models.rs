@@ -1,4 +1,5 @@
-use hoister_shared::alerts::{AlertCondition, AlertEvent, AlertMetric};
+use chrono::{DateTime, Utc};
+use hoister_shared::alerts::{AlertCondition, AlertEvent, AlertEventKind, AlertMetric};
 use hoister_shared::{HostName, ProjectName, ServiceName};
 use thiserror::Error;
 
@@ -10,6 +11,10 @@ pub const MAX_COOLDOWN_SECONDS: u64 = 30 * 24 * 60 * 60;
 /// Rules a single user may have. Evaluation is O(rules × services) per
 /// ingested batch, so keep it bounded.
 pub const MAX_RULES_PER_USER: usize = 50;
+/// How many past alert transitions are kept per user. Transitions are rare by
+/// construction (each one is a notification), so this covers a long history
+/// while keeping the table from growing without bound.
+pub const MAX_HISTORY_EVENTS: i64 = 500;
 
 /// A persisted metric alert rule. The optional scope columns narrow which
 /// containers the rule watches; `None` means "any".
@@ -90,6 +95,84 @@ pub struct AlertIncident {
     pub rule: AlertRule,
     pub service: ServiceName,
     pub event: AlertEvent,
+}
+
+/// An [`AlertIncident`] on its way into the history table. Carries the rule's
+/// condition and target by value rather than by reference to the rule row:
+/// the entry has to survive the rule being edited or deleted.
+#[derive(Debug, Clone)]
+pub struct NewAlertEvent {
+    pub rule_id: uuid::Uuid,
+    pub kind: AlertEventKind,
+    pub metric: AlertMetric,
+    pub threshold: f64,
+    pub for_seconds: u64,
+    pub value: f64,
+    pub hostname: HostName,
+    pub project: ProjectName,
+    pub service: ServiceName,
+    pub triggered_at: DateTime<Utc>,
+}
+
+impl NewAlertEvent {
+    pub fn from_incident(
+        incident: &AlertIncident,
+        hostname: &HostName,
+        project: &ProjectName,
+        triggered_at: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            rule_id: incident.rule.id,
+            kind: incident.event.kind(),
+            metric: incident.rule.metric,
+            threshold: incident.rule.threshold,
+            for_seconds: incident.rule.for_seconds,
+            value: incident.event.value(),
+            hostname: hostname.clone(),
+            project: project.clone(),
+            service: incident.service.clone(),
+            triggered_at,
+        }
+    }
+}
+
+/// One recorded alert transition, as listed in the dashboard's alert history.
+#[derive(Debug, Clone)]
+pub struct AlertEventRecord {
+    pub id: uuid::Uuid,
+    /// The rule that produced it, or `None` once that rule was deleted.
+    pub rule_id: Option<uuid::Uuid>,
+    pub kind: AlertEventKind,
+    pub metric: AlertMetric,
+    pub threshold: f64,
+    pub for_seconds: u64,
+    pub value: f64,
+    pub hostname: HostName,
+    pub project: ProjectName,
+    pub service: ServiceName,
+    pub triggered_at: DateTime<Utc>,
+}
+
+/// A user's alert history plus the cutoff the dashboard highlights against.
+pub struct AlertHistory {
+    /// Newest first.
+    pub events: Vec<AlertEventRecord>,
+    /// Start of the user's previous login session: everything after it fired
+    /// while they were away. `None` on a first-ever login, where there is no
+    /// "since" to compare to and nothing is highlighted.
+    pub new_since: Option<DateTime<Utc>>,
+}
+
+impl AlertHistory {
+    /// Whether `event` fired since the user's previous login.
+    pub fn is_new(&self, event: &AlertEventRecord) -> bool {
+        self.new_since
+            .is_some_and(|since| event.triggered_at > since)
+    }
+
+    pub fn new_count(&self) -> usize {
+        self.events.iter().filter(|e| self.is_new(e)).count()
+    }
 }
 
 #[derive(Debug, Error)]

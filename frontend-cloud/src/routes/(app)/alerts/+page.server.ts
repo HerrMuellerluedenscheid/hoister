@@ -3,11 +3,15 @@ import type { Actions, PageServerLoad } from './$types';
 import {
 	createAlertRule,
 	deleteAlertRule,
+	listAlertHistory,
 	listAlertRules,
 	setAlertRuleEnabled,
+	type AlertHistory,
 	type AlertMetric,
 	type CreateAlertRuleBody
 } from '$lib/api/alerts';
+
+const EMPTY_HISTORY: AlertHistory = { events: [], new_since: null, new_count: 0 };
 
 const METRICS: AlertMetric[] = ['cpu_pct', 'mem_pct', 'mem_bytes'];
 
@@ -58,13 +62,26 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const auth = locals.auth();
 	if (!auth.userId) throw redirect(303, '/');
 
-	try {
-		const rules = await listAlertRules(auth.userId);
-		return { rules, error: null };
-	} catch (e) {
-		console.error('[alerts] list failed:', e);
-		return { rules: [], error: 'Failed to load alert rules from the controller' };
-	}
+	// The session id is what tells the controller whether this is a new login,
+	// and so which history entries to flag as new. Rules and history are
+	// independent — one failing must not blank out the other.
+	const [rules, history] = await Promise.all([
+		listAlertRules(auth.userId).catch((e) => {
+			console.error('[alerts] list failed:', e);
+			return null;
+		}),
+		listAlertHistory(auth.userId, auth.sessionId ?? '').catch((e) => {
+			console.error('[alerts] history failed:', e);
+			return null;
+		})
+	]);
+
+	return {
+		rules: rules ?? [],
+		error: rules === null ? 'Failed to load alert rules from the controller' : null,
+		history: history ?? EMPTY_HISTORY,
+		historyError: history === null ? 'Failed to load alert history from the controller' : null
+	};
 };
 
 export const actions: Actions = {
