@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import type { PageProps } from './$types';
-	import type { AlertMetric, AlertRule } from '$lib/api/alerts';
+	import type { AlertEvent, AlertEventKind, AlertMetric, AlertRule } from '$lib/api/alerts';
 
 	let { data, form }: PageProps = $props();
 
@@ -45,6 +45,75 @@
 		const d = new Date(iso);
 		return isNaN(d.getTime()) ? iso : d.toLocaleString();
 	}
+
+	const EVENT_KINDS: Record<AlertEventKind, { label: string; classes: string }> = {
+		fired: {
+			label: 'Fired',
+			classes: 'border-error-border bg-error-bg text-error'
+		},
+		still_firing: {
+			label: 'Still firing',
+			classes: 'border-warning-border bg-warning-bg text-warning'
+		},
+		resolved: {
+			label: 'Resolved',
+			classes: 'border-success-border bg-success-bg text-success'
+		}
+	};
+
+	/** A recorded reading or threshold, in the unit its metric is measured in. */
+	function formatValue(m: AlertMetric, value: number): string {
+		if (m !== 'mem_bytes') return `${value.toFixed(1)}%`;
+		const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+		let scaled = Math.max(value, 0);
+		let step = 0;
+		while (scaled >= 1024 && step < units.length - 1) {
+			scaled /= 1024;
+			step++;
+		}
+		return `${scaled.toFixed(step === 0 ? 0 : 1)} ${units[step]}`;
+	}
+
+	/** "3 minutes ago" — the absolute timestamp stays in the row's title. */
+	function formatRelative(iso: string): string {
+		const then = new Date(iso).getTime();
+		if (isNaN(then)) return iso;
+		const seconds = Math.round((Date.now() - then) / 1000);
+		if (seconds < 60) return 'just now';
+		const steps: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+			['minute', 60],
+			['hour', 3600],
+			['day', 86400],
+			['month', 2592000],
+			['year', 31536000]
+		];
+		const format = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+		let chosen: [Intl.RelativeTimeFormatUnit, number] = steps[0];
+		for (const step of steps) {
+			if (seconds >= step[1]) chosen = step;
+		}
+		return format.format(-Math.round(seconds / chosen[1]), chosen[0]);
+	}
+
+	function eventScope(event: AlertEvent): string {
+		return `${event.hostname} / ${event.project} / ${event.service}`;
+	}
+
+	function kindClasses(event: AlertEvent): string {
+		return EVENT_KINDS[event.kind].classes;
+	}
+
+	/** The rule's condition as it stood when the alert triggered. */
+	function eventCondition(event: AlertEvent): string {
+		const threshold = `threshold ${formatValue(event.metric, event.threshold)}`;
+		if (event.for_seconds === 0) return threshold;
+		return `${threshold} over ${formatDuration(event.for_seconds)}`;
+	}
+
+	function containerHref(event: AlertEvent): string {
+		const path = [event.hostname, event.project, event.service].map(encodeURIComponent);
+		return `/containers/${path.join('/')}`;
+	}
 </script>
 
 <div class="space-y-8 px-4 py-6 sm:px-8 sm:py-10">
@@ -82,6 +151,88 @@
 			{form.toggleError}
 		</div>
 	{/if}
+
+	{#if data.historyError}
+		<div class="rounded-xl border border-error-border bg-error-bg px-4 py-3 text-sm text-error">
+			{data.historyError}
+		</div>
+	{/if}
+
+	<!-- Alert history -->
+	<section>
+		<div class="mb-3 flex flex-wrap items-center gap-3">
+			<h2 class="text-base font-semibold text-ink-code">
+				Alert history ({data.history.events.length})
+			</h2>
+			{#if data.history.new_count > 0}
+				<span
+					class="rounded-full border border-brand-light bg-brand/10 px-2.5 py-0.5 text-xs font-medium text-brand-accent"
+				>
+					{data.history.new_count} new since your last login
+				</span>
+			{/if}
+		</div>
+
+		{#if data.history.events.length === 0}
+			<div class="rounded-xl border border-line bg-card px-5 py-4 text-sm text-ink-muted">
+				Nothing has triggered yet. Alerts show up here as soon as a rule fires, together with the
+				host and service it fired on.
+			</div>
+		{:else}
+			<div class="overflow-x-auto rounded-xl border border-line">
+				<table class="min-w-full divide-y divide-line text-sm">
+					<thead class="bg-card text-xs tracking-wider text-ink-muted uppercase">
+						<tr>
+							<th class="px-4 py-2 text-left font-medium">Triggered</th>
+							<th class="px-4 py-2 text-left font-medium">Status</th>
+							<th class="px-4 py-2 text-left font-medium">Reading</th>
+							<th class="px-4 py-2 text-left font-medium">System</th>
+						</tr>
+					</thead>
+					<tbody class="divide-y divide-line bg-canvas">
+						{#each data.history.events as event (event.id)}
+							<tr class="text-ink-secondary {event.is_new ? 'bg-brand/5' : ''}">
+								<td
+									class="border-l-2 px-4 py-3 whitespace-nowrap {event.is_new
+										? 'border-brand-accent'
+										: 'border-transparent'}"
+								>
+									<div class="flex items-center gap-2">
+										{#if event.is_new}
+											<span
+												class="rounded-sm bg-brand-accent px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-white uppercase"
+											>
+												New
+											</span>
+										{/if}
+										<span>{formatRelative(event.triggered_at)}</span>
+									</div>
+									<div class="mt-0.5 text-xs text-ink-faint">{formatDate(event.triggered_at)}</div>
+								</td>
+								<td class="px-4 py-3">
+									<span class="rounded-full border px-2 py-0.5 text-xs font-medium {kindClasses(event)}">
+										{EVENT_KINDS[event.kind].label}
+									</span>
+								</td>
+								<td class="px-4 py-3">
+									{metricLabel(event.metric)}
+									<span class="font-medium text-ink">
+										{formatValue(event.metric, event.value)}
+									</span>
+									<span class="text-ink-faint">({eventCondition(event)})</span>
+								</td>
+								<td class="px-4 py-3 break-all">
+									<a href={containerHref(event)} class="underline hover:text-ink">
+										{eventScope(event)}
+									</a>
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		{/if}
+	</section>
 
 	<!-- Create form -->
 	<section class="rounded-xl border border-line bg-card p-5">

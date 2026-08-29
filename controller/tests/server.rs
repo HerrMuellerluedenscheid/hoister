@@ -424,6 +424,143 @@ mod tests {
         assert_eq!(latest_metrics(&internal).await.len(), 0);
     }
 
+    /// GET the alert history as the given login session.
+    async fn alert_history(internal: &Router, session: &str) -> serde_json::Value {
+        let response = internal
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/alerts/events?session={session}"))
+                    .header("X-User-Id", TEST_USER)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        parsed["data"].clone()
+    }
+
+    /// A fired alert lands in the history with its host/project/service, and is
+    /// flagged new only once the dashboard comes back under a new login.
+    #[tokio::test]
+    async fn test_alert_history_records_firings_and_flags_them_per_login() {
+        let (agent, internal, _db) = setup_test_app().await;
+
+        // First visit of the first session: an empty history and no cutoff.
+        let history = alert_history(&internal, "session-a").await;
+        assert_eq!(history["events"].as_array().map(|a| a.len()), Some(0));
+        assert!(history["new_since"].is_null());
+        assert_eq!(history["new_count"], 0);
+
+        let rule = serde_json::json!({
+            "metric": "cpu_pct",
+            "threshold": 80.0,
+            "for_seconds": 0,
+            "service": "web",
+        });
+        let response = internal
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/alerts")
+                    .header("X-User-Id", TEST_USER)
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(rule.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Ingest a breaching sample so the rule fires (for_seconds = 0).
+        let state_body = serde_json::json!({
+            "project_name": "history-project",
+            "payload": { "web": { "inspect": {} } }
+        });
+        let response = agent
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/container/state/history-host/history-project")
+                    .header("Authorization", "Bearer tests-secret")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(state_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let metrics_body = serde_json::json!({
+            "project_name": "history-project",
+            "payload": { "web": { "cpu_pct": 95.0, "mem_bytes": 1000, "mem_limit_bytes": 2000 } }
+        });
+        let response = agent
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/container/metrics/history-host/history-project")
+                    .header("Authorization", "Bearer tests-secret")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(metrics_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Still the same login: the firing is listed but not flagged as new.
+        let history = alert_history(&internal, "session-a").await;
+        let events = history["events"].as_array().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["kind"], "fired");
+        assert_eq!(events[0]["metric"], "cpu_pct");
+        assert_eq!(events[0]["value"], 95.0);
+        assert_eq!(events[0]["hostname"], "history-host");
+        assert_eq!(events[0]["project"], "history-project");
+        assert_eq!(events[0]["service"], "web");
+        assert_eq!(events[0]["is_new"], false);
+        assert_eq!(history["new_count"], 0);
+
+        // A new login: it fired while they were away, so it is highlighted —
+        // and stays highlighted while they are on this session.
+        let history = alert_history(&internal, "session-b").await;
+        assert_eq!(history["events"][0]["is_new"], true);
+        assert_eq!(history["new_count"], 1);
+        assert!(history["new_since"].is_string());
+        let again = alert_history(&internal, "session-b").await;
+        assert_eq!(again["new_since"], history["new_since"]);
+        assert_eq!(again["new_count"], 1);
+
+        // Deleting the rule must not erase what it already reported; the entry
+        // survives with its rule reference cleared.
+        let rule_id = again["events"][0]["rule_id"].as_str().unwrap().to_string();
+        let response = internal
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/alerts/{rule_id}"))
+                    .header("X-User-Id", TEST_USER)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+        let history = alert_history(&internal, "session-b").await;
+        assert_eq!(history["events"].as_array().map(|a| a.len()), Some(1));
+        assert!(history["events"][0]["rule_id"].is_null());
+        assert_eq!(history["events"][0]["service"], "web");
+    }
+
     /// Alert-rule CRUD over the internal router, plus a metrics POST through
     /// the agent router while a rule exists — evaluation runs on that path and
     /// must never disturb ingestion. (The firing side-effect is a notifier
