@@ -1,6 +1,7 @@
 use crate::domain::deployments::models::deployment::Deployment;
 use crate::domain::projects::models::{
-    ProjectAccess, ProjectInvitation, ProjectMember, ProjectsError, ReceivedInvitation,
+    AccessibleDeployment, ProjectAccess, ProjectInvitation, ProjectMember, ProjectsError,
+    ReceivedInvitation,
 };
 use hoister_shared::ServiceName;
 
@@ -109,6 +110,14 @@ pub trait ProjectsRepository: Send + Sync + 'static + Clone {
         &self,
         project_id: uuid::Uuid,
     ) -> impl Future<Output = Result<Option<Deployment>, ProjectsError>> + Send;
+
+    /// Most recent deployments across every project `user_id` owns or is a
+    /// member of, newest first.
+    fn list_accessible_deployments(
+        &self,
+        user_id: &str,
+        limit: i64,
+    ) -> impl Future<Output = Result<Vec<AccessibleDeployment>, ProjectsError>> + Send;
 }
 
 pub trait ProjectsService: Send + Sync + 'static + Clone {
@@ -207,4 +216,11 @@ pub trait ProjectsService: Send + Sync + 'static + Clone {
         &self,
         access: &ProjectAccess,
     ) -> impl Future<Output = Result<Option<Deployment>, ProjectsError>> + Send;
+
+    /// Most recent deployments across all projects the user can access.
+    fn list_accessible_deployments(
+        &self,
+        user_id: &str,
+        limit: i64,
+    ) -> impl Future<Output = Result<Vec<AccessibleDeployment>, ProjectsError>> + Send;
 }

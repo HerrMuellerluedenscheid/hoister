@@ -1,32 +1,36 @@
-<script lang="ts">
+<script lang="ts" generics="T extends Deployment">
 	import { goto } from '$app/navigation';
 	import type { Deployment } from '../../bindings/Deployment';
+	import type { DeploymentId } from '../../bindings/DeploymentId';
 	import LogOutput from './LogOutput.svelte';
 
 	// `linkToContainer` makes each row navigate to the container the deployment
 	// happened on — used on the all-deployments list, off on the container page.
-	// `hrefFor` overrides where a row links to (e.g. project-scoped pages).
+	// `hrefFor` overrides where a row links to (e.g. project-scoped pages);
+	// `sharedFor` marks rows of projects shared with the user.
 	let {
 		data,
 		linkToContainer = false,
-		hrefFor
+		hrefFor,
+		sharedFor
 	}: {
-		data: Deployment[];
+		data: T[];
 		linkToContainer?: boolean;
-		hrefFor?: (item: Deployment) => string;
+		hrefFor?: (item: T) => string;
+		sharedFor?: (item: T) => boolean;
 	} = $props();
 
 	// Track which deployments have their captured failed-container logs expanded.
-	let expanded = $state<Set<bigint>>(new Set());
+	let expanded = $state<Set<DeploymentId>>(new Set());
 
-	function toggle(id: bigint) {
+	function toggle(id: DeploymentId) {
 		const next = new Set(expanded);
 		if (next.has(id)) next.delete(id);
 		else next.add(id);
 		expanded = next;
 	}
 
-	function containerHref(item: Deployment): string {
+	function containerHref(item: T): string {
 		if (hrefFor) return hrefFor(item);
 		return `/containers/${encodeURIComponent(item.hostname)}/${encodeURIComponent(
 			item.project_name
@@ -85,7 +89,15 @@
 							{item.hostname}
 						</td>
 						<td class="px-6 py-4 text-sm whitespace-nowrap text-ink">
-							<p>{item.project_name} | {item.service_name}</p>
+							<p>
+								{item.project_name} | {item.service_name}
+								{#if sharedFor?.(item)}
+									<span
+										class="ml-1 rounded-full border border-line-subtle px-1.5 py-px text-[10px] text-ink-muted"
+										title="Shared with you">shared</span
+									>
+								{/if}
+							</p>
 							<p class="font-mono text-xs text-ink-faint">
 								{item.digest.replace('sha256:', '').slice(0, 12)}
 							</p>

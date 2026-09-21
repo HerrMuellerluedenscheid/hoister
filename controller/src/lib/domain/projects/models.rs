@@ -1,3 +1,4 @@
+use crate::domain::deployments::models::deployment::Deployment;
 use hoister_shared::{HostName, ProjectName};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -65,6 +66,15 @@ pub struct ProjectInvitation {
     pub user_id: Option<String>,
     pub invited_by: String,
     pub created_at: String,
+}
+
+/// A deployment of one of the projects a user can access, with the project it
+/// belongs to and the user's role there.
+#[derive(Debug, Clone)]
+pub struct AccessibleDeployment {
+    pub project_id: uuid::Uuid,
+    pub role: ProjectRole,
+    pub deployment: Deployment,
 }
 
 /// An invitation as seen by its invitee, with enough about the project to

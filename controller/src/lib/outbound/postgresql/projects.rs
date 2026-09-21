@@ -1,7 +1,8 @@
 use super::{Postgresql, status_from_i16};
 use crate::domain::deployments::models::deployment::{Deployment, DeploymentId};
 use crate::domain::projects::models::{
-    ProjectAccess, ProjectInvitation, ProjectMember, ProjectRole, ProjectsError, ReceivedInvitation,
+    AccessibleDeployment, ProjectAccess, ProjectInvitation, ProjectMember, ProjectRole,
+    ProjectsError, ReceivedInvitation,
 };
 use crate::domain::projects::ports::ProjectsRepository;
 use hoister_shared::{DeploymentStatus, HostName, ProjectName, ServiceName};
@@ -26,7 +27,8 @@ const INVITATION_COLUMNS: &str = "SELECT id, project_id, email, user_id, invited
 const DEPLOYMENT_COLUMNS: &str = "SELECT d.id, d.digest, d.status, d.service_id,
         d.created_at::text AS created_at, d.logs,
         s.name AS service_name, p.name AS project_name,
-        COALESCE(h.hostname, 'unknown') AS hostname
+        COALESCE(h.hostname, 'unknown') AS hostname,
+        p.id AS project_id, p.user_id AS owner_id
     FROM deployment d
     JOIN service s ON d.service_id = s.id
     JOIN project p ON s.project_id = p.id
@@ -404,5 +406,37 @@ impl ProjectsRepository for Postgresql {
             .await
             .map_err(db_error("get_latest_rollout"))?;
         Ok(row.as_ref().map(deployment))
+    }
+
+    async fn list_accessible_deployments(
+        &self,
+        user_id: &str,
+        limit: i64,
+    ) -> Result<Vec<AccessibleDeployment>, ProjectsError> {
+        let sql = format!(
+            "{DEPLOYMENT_COLUMNS}
+                WHERE p.user_id = $1
+                   OR EXISTS (SELECT 1 FROM project_member pm
+                              WHERE pm.project_id = p.id AND pm.user_id = $1)
+                ORDER BY d.created_at DESC LIMIT $2"
+        );
+        let rows = sqlx::query(&sql)
+            .bind(user_id)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(db_error("list_accessible_deployments"))?;
+        Ok(rows
+            .iter()
+            .map(|r| AccessibleDeployment {
+                project_id: r.get::<uuid::Uuid, _>("project_id"),
+                role: if r.get::<String, _>("owner_id") == user_id {
+                    ProjectRole::Owner
+                } else {
+                    ProjectRole::Member
+                },
+                deployment: deployment(r),
+            })
+            .collect())
     }
 }
