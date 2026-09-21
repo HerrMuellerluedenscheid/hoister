@@ -149,13 +149,24 @@
 				{#if item.href === '/projects'}
 					<a
 						href={item.href}
-						class="block rounded-md px-3 py-2 text-sm transition {page.url.pathname === '/projects'
+						class="flex items-center justify-between rounded-md px-3 py-2 text-sm transition {page
+							.url.pathname === '/projects'
 							? 'bg-element text-ink'
 							: isActive(item.href)
 								? 'text-ink hover:bg-card'
 								: 'text-ink-muted hover:bg-card hover:text-ink'}"
 					>
 						{item.label}
+						{#if data.invitations.length > 0}
+							<span
+								class="rounded-full bg-brand-hover px-1.5 text-[10px] leading-4 font-semibold text-white"
+								title="{data.invitations.length} pending invitation{data.invitations.length === 1
+									? ''
+									: 's'}"
+							>
+								{data.invitations.length}
+							</span>
+						{/if}
 					</a>
 					{#if data.projects.length > 0}
 						<ul class="mb-2 ml-3 space-y-0.5 border-l border-line pl-2">

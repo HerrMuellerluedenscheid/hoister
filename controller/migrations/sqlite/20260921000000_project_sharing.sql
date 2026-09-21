@@ -1,8 +1,7 @@
 -- Project sharing: a project stays owned by `project.user_id` (the account
 -- whose agent reports it); co-maintainers get access through
--- `project_member`. People without an account yet are tracked as pending
--- `project_invitation`s keyed by email and turned into memberships once they
--- sign up with that (verified) address.
+-- `project_member`, which is only ever created by the invitee accepting a
+-- `project_invitation`.
 
 CREATE TABLE project_member (
     project_id TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
@@ -14,17 +13,22 @@ CREATE TABLE project_member (
 
 CREATE INDEX project_member_user_id_idx ON project_member(user_id);
 
--- `email` is stored lower-cased; matching on claim is exact.
+-- Invitations are addressed to an email (stored lower-cased). `user_id` is
+-- the invitee's account once known: set right away when an existing user is
+-- invited, or when someone signs up with (and verifies) the invited address.
+-- Only that user can accept or decline.
 CREATE TABLE project_invitation (
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
     email VARCHAR(320) NOT NULL,
+    user_id VARCHAR(128) REFERENCES users(id) ON DELETE CASCADE,
     invited_by VARCHAR(128) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(project_id, email)
 );
 
 CREATE INDEX project_invitation_email_idx ON project_invitation(email);
+CREATE INDEX project_invitation_user_id_idx ON project_invitation(user_id);
 
 -- Project-scoped notifiers. NULL keeps the existing account-wide behaviour
 -- (every event of every project the user owns); a project id limits the

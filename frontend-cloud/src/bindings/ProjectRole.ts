@@ -4,4 +4,4 @@
  * What a user is to a project. The owner is the account whose agent reports
  * the project (`project.user_id`); members were invited to co-maintain it.
  */
-export type ProjectRole = 'owner' | 'member';
+export type ProjectRole = "owner" | "member";

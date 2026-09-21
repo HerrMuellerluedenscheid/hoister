@@ -13,7 +13,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 	const people = await lookupPeople([
 		...detail.members.map((m) => m.user_id),
 		...detail.members.flatMap((m) => (m.invited_by ? [m.invited_by] : [])),
-		...detail.invitations.map((i) => i.invited_by)
+		...detail.invitations.map((i) => i.invited_by),
+		...detail.invitations.flatMap((i) => (i.user_id ? [i.user_id] : []))
 	]);
 
 	return { detail, people, userId: auth.userId };

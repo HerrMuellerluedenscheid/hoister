@@ -1,7 +1,7 @@
 use super::{Postgresql, status_from_i16};
 use crate::domain::deployments::models::deployment::{Deployment, DeploymentId};
 use crate::domain::projects::models::{
-    ProjectAccess, ProjectInvitation, ProjectMember, ProjectRole, ProjectsError,
+    ProjectAccess, ProjectInvitation, ProjectMember, ProjectRole, ProjectsError, ReceivedInvitation,
 };
 use crate::domain::projects::ports::ProjectsRepository;
 use hoister_shared::{DeploymentStatus, HostName, ProjectName, ServiceName};
@@ -18,6 +18,10 @@ const ACCESSIBLE_PROJECTS: &str = "SELECT p.id, p.name, h.hostname, p.user_id,
     JOIN host h ON p.host_id = h.id
     WHERE (p.user_id = $1
         OR EXISTS (SELECT 1 FROM project_member pm WHERE pm.project_id = p.id AND pm.user_id = $1))";
+
+const INVITATION_COLUMNS: &str = "SELECT id, project_id, email, user_id, invited_by,
+        created_at::text AS created_at
+    FROM project_invitation";
 
 const DEPLOYMENT_COLUMNS: &str = "SELECT d.id, d.digest, d.status, d.service_id,
         d.created_at::text AS created_at, d.logs,
@@ -50,6 +54,17 @@ fn project_access(row: &PgRow, viewer: &str) -> ProjectAccess {
         created_at: row.get("created_at"),
         member_count: row.get("member_count"),
         notifier_count: row.get("notifier_count"),
+    }
+}
+
+fn invitation(row: &PgRow) -> ProjectInvitation {
+    ProjectInvitation {
+        id: row.get::<uuid::Uuid, _>("id"),
+        project_id: row.get::<uuid::Uuid, _>("project_id"),
+        email: row.get("email"),
+        user_id: row.get("user_id"),
+        invited_by: row.get("invited_by"),
+        created_at: row.get("created_at"),
     }
 }
 
@@ -128,25 +143,6 @@ impl ProjectsRepository for Postgresql {
             .collect())
     }
 
-    async fn add_member(
-        &self,
-        project_id: uuid::Uuid,
-        user_id: &str,
-        invited_by: &str,
-    ) -> Result<bool, ProjectsError> {
-        let result = sqlx::query(
-            "INSERT INTO project_member (project_id, user_id, invited_by) VALUES ($1, $2, $3)
-                ON CONFLICT (project_id, user_id) DO NOTHING",
-        )
-        .bind(project_id)
-        .bind(user_id)
-        .bind(invited_by)
-        .execute(&self.pool)
-        .await
-        .map_err(db_error("add_member"))?;
-        Ok(result.rows_affected() > 0)
-    }
-
     async fn remove_member(
         &self,
         project_id: uuid::Uuid,
@@ -166,70 +162,65 @@ impl ProjectsRepository for Postgresql {
         &self,
         project_id: uuid::Uuid,
     ) -> Result<Vec<ProjectInvitation>, ProjectsError> {
-        let rows = sqlx::query(
-            "SELECT id, email, invited_by, created_at::text AS created_at FROM project_invitation
-                WHERE project_id = $1
-                ORDER BY project_invitation.created_at, email",
-        )
-        .bind(project_id)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(db_error("list_invitations"))?;
-        Ok(rows
-            .iter()
-            .map(|r| ProjectInvitation {
-                id: r.get::<uuid::Uuid, _>("id"),
-                email: r.get("email"),
-                invited_by: r.get("invited_by"),
-                created_at: r.get("created_at"),
-            })
-            .collect())
+        // Order by the timestamp column, not the `::text` alias of the same name.
+        let sql = format!(
+            "{INVITATION_COLUMNS} WHERE project_id = $1
+                ORDER BY project_invitation.created_at, email"
+        );
+        let rows = sqlx::query(&sql)
+            .bind(project_id)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(db_error("list_invitations"))?;
+        Ok(rows.iter().map(invitation).collect())
+    }
+
+    async fn get_invitation(
+        &self,
+        invitation_id: uuid::Uuid,
+    ) -> Result<Option<ProjectInvitation>, ProjectsError> {
+        let sql = format!("{INVITATION_COLUMNS} WHERE id = $1");
+        let row = sqlx::query(&sql)
+            .bind(invitation_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(db_error("get_invitation"))?;
+        Ok(row.as_ref().map(invitation))
     }
 
     async fn create_invitation(
         &self,
         project_id: uuid::Uuid,
         email: &str,
+        user_id: Option<&str>,
         invited_by: &str,
     ) -> Result<(ProjectInvitation, bool), ProjectsError> {
         let inserted = sqlx::query(
-            "INSERT INTO project_invitation (id, project_id, email, invited_by)
-                VALUES ($1, $2, $3, $4)
+            "INSERT INTO project_invitation (id, project_id, email, user_id, invited_by)
+                VALUES ($1, $2, $3, $4, $5)
                 ON CONFLICT (project_id, email) DO NOTHING
-                RETURNING id, created_at::text AS created_at",
+                RETURNING id, project_id, email, user_id, invited_by,
+                    created_at::text AS created_at",
         )
         .bind(uuid::Uuid::new_v4())
         .bind(project_id)
         .bind(email)
+        .bind(user_id)
         .bind(invited_by)
         .fetch_optional(&self.pool)
         .await
         .map_err(db_error("create_invitation"))?;
         if let Some(row) = inserted {
-            let invitation = ProjectInvitation {
-                id: row.get::<uuid::Uuid, _>("id"),
-                email: email.to_string(),
-                invited_by: invited_by.to_string(),
-                created_at: row.get("created_at"),
-            };
-            return Ok((invitation, true));
+            return Ok((invitation(&row), true));
         }
-        let row = sqlx::query(
-            "SELECT id, invited_by, created_at::text AS created_at FROM project_invitation
-                WHERE project_id = $1 AND email = $2",
-        )
-        .bind(project_id)
-        .bind(email)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(db_error("create_invitation lookup"))?;
-        let invitation = ProjectInvitation {
-            id: row.get::<uuid::Uuid, _>("id"),
-            email: email.to_string(),
-            invited_by: row.get("invited_by"),
-            created_at: row.get("created_at"),
-        };
-        Ok((invitation, false))
+        let sql = format!("{INVITATION_COLUMNS} WHERE project_id = $1 AND email = $2");
+        let row = sqlx::query(&sql)
+            .bind(project_id)
+            .bind(email)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(db_error("create_invitation lookup"))?;
+        Ok((invitation(&row), false))
     }
 
     async fn delete_invitation(
@@ -247,20 +238,6 @@ impl ProjectsRepository for Postgresql {
         Ok(result.rows_affected() > 0)
     }
 
-    async fn delete_invitation_by_email(
-        &self,
-        project_id: uuid::Uuid,
-        email: &str,
-    ) -> Result<(), ProjectsError> {
-        sqlx::query("DELETE FROM project_invitation WHERE project_id = $1 AND email = $2")
-            .bind(project_id)
-            .bind(email)
-            .execute(&self.pool)
-            .await
-            .map_err(db_error("delete_invitation_by_email"))?;
-        Ok(())
-    }
-
     async fn claim_invitations(
         &self,
         user_id: &str,
@@ -270,48 +247,111 @@ impl ProjectsRepository for Postgresql {
             return Ok(Vec::new());
         }
         let mut tx = self.pool.begin().await.map_err(db_error("claim begin"))?;
-        let rows = sqlx::query(
-            "SELECT i.id, i.project_id, i.invited_by, p.user_id AS owner_id
-                FROM project_invitation i
-                JOIN project p ON p.id = i.project_id
-                WHERE i.email = ANY($1)
-                FOR UPDATE OF i",
+        // Someone invited to a project they own (e.g. under a second
+        // address) has nothing to accept.
+        sqlx::query(
+            "DELETE FROM project_invitation
+                WHERE user_id IS NULL AND email = ANY($1)
+                  AND project_id IN (SELECT id FROM project WHERE user_id = $2)",
         )
+        .bind(emails)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_error("claim drop own"))?;
+        let rows = sqlx::query(
+            "UPDATE project_invitation SET user_id = $1
+                WHERE user_id IS NULL AND email = ANY($2)
+                RETURNING project_id",
+        )
+        .bind(user_id)
         .bind(emails)
         .fetch_all(&mut *tx)
         .await
-        .map_err(db_error("claim select"))?;
-
-        let mut claimed = Vec::new();
-        for row in rows {
-            let invitation_id: uuid::Uuid = row.get("id");
-            let project_id: uuid::Uuid = row.get("project_id");
-            let owner_id: String = row.get("owner_id");
-            let invited_by: String = row.get("invited_by");
-            if owner_id != user_id {
-                sqlx::query(
-                    "INSERT INTO project_member (project_id, user_id, invited_by)
-                        VALUES ($1, $2, $3)
-                        ON CONFLICT (project_id, user_id) DO NOTHING",
-                )
-                .bind(project_id)
-                .bind(user_id)
-                .bind(&invited_by)
-                .execute(&mut *tx)
-                .await
-                .map_err(db_error("claim insert member"))?;
-                if !claimed.contains(&project_id) {
-                    claimed.push(project_id);
-                }
-            }
-            sqlx::query("DELETE FROM project_invitation WHERE id = $1")
-                .bind(invitation_id)
-                .execute(&mut *tx)
-                .await
-                .map_err(db_error("claim delete invitation"))?;
-        }
+        .map_err(db_error("claim update"))?;
         tx.commit().await.map_err(db_error("claim commit"))?;
-        Ok(claimed)
+        Ok(rows
+            .iter()
+            .map(|r| r.get::<uuid::Uuid, _>("project_id"))
+            .collect())
+    }
+
+    async fn list_received_invitations(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<ReceivedInvitation>, ProjectsError> {
+        let rows = sqlx::query(
+            "SELECT i.id, i.project_id, p.name, h.hostname, i.invited_by,
+                    i.created_at::text AS created_at
+                FROM project_invitation i
+                JOIN project p ON p.id = i.project_id
+                JOIN host h ON p.host_id = h.id
+                WHERE i.user_id = $1
+                ORDER BY i.created_at DESC, i.id",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db_error("list_received_invitations"))?;
+        Ok(rows
+            .iter()
+            .map(|r| ReceivedInvitation {
+                id: r.get::<uuid::Uuid, _>("id"),
+                project_id: r.get::<uuid::Uuid, _>("project_id"),
+                project_name: ProjectName::new(r.get::<String, _>("name")),
+                hostname: HostName::new(r.get::<String, _>("hostname")),
+                invited_by: r.get("invited_by"),
+                created_at: r.get("created_at"),
+            })
+            .collect())
+    }
+
+    async fn accept_invitation(
+        &self,
+        invitation_id: uuid::Uuid,
+        user_id: &str,
+    ) -> Result<Option<uuid::Uuid>, ProjectsError> {
+        let mut tx = self.pool.begin().await.map_err(db_error("accept begin"))?;
+        let Some(row) = sqlx::query(
+            "DELETE FROM project_invitation WHERE id = $1 AND user_id = $2
+                RETURNING project_id, invited_by",
+        )
+        .bind(invitation_id)
+        .bind(user_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db_error("accept delete"))?
+        else {
+            return Ok(None);
+        };
+        let project_id: uuid::Uuid = row.get("project_id");
+        let invited_by: String = row.get("invited_by");
+        sqlx::query(
+            "INSERT INTO project_member (project_id, user_id, invited_by) VALUES ($1, $2, $3)
+                ON CONFLICT (project_id, user_id) DO NOTHING",
+        )
+        .bind(project_id)
+        .bind(user_id)
+        .bind(&invited_by)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_error("accept insert member"))?;
+        tx.commit().await.map_err(db_error("accept commit"))?;
+        Ok(Some(project_id))
+    }
+
+    async fn decline_invitation(
+        &self,
+        invitation_id: uuid::Uuid,
+        user_id: &str,
+    ) -> Result<bool, ProjectsError> {
+        let result = sqlx::query("DELETE FROM project_invitation WHERE id = $1 AND user_id = $2")
+            .bind(invitation_id)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+            .map_err(db_error("decline_invitation"))?;
+        Ok(result.rows_affected() > 0)
     }
 
     async fn get_deployments(

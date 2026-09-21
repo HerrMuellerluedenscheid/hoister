@@ -1,7 +1,7 @@
 use crate::domain::deployments::models::deployment::Deployment;
 use crate::domain::projects::models::{
     MAX_MEMBERS_PER_PROJECT, MAX_PENDING_INVITATIONS_PER_PROJECT, ProjectAccess, ProjectInvitation,
-    ProjectMember, ProjectsError, normalize_email,
+    ProjectMember, ProjectsError, ReceivedInvitation, normalize_email,
 };
 use crate::domain::projects::ports::{ProjectsRepository, ProjectsService};
 use hoister_shared::ServiceName;
@@ -56,34 +56,6 @@ impl<PR: ProjectsRepository> ProjectsService for Service<PR> {
         self.repository.list_members(access.id).await
     }
 
-    async fn add_member(
-        &self,
-        access: &ProjectAccess,
-        user_id: &str,
-    ) -> Result<bool, ProjectsError> {
-        require_owner(access)?;
-        if user_id.is_empty() {
-            return Err(ProjectsError::Invalid("user id is required".to_string()));
-        }
-        if user_id == access.owner_id {
-            return Err(ProjectsError::Invalid(
-                "The owner already has access to this project".to_string(),
-            ));
-        }
-        let members = self.repository.list_members(access.id).await?;
-        if members.iter().any(|m| m.user_id == user_id) {
-            return Ok(false);
-        }
-        if members.len() >= MAX_MEMBERS_PER_PROJECT {
-            return Err(ProjectsError::Invalid(format!(
-                "A project can be shared with at most {MAX_MEMBERS_PER_PROJECT} people"
-            )));
-        }
-        self.repository
-            .add_member(access.id, user_id, &access.owner_id)
-            .await
-    }
-
     async fn remove_member(
         &self,
         access: &ProjectAccess,
@@ -107,12 +79,42 @@ impl<PR: ProjectsRepository> ProjectsService for Service<PR> {
         &self,
         access: &ProjectAccess,
         email: &str,
+        user_id: Option<&str>,
     ) -> Result<(ProjectInvitation, bool), ProjectsError> {
         require_owner(access)?;
         let email = normalize_email(email)
             .ok_or_else(|| ProjectsError::Invalid("Invalid email address".to_string()))?;
+        let user_id = user_id.filter(|u| !u.is_empty());
+        if let Some(user_id) = user_id {
+            if user_id == access.owner_id {
+                return Err(ProjectsError::Invalid(
+                    "That is the owner's address — they already have access.".to_string(),
+                ));
+            }
+            let members = self.repository.list_members(access.id).await?;
+            if members.iter().any(|m| m.user_id == user_id) {
+                return Err(ProjectsError::Invalid(
+                    "This person already has access to the project.".to_string(),
+                ));
+            }
+        }
+
         let pending = self.repository.list_invitations(access.id).await?;
         if let Some(existing) = pending.iter().find(|i| i.email == email) {
+            // Invited before they had an account: address it to them now, so
+            // it shows up for them without waiting for the next login claim.
+            if existing.user_id.is_none()
+                && let Some(user_id) = user_id
+            {
+                self.repository
+                    .claim_invitations(user_id, std::slice::from_ref(&email))
+                    .await?;
+                let addressed = ProjectInvitation {
+                    user_id: Some(user_id.to_string()),
+                    ..existing.clone()
+                };
+                return Ok((addressed, false));
+            }
             return Ok((existing.clone(), false));
         }
         if pending.len() >= MAX_PENDING_INVITATIONS_PER_PROJECT {
@@ -122,7 +124,7 @@ impl<PR: ProjectsRepository> ProjectsService for Service<PR> {
             )));
         }
         self.repository
-            .create_invitation(access.id, &email, &access.owner_id)
+            .create_invitation(access.id, &email, user_id, &access.owner_id)
             .await
     }
 
@@ -137,22 +139,6 @@ impl<PR: ProjectsRepository> ProjectsService for Service<PR> {
             .await
     }
 
-    async fn revoke_invitation_by_email(
-        &self,
-        access: &ProjectAccess,
-        email: &str,
-    ) -> Result<(), ProjectsError> {
-        require_owner(access)?;
-        match normalize_email(email) {
-            Some(email) => {
-                self.repository
-                    .delete_invitation_by_email(access.id, &email)
-                    .await
-            }
-            None => Ok(()),
-        }
-    }
-
     async fn claim_invitations(
         &self,
         user_id: &str,
@@ -163,6 +149,47 @@ impl<PR: ProjectsRepository> ProjectsService for Service<PR> {
             return Ok(Vec::new());
         }
         self.repository.claim_invitations(user_id, &emails).await
+    }
+
+    async fn list_received_invitations(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<ReceivedInvitation>, ProjectsError> {
+        self.repository.list_received_invitations(user_id).await
+    }
+
+    async fn accept_invitation(
+        &self,
+        user_id: &str,
+        invitation_id: uuid::Uuid,
+    ) -> Result<uuid::Uuid, ProjectsError> {
+        let invitation = self
+            .repository
+            .get_invitation(invitation_id)
+            .await?
+            .filter(|i| i.user_id.as_deref() == Some(user_id))
+            .ok_or(ProjectsError::NotFound)?;
+        let members = self.repository.list_members(invitation.project_id).await?;
+        if !members.iter().any(|m| m.user_id == user_id) && members.len() >= MAX_MEMBERS_PER_PROJECT
+        {
+            return Err(ProjectsError::Invalid(format!(
+                "This project already has the maximum of {MAX_MEMBERS_PER_PROJECT} co-maintainers."
+            )));
+        }
+        self.repository
+            .accept_invitation(invitation_id, user_id)
+            .await?
+            .ok_or(ProjectsError::NotFound)
+    }
+
+    async fn decline_invitation(
+        &self,
+        user_id: &str,
+        invitation_id: uuid::Uuid,
+    ) -> Result<bool, ProjectsError> {
+        self.repository
+            .decline_invitation(invitation_id, user_id)
+            .await
     }
 
     async fn get_deployments(

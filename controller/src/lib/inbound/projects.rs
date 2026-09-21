@@ -37,7 +37,7 @@ use crate::domain::notifiers::models::{
 };
 use crate::domain::notifiers::ports::NotifierService;
 use crate::domain::projects::models::{
-    ProjectAccess, ProjectInvitation, ProjectRole, ProjectsError,
+    ProjectAccess, ProjectInvitation, ProjectRole, ProjectsError, ReceivedInvitation,
 };
 use crate::domain::projects::ports::ProjectsService;
 use crate::domain::tokens::ports::TokenService;
@@ -54,7 +54,7 @@ use crate::sse::ControllerEvent;
 const DEPLOYMENTS_LIMIT: i64 = 50;
 /// Addresses accepted by one claim call. A user has a handful at most.
 const MAX_CLAIM_EMAILS: usize = 20;
-/// Longest inviter display name echoed into a share email.
+/// Longest inviter display name echoed into an invitation email.
 const MAX_INVITER_LEN: usize = 200;
 
 // ── Wire types ────────────────────────────────────────────────────────────────
@@ -128,6 +128,9 @@ pub struct ProjectInvitationResponse {
     #[ts(type = "string")]
     pub id: uuid::Uuid,
     pub email: String,
+    /// The invitee's account once known; `None` while waiting for them to
+    /// sign up.
+    pub user_id: Option<String>,
     pub invited_by: String,
     pub created_at: String,
 }
@@ -137,6 +140,34 @@ impl From<ProjectInvitation> for ProjectInvitationResponse {
         Self {
             id: i.id,
             email: i.email,
+            user_id: i.user_id,
+            invited_by: i.invited_by,
+            created_at: i.created_at,
+        }
+    }
+}
+
+/// An invitation waiting for the calling user's answer.
+#[derive(TS, Serialize, Deserialize)]
+#[ts(export)]
+pub struct ReceivedInvitationResponse {
+    #[ts(type = "string")]
+    pub id: uuid::Uuid,
+    #[ts(type = "string")]
+    pub project_id: uuid::Uuid,
+    pub project_name: ProjectName,
+    pub hostname: HostName,
+    pub invited_by: String,
+    pub created_at: String,
+}
+
+impl From<ReceivedInvitation> for ReceivedInvitationResponse {
+    fn from(i: ReceivedInvitation) -> Self {
+        Self {
+            id: i.id,
+            project_id: i.project_id,
+            project_name: i.project_name,
+            hostname: i.hostname,
             invited_by: i.invited_by,
             created_at: i.created_at,
         }
@@ -154,13 +185,6 @@ pub struct ProjectDetailResponse {
 
 #[derive(TS, Serialize, Deserialize)]
 #[ts(export)]
-pub struct AddProjectMemberResponse {
-    /// `false` when the user already was a member.
-    pub added: bool,
-}
-
-#[derive(TS, Serialize, Deserialize)]
-#[ts(export)]
 pub struct InviteToProjectResponse {
     pub invitation: ProjectInvitationResponse,
     /// `false` when the address already had a pending invitation, in which
@@ -171,24 +195,29 @@ pub struct InviteToProjectResponse {
 #[derive(TS, Serialize, Deserialize)]
 #[ts(export)]
 pub struct ClaimInvitationsResponse {
+    /// Projects whose invitations now wait for the user to accept them.
     #[ts(type = "Array<string>")]
     pub project_ids: Vec<uuid::Uuid>,
 }
 
-#[derive(Deserialize)]
-struct AddMemberBody {
-    user_id: String,
-    /// The member's address, if known, for the "shared with you" email.
-    #[serde(default)]
-    email: Option<String>,
-    /// How to name the inviting owner in that email.
-    #[serde(default)]
-    inviter: Option<String>,
+#[derive(TS, Serialize, Deserialize)]
+#[ts(export)]
+pub struct AcceptInvitationResponse {
+    #[ts(type = "string")]
+    pub project_id: uuid::Uuid,
 }
 
 #[derive(Deserialize)]
 struct InviteBody {
     email: String,
+    /// The invitee's account, when the BFF resolved `email` to an existing
+    /// user with that verified address. The controller then emails them the
+    /// invitation itself; otherwise the BFF sends a sign-up invitation.
+    #[serde(default)]
+    user_id: Option<String>,
+    /// How to name the inviting owner in that email.
+    #[serde(default)]
+    inviter: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -388,10 +417,12 @@ fn sanitize_inviter(raw: &str) -> Option<String> {
     (!cleaned.is_empty()).then_some(cleaned)
 }
 
-/// Tell an existing user that a project was shared with them, through the
-/// controller-wide email transport. Fire-and-forget; skipped when email
-/// delivery isn't configured.
-fn send_share_email(
+/// Tell an existing user they were invited to co-maintain a project, through
+/// the controller-wide email transport. The link goes to the projects page,
+/// where the invitation waits to be accepted or declined. Fire-and-forget;
+/// skipped when email delivery isn't configured (the invitation still shows
+/// up in the dashboard).
+fn send_invitation_email(
     email: Option<EmailDispatchConfig>,
     recipient: String,
     inviter: Option<String>,
@@ -400,15 +431,18 @@ fn send_share_email(
 ) {
     let Some(email) = email else { return };
     let who = inviter.unwrap_or_else(|| "A Hoister user".to_string());
-    let title = format!("{who} shared the project {} with you", access.name.as_str());
+    let title = format!(
+        "{who} invited you to co-maintain {} on Hoister",
+        access.name.as_str()
+    );
     let body = format!(
-        "{who} gave you access to the project \"{}\" (host {}) on Hoister. You can now \
-         see its services, deployments and resource usage, deploy pending updates and \
-         set up notifications for it.\n\nOpen the project: {}/projects/{}",
+        "{who} invited you to co-maintain the project \"{}\" (host {}) on Hoister. Once \
+         you accept, you can see its services, deployments and resource usage, deploy \
+         pending updates and set up notifications for it.\n\nAccept or decline the \
+         invitation: {}/projects",
         access.name.as_str(),
         access.hostname.as_str(),
         dashboard_url.trim_end_matches('/'),
-        access.id,
     );
     let notifier = Notifier {
         id: uuid::Uuid::nil(),
@@ -422,7 +456,7 @@ fn send_share_email(
     let project_id = access.id;
     tokio::spawn(async move {
         if let Err(e) = dispatch_one_async(notifier, Message::new(title, body), Some(email)).await {
-            error!("share email for project {project_id} failed: {e}");
+            error!("invitation email for project {project_id} failed: {e}");
         }
     });
 }
@@ -842,63 +876,8 @@ async fn apply_project_update<
 }
 
 // ── Sharing ──────────────────────────────────────────────────────────────────
-
-/// Owner only: give an existing user access. The BFF resolves the invitee's
-/// email to a user id with the identity provider first; people without an
-/// account go through `invite_to_project` instead.
-async fn add_project_member<
-    DS: DeploymentsService,
-    CS: ContainerStateService,
-    TS: TokenService,
-    NS: NotifierService,
-    BS: BillingService,
-    MS: MetricsService,
-    AS: AlertsService,
-    PS: ProjectsService,
->(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
-    Extension(UserId(user_id)): Extension<UserId>,
-    Path(project_id): Path<uuid::Uuid>,
-    Json(body): Json<AddMemberBody>,
-) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
-        Ok(a) => a,
-        Err(r) => return r,
-    };
-    if !access.is_owner() {
-        return projects_error(ProjectsError::Forbidden);
-    }
-    // The invitee may never have called the controller yet, and memberships
-    // reference the users table.
-    state.billing_service.upsert_user(&body.user_id).await;
-    let added = match state
-        .projects_service
-        .add_member(&access, &body.user_id)
-        .await
-    {
-        Ok(added) => added,
-        Err(e) => return projects_error(e),
-    };
-    if let Some(email) = body.email {
-        if let Err(e) = state
-            .projects_service
-            .revoke_invitation_by_email(&access, &email)
-            .await
-        {
-            error!("clearing invitation for new member of {project_id} failed: {e:?}");
-        }
-        if added {
-            send_share_email(
-                state.email.clone(),
-                email,
-                body.inviter.as_deref().and_then(sanitize_inviter),
-                &access,
-                &state.dashboard_url,
-            );
-        }
-    }
-    Json(ApiResponse::success(AddProjectMemberResponse { added })).into_response()
-}
+// Nobody gains access to a project without agreeing to it: the owner invites
+// an email address, and the membership only exists once the invitee accepts.
 
 /// The owner may remove anyone; a member may remove themselves (leave).
 async fn remove_project_member<
@@ -930,9 +909,13 @@ async fn remove_project_member<
     }
 }
 
-/// Owner only: record a pending invitation for someone without an account.
-/// Sending the actual sign-up invitation is the BFF's job (it talks to the
-/// identity provider); it should only do so when `created` is true.
+/// Owner only: invite an email address to co-maintain the project.
+///
+/// With `user_id` (the BFF resolved the address to an existing account) the
+/// invitation is addressed to that user right away and the controller emails
+/// them. Without it, sending the sign-up invitation is the BFF's job (it talks
+/// to the identity provider) and it should only do so when `created` is true;
+/// the invitation gets addressed to the new account when they sign up.
 async fn invite_to_project<
     DS: DeploymentsService,
     CS: ContainerStateService,
@@ -952,14 +935,36 @@ async fn invite_to_project<
         Ok(a) => a,
         Err(r) => return r,
     };
-    match state.projects_service.invite(&access, &body.email).await {
-        Ok((invitation, created)) => Json(ApiResponse::success(InviteToProjectResponse {
-            invitation: invitation.into(),
-            created,
-        }))
-        .into_response(),
-        Err(e) => projects_error(e),
+    let invitee = body.user_id.filter(|u| !u.is_empty());
+    if let Some(invitee) = &invitee
+        && access.is_owner()
+    {
+        // The invitee may never have called the controller yet, and
+        // invitations reference the users table.
+        state.billing_service.upsert_user(invitee).await;
     }
+    let (invitation, created) = match state
+        .projects_service
+        .invite(&access, &body.email, invitee.as_deref())
+        .await
+    {
+        Ok(result) => result,
+        Err(e) => return projects_error(e),
+    };
+    if created && invitee.is_some() {
+        send_invitation_email(
+            state.email.clone(),
+            invitation.email.clone(),
+            body.inviter.as_deref().and_then(sanitize_inviter),
+            &access,
+            &state.dashboard_url,
+        );
+    }
+    Json(ApiResponse::success(InviteToProjectResponse {
+        invitation: invitation.into(),
+        created,
+    }))
+    .into_response()
 }
 
 async fn revoke_project_invitation<
@@ -991,7 +996,8 @@ async fn revoke_project_invitation<
     }
 }
 
-/// Turn pending invitations addressed to the caller into memberships. The BFF
+/// Address pending invitations for the caller's email addresses to their
+/// account, so they show up among the invitations they can accept. The BFF
 /// must only pass addresses the identity provider has verified for this user
 /// — the controller cannot check that itself.
 async fn claim_invitations<
@@ -1020,6 +1026,88 @@ async fn claim_invitations<
             project_ids,
         }))
         .into_response(),
+        Err(e) => projects_error(e),
+    }
+}
+
+/// Invitations waiting for the caller to accept or decline them.
+async fn list_received_invitations<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+    BS: BillingService,
+    MS: MetricsService,
+    AS: AlertsService,
+    PS: ProjectsService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+) -> Response {
+    match state
+        .projects_service
+        .list_received_invitations(&user_id)
+        .await
+    {
+        Ok(invitations) => {
+            let invitations: Vec<ReceivedInvitationResponse> =
+                invitations.into_iter().map(Into::into).collect();
+            Json(ApiResponse::success(invitations)).into_response()
+        }
+        Err(e) => projects_error(e),
+    }
+}
+
+/// Accept an invitation addressed to the caller, becoming a co-maintainer.
+/// Anyone else's invitation is a 404.
+async fn accept_invitation<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+    BS: BillingService,
+    MS: MetricsService,
+    AS: AlertsService,
+    PS: ProjectsService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+    Path(invitation_id): Path<uuid::Uuid>,
+) -> Response {
+    match state
+        .projects_service
+        .accept_invitation(&user_id, invitation_id)
+        .await
+    {
+        Ok(project_id) => Json(ApiResponse::success(AcceptInvitationResponse {
+            project_id,
+        }))
+        .into_response(),
+        Err(e) => projects_error(e),
+    }
+}
+
+async fn decline_invitation<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+    BS: BillingService,
+    MS: MetricsService,
+    AS: AlertsService,
+    PS: ProjectsService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+    Path(invitation_id): Path<uuid::Uuid>,
+) -> Response {
+    match state
+        .projects_service
+        .decline_invitation(&user_id, invitation_id)
+        .await
+    {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => projects_error(e),
     }
 }
@@ -1244,10 +1332,6 @@ pub(crate) fn routes<
             get(get_project_pending_updates::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
-            "/projects/{id}/members",
-            post(add_project_member::<DS, CS, TS, NS, BS, MS, AS, PS>),
-        )
-        .route(
             "/projects/{id}/members/{user_id}",
             axum::routing::delete(remove_project_member::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
@@ -1262,6 +1346,18 @@ pub(crate) fn routes<
         .route(
             "/invitations/claim",
             post(claim_invitations::<DS, CS, TS, NS, BS, MS, AS, PS>),
+        )
+        .route(
+            "/invitations",
+            get(list_received_invitations::<DS, CS, TS, NS, BS, MS, AS, PS>),
+        )
+        .route(
+            "/invitations/{invitation_id}/accept",
+            post(accept_invitation::<DS, CS, TS, NS, BS, MS, AS, PS>),
+        )
+        .route(
+            "/invitations/{invitation_id}/decline",
+            post(decline_invitation::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/projects/{id}/notifiers",
