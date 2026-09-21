@@ -248,18 +248,6 @@ fn projects_error(e: ProjectsError) -> Response {
     }
 }
 
-/// The access check every project endpoint starts with.
-async fn resolve<PS: ProjectsService>(
-    projects: &PS,
-    user_id: &str,
-    project_id: uuid::Uuid,
-) -> Result<ProjectAccess, Response> {
-    projects
-        .get_project(user_id, project_id)
-        .await
-        .map_err(projects_error)
-}
-
 fn non_empty(s: String) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
@@ -499,9 +487,13 @@ async fn get_project<
     Extension(UserId(user_id)): Extension<UserId>,
     Path(project_id): Path<uuid::Uuid>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     let (members, invitations) = match (
         state.projects_service.list_members(&access).await,
@@ -554,9 +546,13 @@ async fn delete_project<
     Extension(UserId(user_id)): Extension<UserId>,
     Path(project_id): Path<uuid::Uuid>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     match state.projects_service.delete_project(&access).await {
         Ok(deleted) => {
@@ -590,9 +586,13 @@ async fn list_project_services<
     Extension(UserId(user_id)): Extension<UserId>,
     Path(project_id): Path<uuid::Uuid>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     let mut all = state
         .container_state_service
@@ -625,9 +625,13 @@ async fn get_project_service<
     Extension(UserId(user_id)): Extension<UserId>,
     Path((project_id, service_name)): Path<(uuid::Uuid, ServiceName)>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     let Some(host_project_state) = state
         .container_state_service
@@ -669,9 +673,13 @@ async fn get_project_service_metrics<
     Extension(UserId(user_id)): Extension<UserId>,
     Path((project_id, service_name)): Path<(uuid::Uuid, ServiceName)>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     let since = Utc::now() - chrono::Duration::days(RETENTION_DAYS);
     let points = state
@@ -710,9 +718,13 @@ async fn get_project_deployments<
     Extension(UserId(user_id)): Extension<UserId>,
     Path(project_id): Path<uuid::Uuid>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     match state
         .projects_service
@@ -738,9 +750,13 @@ async fn get_project_service_deployments<
     Extension(UserId(user_id)): Extension<UserId>,
     Path((project_id, service_name)): Path<(uuid::Uuid, ServiceName)>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     match state
         .projects_service
@@ -766,9 +782,13 @@ async fn request_project_service_logs<
     Extension(UserId(user_id)): Extension<UserId>,
     Path((project_id, service_name)): Path<(uuid::Uuid, ServiceName)>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     // Agents listen on the owner's event stream.
     let event = ControllerEvent::RequestLogs((access.hostname, access.name, service_name));
@@ -790,9 +810,13 @@ async fn get_project_service_logs<
     Extension(UserId(user_id)): Extension<UserId>,
     Path((project_id, service_name)): Path<(uuid::Uuid, ServiceName)>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     match state
         .logs
@@ -827,9 +851,13 @@ async fn get_project_pending_updates<
     Extension(UserId(user_id)): Extension<UserId>,
     Path(project_id): Path<uuid::Uuid>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     let updates: Vec<PendingUpdate> = state
         .pending_updates
@@ -857,9 +885,13 @@ async fn apply_project_update<
     Extension(UserId(user_id)): Extension<UserId>,
     Path((project_id, service_name)): Path<(uuid::Uuid, ServiceName)>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     state
         .pending_updates
@@ -894,9 +926,13 @@ async fn remove_project_member<
     Extension(UserId(user_id)): Extension<UserId>,
     Path((project_id, member_id)): Path<(uuid::Uuid, String)>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     match state
         .projects_service
@@ -931,9 +967,13 @@ async fn invite_to_project<
     Path(project_id): Path<uuid::Uuid>,
     Json(body): Json<InviteBody>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     let invitee = body.user_id.filter(|u| !u.is_empty());
     if let Some(invitee) = &invitee
@@ -981,9 +1021,13 @@ async fn revoke_project_invitation<
     Extension(UserId(user_id)): Extension<UserId>,
     Path((project_id, invitation_id)): Path<(uuid::Uuid, uuid::Uuid)>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     match state
         .projects_service
@@ -1131,9 +1175,13 @@ async fn list_project_notifiers<
     Extension(UserId(user_id)): Extension<UserId>,
     Path(project_id): Path<uuid::Uuid>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     match state
         .notifier_service
@@ -1166,9 +1214,13 @@ async fn create_project_notifier<
     Path(project_id): Path<uuid::Uuid>,
     Json(config): Json<NotifierConfig>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     create_notifier_for(
         state.notifier_service.as_ref(),
@@ -1194,9 +1246,13 @@ async fn delete_project_notifier<
     Extension(UserId(user_id)): Extension<UserId>,
     Path((project_id, notifier_id)): Path<(uuid::Uuid, uuid::Uuid)>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     match state
         .notifier_service
@@ -1227,9 +1283,13 @@ async fn set_project_notifier_enabled<
     Path((project_id, notifier_id)): Path<(uuid::Uuid, uuid::Uuid)>,
     Json(req): Json<SetEnabledRequest>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     match state
         .notifier_service
@@ -1259,9 +1319,13 @@ async fn test_project_notifier<
     Extension(UserId(user_id)): Extension<UserId>,
     Path((project_id, notifier_id)): Path<(uuid::Uuid, uuid::Uuid)>,
 ) -> Response {
-    let access = match resolve(state.projects_service.as_ref(), &user_id, project_id).await {
+    let access = match state
+        .projects_service
+        .get_project(&user_id, project_id)
+        .await
+    {
         Ok(a) => a,
-        Err(r) => return r,
+        Err(e) => return projects_error(e),
     };
     test_notifier_in(
         state.notifier_service.as_ref(),
