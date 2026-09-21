@@ -15,6 +15,11 @@
 			</div>
 		{/if}
 
-		<Deployments data={data.deployments} linkToContainer />
+		<Deployments
+			data={data.deployments}
+			linkToContainer
+			hrefFor={(d) => `/projects/${d.project_id}/services/${encodeURIComponent(d.service_name)}`}
+			sharedFor={(d) => d.role === 'member'}
+		/>
 	</div>
 </div>

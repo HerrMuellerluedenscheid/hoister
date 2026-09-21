@@ -113,6 +113,21 @@ pub struct ProjectSummaryResponse {
     pub notifier_count: i64,
 }
 
+/// One row of the deployments list across all accessible projects: the
+/// deployment plus the project it belongs to, so the dashboard can link to
+/// the project-scoped pages (which also work for shared projects).
+#[derive(TS, Serialize, Deserialize)]
+#[ts(export)]
+pub struct ProjectDeploymentResponse {
+    #[ts(type = "string")]
+    pub project_id: uuid::Uuid,
+    /// The calling user's role in that project.
+    pub role: ProjectRole,
+    #[serde(flatten)]
+    #[ts(flatten)]
+    pub deployment: Deployment,
+}
+
 #[derive(TS, Serialize, Deserialize)]
 #[ts(export)]
 pub struct ProjectMemberResponse {
@@ -527,6 +542,43 @@ async fn get_project<
         invitations: invitations.into_iter().map(Into::into).collect(),
     }))
     .into_response()
+}
+
+/// Recent deployments across every project the user owns or co-maintains,
+/// for the dashboard's deployments list. Deliberately separate from
+/// `GET /deployments`, which stays owner-only: the plan's project cap counts
+/// on it.
+async fn list_accessible_deployments<
+    DS: DeploymentsService,
+    CS: ContainerStateService,
+    TS: TokenService,
+    NS: NotifierService,
+    BS: BillingService,
+    MS: MetricsService,
+    AS: AlertsService,
+    PS: ProjectsService,
+>(
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
+    Extension(UserId(user_id)): Extension<UserId>,
+) -> Response {
+    match state
+        .projects_service
+        .list_accessible_deployments(&user_id, DEPLOYMENTS_LIMIT)
+        .await
+    {
+        Ok(rows) => {
+            let rows: Vec<ProjectDeploymentResponse> = rows
+                .into_iter()
+                .map(|r| ProjectDeploymentResponse {
+                    project_id: r.project_id,
+                    role: r.role,
+                    deployment: r.deployment,
+                })
+                .collect();
+            Json(ApiResponse::success(rows)).into_response()
+        }
+        Err(e) => projects_error(e),
+    }
 }
 
 /// Owner only: retire the project. Cascades to everything attached to it,
@@ -1353,6 +1405,11 @@ pub(crate) fn routes<
         .route(
             "/projects",
             get(list_projects::<DS, CS, TS, NS, BS, MS, AS, PS>),
+        )
+        // A static segment, so it takes precedence over `/projects/{id}`.
+        .route(
+            "/projects/deployments",
+            get(list_accessible_deployments::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/projects/{id}",

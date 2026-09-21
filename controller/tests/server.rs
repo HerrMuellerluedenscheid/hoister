@@ -937,6 +937,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_deployments_across_projects_include_shared_ones() {
+        let (agent, internal, _db) = setup_test_app().await;
+        let id = seed_project(&agent, &internal, "shop").await;
+        let deployment = CreateDeployment {
+            project: ProjectName::new("shop"),
+            service: ServiceName::new("web"),
+            image: ImageName::new("nginx:latest"),
+            digest: ImageDigest::new("sha256:new"),
+            status: DeploymentStatus::Success,
+            hostname: HostName::new("test-host"),
+            logs: None,
+        };
+        let response = agent
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/deployments")
+                    .header("Authorization", "Bearer tests-secret")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(serde_json::to_string(&deployment).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let (status, owned) =
+            call(&internal, "GET", "/projects/deployments", TEST_USER, None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(owned["data"][0]["project_id"], id.as_str());
+        assert_eq!(owned["data"][0]["role"], "owner");
+        assert_eq!(owned["data"][0]["digest"], "sha256:new");
+
+        // Nothing for people the project isn't shared with…
+        let (_, none) = call(&internal, "GET", "/projects/deployments", MEMBER, None).await;
+        assert_eq!(none["data"].as_array().map(|a| a.len()), Some(0));
+
+        // …until they accept an invitation.
+        share_with(&internal, &id, MEMBER).await;
+        let (_, shared) = call(&internal, "GET", "/projects/deployments", MEMBER, None).await;
+        let shared = shared["data"].as_array().unwrap();
+        assert_eq!(shared.len(), 1);
+        assert_eq!(shared[0]["project_id"], id.as_str());
+        assert_eq!(shared[0]["role"], "member");
+        assert_eq!(shared[0]["service_name"], "web");
+
+        // The owner-scoped list (which feeds the plan's project cap) is
+        // unchanged.
+        let (_, own_only) = call(&internal, "GET", "/deployments", MEMBER, None).await;
+        assert_eq!(own_only["data"].as_array().map(|a| a.len()), Some(0));
+    }
+
+    #[tokio::test]
     async fn test_project_overview_summarises_services_and_latest_rollout() {
         let (agent, internal, _db) = setup_test_app().await;
         let id = seed_project(&agent, &internal, "shop").await;

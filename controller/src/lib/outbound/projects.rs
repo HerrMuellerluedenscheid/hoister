@@ -6,7 +6,8 @@ use super::postgresql::Postgresql;
 use super::sqlite::Sqlite;
 use crate::domain::deployments::models::deployment::Deployment;
 use crate::domain::projects::models::{
-    ProjectAccess, ProjectInvitation, ProjectMember, ProjectsError, ReceivedInvitation,
+    AccessibleDeployment, ProjectAccess, ProjectInvitation, ProjectMember, ProjectsError,
+    ReceivedInvitation,
 };
 use crate::domain::projects::ports::ProjectsRepository;
 use hoister_shared::ServiceName;
@@ -237,6 +238,23 @@ impl ProjectsRepository for Database {
             }
             Self::Postgresql(db) => {
                 <Postgresql as ProjectsRepository>::get_latest_rollout(db, project_id).await
+            }
+        }
+    }
+
+    async fn list_accessible_deployments(
+        &self,
+        user_id: &str,
+        limit: i64,
+    ) -> Result<Vec<AccessibleDeployment>, ProjectsError> {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as ProjectsRepository>::list_accessible_deployments(db, user_id, limit)
+                    .await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as ProjectsRepository>::list_accessible_deployments(db, user_id, limit)
+                    .await
             }
         }
     }

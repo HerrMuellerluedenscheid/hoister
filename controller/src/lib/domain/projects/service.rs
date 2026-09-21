@@ -1,7 +1,8 @@
 use crate::domain::deployments::models::deployment::Deployment;
 use crate::domain::projects::models::{
-    MAX_MEMBERS_PER_PROJECT, MAX_PENDING_INVITATIONS_PER_PROJECT, ProjectAccess, ProjectInvitation,
-    ProjectMember, ProjectsError, ReceivedInvitation, normalize_email,
+    AccessibleDeployment, MAX_MEMBERS_PER_PROJECT, MAX_PENDING_INVITATIONS_PER_PROJECT,
+    ProjectAccess, ProjectInvitation, ProjectMember, ProjectsError, ReceivedInvitation,
+    normalize_email,
 };
 use crate::domain::projects::ports::{ProjectsRepository, ProjectsService};
 use hoister_shared::ServiceName;
@@ -208,5 +209,15 @@ impl<PR: ProjectsRepository> ProjectsService for Service<PR> {
         access: &ProjectAccess,
     ) -> Result<Option<Deployment>, ProjectsError> {
         self.repository.get_latest_rollout(access.id).await
+    }
+
+    async fn list_accessible_deployments(
+        &self,
+        user_id: &str,
+        limit: i64,
+    ) -> Result<Vec<AccessibleDeployment>, ProjectsError> {
+        self.repository
+            .list_accessible_deployments(user_id, limit.clamp(1, MAX_DEPLOYMENTS))
+            .await
     }
 }

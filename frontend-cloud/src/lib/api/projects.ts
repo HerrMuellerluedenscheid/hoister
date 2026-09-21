@@ -8,6 +8,7 @@ import type { ContainerStateResponse } from '../../bindings/ContainerStateRespon
 import type { ContainerStateResponses } from '../../bindings/ContainerStateResponses';
 import type { Deployment } from '../../bindings/Deployment';
 import type { InviteToProjectResponse } from '../../bindings/InviteToProjectResponse';
+import type { ProjectDeploymentResponse } from '../../bindings/ProjectDeploymentResponse';
 import type { ProjectDetailResponse } from '../../bindings/ProjectDetailResponse';
 import type { ProjectSummaryResponse } from '../../bindings/ProjectSummaryResponse';
 import type { ReceivedInvitationResponse } from '../../bindings/ReceivedInvitationResponse';
@@ -62,6 +63,17 @@ export type WriteResult<T = null> = { ok: true; data: T } | { ok: false; error: 
 export async function listProjects(userId: string): Promise<ProjectSummaryResponse[]> {
 	const response = await fetch(`${base()}/projects`, { headers: backendHeaders(userId) });
 	return unwrap<ProjectSummaryResponse[]>(response, 'load projects');
+}
+
+/** Recent deployments across every project the user owns or co-maintains,
+ * each with its project id for linking to the project-scoped pages. */
+export async function listAccessibleDeployments(
+	userId: string
+): Promise<ProjectDeploymentResponse[]> {
+	const response = await fetch(`${base()}/projects/deployments`, {
+		headers: backendHeaders(userId)
+	});
+	return unwrap<ProjectDeploymentResponse[]>(response, 'load deployments');
 }
 
 /** One project with its members and pending invitations; `null` when the

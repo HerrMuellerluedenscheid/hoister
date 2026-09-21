@@ -1,42 +1,55 @@
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { getLatestMetrics, getServiceMetrics } from '$lib/api/metrics';
+import { getProjectServiceMetrics } from '$lib/api/projects';
 import type { ServiceMetricsResponse } from '../../../bindings/ServiceMetricsResponse';
+import type { ProjectSummaryResponse } from '../../../bindings/ProjectSummaryResponse';
 
-export const load: PageServerLoad = async ({ locals }) => {
+export interface ProjectResources {
+	project: Pick<ProjectSummaryResponse, 'id' | 'name' | 'hostname' | 'role'>;
+	services: ServiceMetricsResponse[];
+}
+
+export const load: PageServerLoad = async ({ locals, parent }) => {
 	const auth = locals.auth();
 	if (!auth.userId) throw redirect(303, '/');
 	const userId = auth.userId;
 
-	// The controller has no bulk time-series endpoint, so we first learn which
-	// containers report metrics, then fan out one time-series request per
-	// container. Kept parallel and fault-tolerant: a single slow or missing
+	// Owned and shared projects alike, as loaded by the app layout.
+	const { projects, projectsError } = await parent();
+	if (projectsError) return { groups: [] as ProjectResources[], error: projectsError };
+
+	// The controller has no bulk time-series endpoint, so fan out one request
+	// per service through the project-scoped endpoint (which works for shared
+	// projects too). Kept parallel and fault-tolerant: a single slow or missing
 	// series shouldn't sink the whole page.
-	let latest;
-	try {
-		latest = await getLatestMetrics(userId);
-	} catch (e) {
-		console.error('[resources] latest metrics fetch failed:', e);
-		return { services: [] as ServiceMetricsResponse[], error: 'Failed to connect to backend' };
-	}
-
+	const targets = projects.flatMap((project) =>
+		project.services.map((service) => ({ project, service: service.name }))
+	);
 	const results = await Promise.allSettled(
-		latest.map((m) => getServiceMetrics(userId, m.hostname, m.project_name, m.service_name))
+		targets.map((t) => getProjectServiceMetrics(userId, t.project.id, t.service))
 	);
 
-	const services: ServiceMetricsResponse[] = [];
-	for (const r of results) {
-		if (r.status === 'fulfilled') services.push(r.value);
-		else console.error('[resources] service metrics fetch failed:', r.reason);
-	}
+	const byProject = new Map<string, ProjectResources>();
+	results.forEach((result, i) => {
+		const { project } = targets[i];
+		if (result.status === 'rejected') {
+			console.error('[resources] service metrics fetch failed:', result.reason);
+			return;
+		}
+		// Containers that don't report metrics would only add empty charts.
+		if (result.value.points.length === 0) return;
+		let group = byProject.get(project.id);
+		if (!group) {
+			const { id, name, hostname, role } = project;
+			group = { project: { id, name, hostname, role }, services: [] };
+			byProject.set(project.id, group);
+		}
+		group.services.push(result.value);
+	});
 
-	// Stable ordering so the grouped layout doesn't reshuffle between refreshes.
-	services.sort(
-		(a, b) =>
-			a.hostname.localeCompare(b.hostname) ||
-			a.project_name.localeCompare(b.project_name) ||
-			a.service_name.localeCompare(b.service_name)
-	);
+	// `projects` is already ordered by name; keep that, and services by name.
+	const groups = projects.flatMap((p) => byProject.get(p.id) ?? []);
+	for (const g of groups) g.services.sort((a, b) => a.service_name.localeCompare(b.service_name));
 
-	return { services, error: null };
+	return { groups, error: null };
 };
