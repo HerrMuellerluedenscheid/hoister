@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
+import type { AcceptInvitationResponse } from '../../bindings/AcceptInvitationResponse';
 import type { ApiResponse } from '../../bindings/ApiResponse';
-import type { AddProjectMemberResponse } from '../../bindings/AddProjectMemberResponse';
 import type { ClaimInvitationsResponse } from '../../bindings/ClaimInvitationsResponse';
 import type { ContainerLogsResponse } from '../../bindings/ContainerLogsResponse';
 import type { ContainerStateResponse } from '../../bindings/ContainerStateResponse';
@@ -10,6 +10,7 @@ import type { Deployment } from '../../bindings/Deployment';
 import type { InviteToProjectResponse } from '../../bindings/InviteToProjectResponse';
 import type { ProjectDetailResponse } from '../../bindings/ProjectDetailResponse';
 import type { ProjectSummaryResponse } from '../../bindings/ProjectSummaryResponse';
+import type { ReceivedInvitationResponse } from '../../bindings/ReceivedInvitationResponse';
 import type { ServiceMetricsResponse } from '../../bindings/ServiceMetricsResponse';
 import { backendHeaders } from './_headers';
 import type { PendingUpdate } from './pendingUpdates';
@@ -184,26 +185,6 @@ export async function getProjectServiceLogs(
 	return body.data ?? null;
 }
 
-/**
- * Owner only: give an existing user access. `email` and `inviter` are used for
- * the "shared with you" email the controller sends when email is configured.
- */
-export async function addProjectMember(
-	userId: string,
-	projectId: string,
-	member: { user_id: string; email?: string; inviter?: string }
-): Promise<WriteResult<AddProjectMemberResponse>> {
-	const response = await fetch(projectUrl(projectId, '/members'), {
-		method: 'POST',
-		headers: jsonHeaders(userId),
-		body: JSON.stringify(member)
-	});
-	if (response.status === 400 || response.status === 403) {
-		return { ok: false, error: await rejection(response, 'Could not share the project') };
-	}
-	return { ok: true, data: await unwrap<AddProjectMemberResponse>(response, 'share project') };
-}
-
 /** Owner: remove anyone. Member: pass your own id to leave the project. */
 export async function removeProjectMember(
 	userId: string,
@@ -222,16 +203,21 @@ export async function removeProjectMember(
 	return { ok: true, data: null };
 }
 
-/** Owner only: record a pending invitation for someone without an account. */
+/**
+ * Owner only: invite an email address to co-maintain the project. Pass the
+ * invitee's `user_id` when the address belongs to an existing account: the
+ * controller then emails them (naming `inviter`) and the invitation waits for
+ * them to accept. Without it the caller sends the sign-up invitation itself.
+ */
 export async function createProjectInvitation(
 	userId: string,
 	projectId: string,
-	email: string
+	invitee: { email: string; user_id?: string; inviter?: string }
 ): Promise<WriteResult<InviteToProjectResponse>> {
 	const response = await fetch(projectUrl(projectId, '/invitations'), {
 		method: 'POST',
 		headers: jsonHeaders(userId),
-		body: JSON.stringify({ email })
+		body: JSON.stringify(invitee)
 	});
 	if (response.status === 400 || response.status === 403) {
 		return { ok: false, error: await rejection(response, 'Could not invite') };
@@ -257,8 +243,8 @@ export async function deleteProjectInvitation(
 }
 
 /**
- * Turn pending invitations addressed to `emails` into memberships. Only pass
- * addresses the identity provider has verified for `userId`.
+ * Address pending invitations for `emails` to the user, so they can accept
+ * them. Only pass addresses the identity provider has verified for `userId`.
  */
 export async function claimInvitations(userId: string, emails: string[]): Promise<string[]> {
 	const response = await fetch(`${base()}/invitations/claim`, {
@@ -268,4 +254,46 @@ export async function claimInvitations(userId: string, emails: string[]): Promis
 	});
 	const result = await unwrap<ClaimInvitationsResponse>(response, 'claim invitations');
 	return result.project_ids;
+}
+
+/** Invitations waiting for the user to accept or decline them. */
+export async function listReceivedInvitations(
+	userId: string
+): Promise<ReceivedInvitationResponse[]> {
+	const response = await fetch(`${base()}/invitations`, { headers: backendHeaders(userId) });
+	return unwrap<ReceivedInvitationResponse[]>(response, 'load invitations');
+}
+
+/** Accept an invitation addressed to the user; resolves to the project id. */
+export async function acceptInvitation(
+	userId: string,
+	invitationId: string
+): Promise<WriteResult<string>> {
+	const response = await fetch(`${base()}/invitations/${encodeURIComponent(invitationId)}/accept`, {
+		method: 'POST',
+		headers: backendHeaders(userId)
+	});
+	if (response.status === 404) {
+		return { ok: false, error: 'This invitation no longer exists.' };
+	}
+	if (response.status === 400) {
+		return { ok: false, error: await rejection(response, 'Could not accept the invitation') };
+	}
+	const result = await unwrap<AcceptInvitationResponse>(response, 'accept invitation');
+	return { ok: true, data: result.project_id };
+}
+
+export async function declineInvitation(
+	userId: string,
+	invitationId: string
+): Promise<WriteResult> {
+	const response = await fetch(
+		`${base()}/invitations/${encodeURIComponent(invitationId)}/decline`,
+		{ method: 'POST', headers: backendHeaders(userId) }
+	);
+	if (response.status === 404) {
+		return { ok: false, error: 'This invitation no longer exists.' };
+	}
+	if (!response.ok) throw error(response.status, 'Failed to decline invitation');
+	return { ok: true, data: null };
 }

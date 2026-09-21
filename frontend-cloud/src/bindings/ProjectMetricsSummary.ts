@@ -3,9 +3,4 @@
 /**
  * Latest resource usage summed over the project's current services.
  */
-export type ProjectMetricsSummary = {
-	cpu_pct: number;
-	mem_bytes: number;
-	mem_limit_bytes: number;
-	recorded_at: string;
-};
+export type ProjectMetricsSummary = { cpu_pct: number, mem_bytes: number, mem_limit_bytes: number, recorded_at: string, };

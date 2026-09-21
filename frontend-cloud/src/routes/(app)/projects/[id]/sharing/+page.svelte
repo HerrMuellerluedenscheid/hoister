@@ -61,8 +61,8 @@
 			<section class="rounded-xl border border-line bg-card p-5">
 				<h2 class="text-base font-semibold text-ink-code">Invite someone</h2>
 				<p class="mt-1 mb-3 text-sm text-ink-muted">
-					People with a Hoister account get access right away. Everyone else gets an email inviting
-					them to sign up, and access once they do.
+					They'll get an email and see the invitation on their projects page — people without a
+					Hoister account are asked to sign up first. Access starts once they accept.
 				</p>
 				<form
 					method="POST"
@@ -101,17 +101,16 @@
 				{:else if form?.invite}
 					{@const invite = form.invite}
 					<p
-						class="mt-3 text-sm {invite.kind === 'added' || invite.kind === 'invited'
+						class="mt-3 text-sm {invite.kind === 'invited-user' || invite.kind === 'invited'
 							? 'text-success'
 							: 'text-ink-muted'}"
 					>
-						{#if invite.kind === 'added'}
-							{invite.name ?? invite.email} now has access to {project.name}.
-						{:else if invite.kind === 'already-member'}
-							{invite.email} already has access.
+						{#if invite.kind === 'invited-user'}
+							Invitation sent to {invite.name ?? invite.email}. They'll get access once they accept
+							it.
 						{:else if invite.kind === 'invited'}
-							Invitation sent to {invite.email}. They'll get access as soon as they sign up with
-							this address.
+							Invitation sent to {invite.email}. They'll be asked to sign up with this address and
+							can then accept it.
 						{:else if invite.kind === 'already-invited'}
 							{invite.email} has already been invited. Revoke the invitation below to send a new one.
 						{/if}
@@ -202,6 +201,7 @@
 				</h2>
 				<ul class="divide-y divide-line overflow-hidden rounded-xl border border-line bg-card">
 					{#each data.detail.invitations as invitation (invitation.id)}
+						{@const invitee = invitation.user_id ? data.people[invitation.user_id] : undefined}
 						<li class="flex items-center gap-3 px-4 py-3">
 							<span
 								class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-dashed border-line-active text-ink-faint"
@@ -222,9 +222,16 @@
 								</svg>
 							</span>
 							<div class="min-w-0 flex-1">
-								<p class="truncate text-sm text-ink">{invitation.email}</p>
+								<p class="truncate text-sm text-ink">
+									{#if invitee?.name}
+										{invitee.name} <span class="text-ink-faint">({invitation.email})</span>
+									{:else}
+										{invitation.email}
+									{/if}
+								</p>
 								<p class="text-xs text-ink-faint">
-									invited {formatDate(invitation.created_at)} · waiting for sign-up
+									invited {formatDate(invitation.created_at)} ·
+									{invitation.user_id ? 'waiting for them to accept' : 'waiting for sign-up'}
 								</p>
 							</div>
 							{#if isOwner}

@@ -52,11 +52,29 @@ pub struct ProjectMember {
     pub created_at: String,
 }
 
-/// A pending invitation for someone who has no account yet.
+/// A pending invitation to co-maintain a project. Access is only granted once
+/// the invitee accepts it.
 #[derive(Debug, Clone)]
 pub struct ProjectInvitation {
     pub id: uuid::Uuid,
+    pub project_id: uuid::Uuid,
     pub email: String,
+    /// The invitee's account, once known: set when an existing user is
+    /// invited, or when someone signs up with the invited address. Only this
+    /// user may accept or decline; `None` means "waiting for sign-up".
+    pub user_id: Option<String>,
+    pub invited_by: String,
+    pub created_at: String,
+}
+
+/// An invitation as seen by its invitee, with enough about the project to
+/// decide whether to accept it.
+#[derive(Debug, Clone)]
+pub struct ReceivedInvitation {
+    pub id: uuid::Uuid,
+    pub project_id: uuid::Uuid,
+    pub project_name: ProjectName,
+    pub hostname: HostName,
     pub invited_by: String,
     pub created_at: String,
 }

@@ -6,7 +6,7 @@ use super::postgresql::Postgresql;
 use super::sqlite::Sqlite;
 use crate::domain::deployments::models::deployment::Deployment;
 use crate::domain::projects::models::{
-    ProjectAccess, ProjectInvitation, ProjectMember, ProjectsError,
+    ProjectAccess, ProjectInvitation, ProjectMember, ProjectsError, ReceivedInvitation,
 };
 use crate::domain::projects::ports::ProjectsRepository;
 use hoister_shared::ServiceName;
@@ -65,24 +65,6 @@ impl ProjectsRepository for Database {
         }
     }
 
-    async fn add_member(
-        &self,
-        project_id: uuid::Uuid,
-        user_id: &str,
-        invited_by: &str,
-    ) -> Result<bool, ProjectsError> {
-        match self {
-            Self::Sqlite(db) => {
-                <Sqlite as ProjectsRepository>::add_member(db, project_id, user_id, invited_by)
-                    .await
-            }
-            Self::Postgresql(db) => {
-                <Postgresql as ProjectsRepository>::add_member(db, project_id, user_id, invited_by)
-                    .await
-            }
-        }
-    }
-
     async fn remove_member(
         &self,
         project_id: uuid::Uuid,
@@ -112,20 +94,37 @@ impl ProjectsRepository for Database {
         }
     }
 
+    async fn get_invitation(
+        &self,
+        invitation_id: uuid::Uuid,
+    ) -> Result<Option<ProjectInvitation>, ProjectsError> {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as ProjectsRepository>::get_invitation(db, invitation_id).await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as ProjectsRepository>::get_invitation(db, invitation_id).await
+            }
+        }
+    }
+
     async fn create_invitation(
         &self,
         project_id: uuid::Uuid,
         email: &str,
+        user_id: Option<&str>,
         invited_by: &str,
     ) -> Result<(ProjectInvitation, bool), ProjectsError> {
         match self {
             Self::Sqlite(db) => {
-                <Sqlite as ProjectsRepository>::create_invitation(db, project_id, email, invited_by)
-                    .await
+                <Sqlite as ProjectsRepository>::create_invitation(
+                    db, project_id, email, user_id, invited_by,
+                )
+                .await
             }
             Self::Postgresql(db) => {
                 <Postgresql as ProjectsRepository>::create_invitation(
-                    db, project_id, email, invited_by,
+                    db, project_id, email, user_id, invited_by,
                 )
                 .await
             }
@@ -149,25 +148,6 @@ impl ProjectsRepository for Database {
         }
     }
 
-    async fn delete_invitation_by_email(
-        &self,
-        project_id: uuid::Uuid,
-        email: &str,
-    ) -> Result<(), ProjectsError> {
-        match self {
-            Self::Sqlite(db) => {
-                <Sqlite as ProjectsRepository>::delete_invitation_by_email(db, project_id, email)
-                    .await
-            }
-            Self::Postgresql(db) => {
-                <Postgresql as ProjectsRepository>::delete_invitation_by_email(
-                    db, project_id, email,
-                )
-                .await
-            }
-        }
-    }
-
     async fn claim_invitations(
         &self,
         user_id: &str,
@@ -179,6 +159,52 @@ impl ProjectsRepository for Database {
             }
             Self::Postgresql(db) => {
                 <Postgresql as ProjectsRepository>::claim_invitations(db, user_id, emails).await
+            }
+        }
+    }
+
+    async fn list_received_invitations(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<ReceivedInvitation>, ProjectsError> {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as ProjectsRepository>::list_received_invitations(db, user_id).await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as ProjectsRepository>::list_received_invitations(db, user_id).await
+            }
+        }
+    }
+
+    async fn accept_invitation(
+        &self,
+        invitation_id: uuid::Uuid,
+        user_id: &str,
+    ) -> Result<Option<uuid::Uuid>, ProjectsError> {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as ProjectsRepository>::accept_invitation(db, invitation_id, user_id).await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as ProjectsRepository>::accept_invitation(db, invitation_id, user_id)
+                    .await
+            }
+        }
+    }
+
+    async fn decline_invitation(
+        &self,
+        invitation_id: uuid::Uuid,
+        user_id: &str,
+    ) -> Result<bool, ProjectsError> {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as ProjectsRepository>::decline_invitation(db, invitation_id, user_id).await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as ProjectsRepository>::decline_invitation(db, invitation_id, user_id)
+                    .await
             }
         }
     }

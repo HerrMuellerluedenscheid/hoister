@@ -797,6 +797,145 @@ mod tests {
             .to_string()
     }
 
+    /// Invite existing user `member` to the project (as the owner) and accept
+    /// the invitation as them.
+    async fn share_with(internal: &Router, project_id: &str, member: &str) {
+        let (status, invited) = call(
+            internal,
+            "POST",
+            &format!("/projects/{project_id}/invitations"),
+            TEST_USER,
+            Some(
+                serde_json::json!({ "email": format!("{member}@example.com"), "user_id": member }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let invitation_id = invited["data"]["invitation"]["id"].as_str().unwrap();
+        let (status, _) = call(
+            internal,
+            "POST",
+            &format!("/invitations/{invitation_id}/accept"),
+            member,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_existing_users_must_accept_invitations() {
+        let (agent, internal, _db) = setup_test_app().await;
+        let id = seed_project(&agent, &internal, "shop").await;
+        let invitations = format!("/projects/{id}/invitations");
+        let invite = serde_json::json!({ "email": "member@example.com", "user_id": MEMBER });
+
+        let (status, invited) = call(
+            &internal,
+            "POST",
+            &invitations,
+            TEST_USER,
+            Some(invite.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(invited["data"]["created"], true);
+        assert_eq!(invited["data"]["invitation"]["user_id"], MEMBER);
+        let (_, again) = call(
+            &internal,
+            "POST",
+            &invitations,
+            TEST_USER,
+            Some(invite.clone()),
+        )
+        .await;
+        assert_eq!(again["data"]["created"], false);
+
+        // Being invited grants nothing until the invitee agrees.
+        let (_, listed) = call(&internal, "GET", "/projects", MEMBER, None).await;
+        assert_eq!(listed["data"].as_array().map(|a| a.len()), Some(0));
+        let (status, _) = call(&internal, "GET", &format!("/projects/{id}"), MEMBER, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let (_, received) = call(&internal, "GET", "/invitations", MEMBER, None).await;
+        let invitation_id = received["data"][0]["id"].as_str().unwrap().to_string();
+        let (_, others) = call(&internal, "GET", "/invitations", OUTSIDER, None).await;
+        assert_eq!(others["data"].as_array().map(|a| a.len()), Some(0));
+
+        // Declining drops the invitation, and only the addressee can do it.
+        let decline = format!("/invitations/{invitation_id}/decline");
+        let (status, _) = call(&internal, "POST", &decline, OUTSIDER, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let (status, _) = call(&internal, "POST", &decline, MEMBER, None).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, received) = call(&internal, "GET", "/invitations", MEMBER, None).await;
+        assert_eq!(received["data"].as_array().map(|a| a.len()), Some(0));
+        let (_, detail) = call(
+            &internal,
+            "GET",
+            &format!("/projects/{id}"),
+            TEST_USER,
+            None,
+        )
+        .await;
+        assert_eq!(
+            detail["data"]["invitations"].as_array().map(|a| a.len()),
+            Some(0)
+        );
+        let (status, _) = call(
+            &internal,
+            "POST",
+            &format!("/invitations/{invitation_id}/accept"),
+            MEMBER,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        // Invited again, they accept and get in; inviting a member again is
+        // refused, as is inviting the owner.
+        share_with(&internal, &id, MEMBER).await;
+        let (_, listed) = call(&internal, "GET", "/projects", MEMBER, None).await;
+        assert_eq!(listed["data"][0]["role"], "member");
+        let (status, _) = call(&internal, "POST", &invitations, TEST_USER, Some(invite)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _) = call(
+            &internal,
+            "POST",
+            &invitations,
+            TEST_USER,
+            Some(serde_json::json!({ "email": "owner@example.com", "user_id": TEST_USER })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        // An address invited before its owner signed up gets addressed to the
+        // account once the owner re-invites it as an existing user.
+        let (_, first) = call(
+            &internal,
+            "POST",
+            &invitations,
+            TEST_USER,
+            Some(serde_json::json!({ "email": "later@example.com" })),
+        )
+        .await;
+        assert_eq!(
+            first["data"]["invitation"]["user_id"],
+            serde_json::Value::Null
+        );
+        let (_, second) = call(
+            &internal,
+            "POST",
+            &invitations,
+            TEST_USER,
+            Some(serde_json::json!({ "email": "later@example.com", "user_id": OUTSIDER })),
+        )
+        .await;
+        assert_eq!(second["data"]["created"], false);
+        assert_eq!(second["data"]["invitation"]["user_id"], OUTSIDER);
+        let (_, received) = call(&internal, "GET", "/invitations", OUTSIDER, None).await;
+        assert_eq!(received["data"].as_array().map(|a| a.len()), Some(1));
+    }
+
     #[tokio::test]
     async fn test_project_overview_summarises_services_and_latest_rollout() {
         let (agent, internal, _db) = setup_test_app().await;
@@ -876,37 +1015,8 @@ mod tests {
         assert_eq!(listed["data"].as_array().map(|a| a.len()), Some(0));
         let (status, _) = call(&internal, "GET", &project, MEMBER, None).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
-        let (status, _) = call(
-            &internal,
-            "POST",
-            &format!("{project}/members"),
-            MEMBER,
-            Some(serde_json::json!({ "user_id": MEMBER })),
-        )
-        .await;
-        assert_eq!(status, StatusCode::NOT_FOUND);
 
-        // The owner shares it; sharing twice is a no-op.
-        let add = serde_json::json!({ "user_id": MEMBER });
-        let (status, added) = call(
-            &internal,
-            "POST",
-            &format!("{project}/members"),
-            TEST_USER,
-            Some(add.clone()),
-        )
-        .await;
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(added["data"]["added"], true);
-        let (_, added) = call(
-            &internal,
-            "POST",
-            &format!("{project}/members"),
-            TEST_USER,
-            Some(add),
-        )
-        .await;
-        assert_eq!(added["data"]["added"], false);
+        share_with(&internal, &id, MEMBER).await;
 
         // The member sees it, with the owner's live state.
         let (_, listed) = call(&internal, "GET", "/projects", MEMBER, None).await;
@@ -932,13 +1042,13 @@ mod tests {
         assert_eq!(members[0]["role"], "owner");
         assert_eq!(members[1]["user_id"], MEMBER);
 
-        // …but may neither re-share, invite, nor delete it.
+        // …but may neither invite others nor delete it.
         let (status, _) = call(
             &internal,
             "POST",
-            &format!("{project}/members"),
+            &format!("{project}/invitations"),
             MEMBER,
-            Some(serde_json::json!({ "user_id": OUTSIDER })),
+            Some(serde_json::json!({ "email": "outsider@example.com", "user_id": OUTSIDER })),
         )
         .await;
         assert_eq!(status, StatusCode::FORBIDDEN);
@@ -1034,7 +1144,8 @@ mod tests {
             Some(0)
         );
 
-        // The invitee claims it with their verified address.
+        // Signing up with the invited (verified) address addresses the
+        // invitation to the new account — but grants nothing yet.
         let (status, claimed) = call(
             &internal,
             "POST",
@@ -1045,6 +1156,36 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(claimed["data"]["project_ids"][0], id.as_str());
+        let (_, listed) = call(&internal, "GET", "/projects", MEMBER, None).await;
+        assert_eq!(listed["data"].as_array().map(|a| a.len()), Some(0));
+        let (_, received) = call(&internal, "GET", "/invitations", MEMBER, None).await;
+        let received = received["data"].as_array().unwrap();
+        assert_eq!(received.len(), 1);
+        assert_eq!(received[0]["project_name"], "shop");
+        assert_eq!(received[0]["invited_by"], TEST_USER);
+        let invitation_id = received[0]["id"].as_str().unwrap().to_string();
+
+        // Only the addressee can answer it.
+        let (status, _) = call(
+            &internal,
+            "POST",
+            &format!("/invitations/{invitation_id}/accept"),
+            OUTSIDER,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        let (status, accepted) = call(
+            &internal,
+            "POST",
+            &format!("/invitations/{invitation_id}/accept"),
+            MEMBER,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(accepted["data"]["project_id"], id.as_str());
         let (_, listed) = call(&internal, "GET", "/projects", MEMBER, None).await;
         assert_eq!(listed["data"].as_array().map(|a| a.len()), Some(1));
 
@@ -1082,14 +1223,7 @@ mod tests {
         let notifiers = format!("/projects/{id}/notifiers");
         let telegram = serde_json::json!({ "kind": "telegram", "bot_token": "t", "chat_id": 1 });
 
-        call(
-            &internal,
-            "POST",
-            &format!("/projects/{id}/members"),
-            TEST_USER,
-            Some(serde_json::json!({ "user_id": MEMBER })),
-        )
-        .await;
+        share_with(&internal, &id, MEMBER).await;
 
         // Owner and member each add one; both land on the project.
         let (status, _) = call(

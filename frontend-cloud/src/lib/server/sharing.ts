@@ -1,7 +1,6 @@
 import type { Cookies } from '@sveltejs/kit';
 import { clerkClient } from 'svelte-clerk/server';
 import {
-	addProjectMember,
 	claimInvitations,
 	createProjectInvitation,
 	deleteProjectInvitation
@@ -12,6 +11,9 @@ import {
  * may see which project). The controller never talks to Clerk: this module
  * resolves emails to user ids, sends sign-up invitations, and hands the
  * controller only verified addresses when claiming invitations.
+ *
+ * Nobody gets access without agreeing to it: every invitation waits for the
+ * invitee to accept it on their projects page.
  */
 
 /** Where Clerk sends someone who accepts a sign-up invitation. The page
@@ -63,17 +65,19 @@ export async function lookupPeople(userIds: string[]): Promise<Record<string, Pe
 }
 
 export type InviteOutcome =
-	| { kind: 'added'; email: string; name: string | null }
-	| { kind: 'already-member'; email: string }
+	/** An existing account was invited and emailed; it waits for them to accept. */
+	| { kind: 'invited-user'; email: string; name: string | null }
+	/** No account yet: a sign-up invitation was sent. */
 	| { kind: 'invited'; email: string }
 	| { kind: 'already-invited'; email: string }
 	| { kind: 'error'; message: string };
 
 /**
- * Share a project with `rawEmail`. An existing account with that verified
- * address gets access right away (and a "shared with you" email from the
- * controller); anyone else gets a pending invitation plus a Clerk sign-up
- * invitation, and gains access once they sign up with that address.
+ * Invite `rawEmail` to co-maintain a project. An existing account with that
+ * verified address gets an invitation addressed to them (and an email from the
+ * controller); anyone else gets a Clerk sign-up invitation, and the invitation
+ * is addressed to their account once they sign up with that address. Either
+ * way, access starts when they accept it.
  */
 export async function inviteToProject(opts: {
 	inviterId: string;
@@ -93,7 +97,8 @@ export async function inviteToProject(opts: {
 			clerkClient.users.getUser(inviterId)
 		]);
 		// The list filter is not guaranteed to be an exact match, and an
-		// unverified address must not grant access to whoever typed it in.
+		// unverified address must not route the invitation to whoever typed it
+		// into their profile.
 		existing = matches.find((u) => verifiedEmails(u).includes(email));
 		const me = person(inviter);
 		inviterName =
@@ -107,18 +112,18 @@ export async function inviteToProject(opts: {
 		if (existing.id === inviterId) {
 			return { kind: 'error', message: 'That is your own address — you already own this project.' };
 		}
-		const result = await addProjectMember(inviterId, projectId, {
-			user_id: existing.id,
+		const result = await createProjectInvitation(inviterId, projectId, {
 			email,
+			user_id: existing.id,
 			inviter: inviterName
 		});
 		if (!result.ok) return { kind: 'error', message: result.error };
-		return result.data.added
-			? { kind: 'added', email, name: person(existing).name }
-			: { kind: 'already-member', email };
+		return result.data.created
+			? { kind: 'invited-user', email, name: person(existing).name }
+			: { kind: 'already-invited', email };
 	}
 
-	const invite = await createProjectInvitation(inviterId, projectId, email);
+	const invite = await createProjectInvitation(inviterId, projectId, { email });
 	if (!invite.ok) return { kind: 'error', message: invite.error };
 	if (!invite.data.created) return { kind: 'already-invited', email };
 
@@ -144,10 +149,11 @@ export async function inviteToProject(opts: {
 }
 
 /**
- * Turn pending project invitations addressed to one of the user's verified
- * email addresses into memberships. Runs from the app layout; throttled with a
- * cookie so Clerk is asked at most hourly per browser, which also picks up an
- * address that was verified after the invitation arrived.
+ * Address pending project invitations sent to one of the user's verified email
+ * addresses to their account, so they show up for them to accept. Runs from
+ * the app layout; throttled with a cookie so Clerk is asked at most hourly per
+ * browser, which also picks up an address that was verified after the
+ * invitation arrived.
  */
 export async function claimPendingInvitations(
 	userId: string,
