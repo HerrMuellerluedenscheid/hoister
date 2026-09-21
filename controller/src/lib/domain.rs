@@ -4,4 +4,5 @@ pub mod container_state;
 pub mod deployments;
 pub mod metrics;
 pub mod notifiers;
+pub mod projects;
 pub mod tokens;

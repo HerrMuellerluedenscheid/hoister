@@ -5,6 +5,7 @@ import { createNotifier } from '$lib/api/notifiers';
 import type { RequestHandler } from './$types';
 
 const STATE_COOKIE = 'slack_oauth_state';
+const PROJECT_COOKIE = 'slack_oauth_project';
 
 /** Where Slack's `oauth.v2.access` lands the installed webhook. */
 interface SlackOAuthResponse {
@@ -13,22 +14,26 @@ interface SlackOAuthResponse {
 	incoming_webhook?: { url?: string; channel?: string };
 }
 
-function done(status: 'connected' | 'denied' | 'error' | 'upgrade'): never {
-	throw redirect(303, `/notifiers?slack=${status}`);
-}
-
 /**
  * Completes the Slack "Add to Slack" flow: validates the CSRF `state`,
  * exchanges the one-time `code` for an incoming webhook, and persists it as a
- * Slack notifier for the signed-in user via the controller.
+ * Slack notifier via the controller — for the signed-in user's account, or for
+ * the project the flow was started from.
  */
 export const GET: RequestHandler = async ({ locals, url, cookies, fetch }) => {
 	const auth = locals.auth();
 	if (!auth.userId) throw redirect(303, '/');
 
-	// Always clear the one-time state cookie, whatever the outcome.
+	// Always clear the one-time cookies, whatever the outcome.
 	const expectedState = cookies.get(STATE_COOKIE);
+	const project = cookies.get(PROJECT_COOKIE);
 	cookies.delete(STATE_COOKIE, { path: '/slack/oauth' });
+	cookies.delete(PROJECT_COOKIE, { path: '/slack/oauth' });
+
+	const returnTo = project ? `/projects/${encodeURIComponent(project)}/notifiers` : '/notifiers';
+	function done(status: 'connected' | 'denied' | 'error' | 'upgrade'): never {
+		throw redirect(303, `${returnTo}?slack=${status}`);
+	}
 
 	// User declined on Slack's consent screen, or Slack returned an error.
 	if (url.searchParams.get('error')) done('denied');
@@ -66,13 +71,20 @@ export const GET: RequestHandler = async ({ locals, url, cookies, fetch }) => {
 		done('error');
 	}
 
+	// `done` throws a redirect, so only the controller call sits in the try —
+	// otherwise the catch would turn the upgrade redirect into an error.
+	let result: Awaited<ReturnType<typeof createNotifier>>;
 	try {
-		const result = await createNotifier(auth.userId, { kind: 'slack', webhook, channel });
-		if (!result.ok) done('upgrade');
+		result = await createNotifier(
+			auth.userId,
+			{ kind: 'slack', webhook: webhook!, channel: channel! },
+			project
+		);
 	} catch (e) {
 		console.error('[slack oauth] createNotifier failed:', e);
 		done('error');
 	}
+	if (!result.ok) done('upgrade');
 
 	done('connected');
 };

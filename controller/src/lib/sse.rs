@@ -1,9 +1,13 @@
+// The handler is generic over one type per domain service, like in `server`.
+#![allow(clippy::type_complexity)]
+
 use crate::domain::alerts::port::AlertsService;
 use crate::domain::billing::ports::BillingService;
 use crate::domain::container_state::port::ContainerStateService;
 use crate::domain::deployments::ports::DeploymentsService;
 use crate::domain::metrics::port::MetricsService;
 use crate::domain::notifiers::ports::NotifierService;
+use crate::domain::projects::ports::ProjectsService;
 use crate::domain::tokens::ports::TokenService;
 use crate::inbound::server::{AppState, UserId};
 use axum::Extension;
@@ -29,8 +33,9 @@ pub(crate) async fn sse_handler<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(subscriber_user_id)): Extension<UserId>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let mut rx = state.event_tx.subscribe();

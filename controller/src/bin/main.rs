@@ -5,6 +5,7 @@ use controller::domain::container_state::service::Service as ContainerStateServi
 use controller::domain::deployments::service::Service as DeploymentsService;
 use controller::domain::metrics::service::Service as MetricsService;
 use controller::domain::notifiers::service::Service as NotifierService;
+use controller::domain::projects::service::Service as ProjectsServiceImpl;
 use controller::domain::tokens::service::Service as TokenService;
 use controller::inbound::server::{
     AppState, InternalSecret, create_agent_router, create_internal_router,
@@ -112,7 +113,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         notifier_service: Arc::new(NotifierService::new(db.clone())),
         billing_service: Arc::new(BillingServiceImpl::new(db.clone())),
         metrics_service: Arc::new(MetricsService::new(db.clone())),
-        alerts_service: Arc::new(AlertsServiceImpl::new(db)),
+        alerts_service: Arc::new(AlertsServiceImpl::new(db.clone())),
+        projects_service: Arc::new(ProjectsServiceImpl::new(db)),
         #[cfg(feature = "self-hosted")]
         api_secret: config.api_secret.clone(),
         event_tx,

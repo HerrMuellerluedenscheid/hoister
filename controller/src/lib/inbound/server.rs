@@ -1,3 +1,7 @@
+// Every handler is generic over one type per domain service, so
+// `State<AppState<DS, CS, …>>` alone trips clippy's complexity threshold.
+#![allow(clippy::type_complexity)]
+
 use axum::extract::DefaultBodyLimit;
 use axum::response::IntoResponse;
 use axum::{
@@ -25,10 +29,11 @@ use crate::domain::deployments::models::deployment::{
     CreateDeploymentRequest, Deployment, GetDeploymentError,
 };
 use crate::domain::deployments::ports::DeploymentsService;
-use crate::domain::metrics::models::{AddMetricsRequest, RETENTION_DAYS};
+use crate::domain::metrics::models::{AddMetricsRequest, MetricPoint, RETENTION_DAYS};
 use crate::domain::metrics::port::MetricsService;
-use crate::domain::notifiers::models::{NotifierConfig, NotifierSummary};
+use crate::domain::notifiers::models::{NotifierConfig, NotifierScope, NotifierSummary};
 use crate::domain::notifiers::ports::NotifierService;
+use crate::domain::projects::ports::ProjectsService;
 use crate::domain::tokens::models::ApiToken;
 use crate::domain::tokens::ports::TokenService;
 use crate::inbound::audit_log::audit_log_middleware;
@@ -79,6 +84,7 @@ pub struct AppState<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 > {
     pub deployments_service: Arc<DS>,
     pub container_state_service: Arc<CS>,
@@ -87,6 +93,7 @@ pub struct AppState<
     pub billing_service: Arc<BS>,
     pub metrics_service: Arc<MS>,
     pub alerts_service: Arc<AS>,
+    pub projects_service: Arc<PS>,
     #[cfg(feature = "self-hosted")]
     pub api_secret: Option<String>,
     pub event_tx: broadcast::Sender<UserScopedEvent>,
@@ -111,7 +118,7 @@ pub struct ApiResponse<T> {
 }
 
 impl<T> ApiResponse<T> {
-    fn success(data: T) -> Self {
+    pub(crate) fn success(data: T) -> Self {
         Self {
             success: true,
             data: Some(data),
@@ -137,8 +144,9 @@ async fn agent_auth_middleware<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
@@ -209,8 +217,9 @@ async fn internal_user_middleware<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(InternalSecret(expected)): Extension<InternalSecret>,
     mut request: Request,
     next: Next,
@@ -294,8 +303,9 @@ async fn get_me<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
 ) -> Result<Json<ApiResponse<PlanStatus>>, StatusCode> {
     let plan = match state.billing_service.get_plan(&user_id).await {
@@ -315,7 +325,11 @@ async fn get_me<
 
     let mut notifiers_by_kind: std::collections::HashMap<String, i64> =
         std::collections::HashMap::new();
-    if let Ok(notifiers) = state.notifier_service.list_notifiers(&user_id).await {
+    if let Ok(notifiers) = state
+        .notifier_service
+        .list_notifiers(NotifierScope::Account(&user_id))
+        .await
+    {
         for n in &notifiers {
             *notifiers_by_kind
                 .entry(n.kind.as_str().to_string())
@@ -351,8 +365,9 @@ async fn set_plan<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Json(req): Json<SetPlanRequest>,
 ) -> Result<StatusCode, StatusCode> {
@@ -376,8 +391,9 @@ async fn list_tokens<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
 ) -> Result<Json<ApiResponse<Vec<ApiToken>>>, StatusCode> {
     match state.token_service.list_tokens(&user_id).await {
@@ -403,8 +419,9 @@ async fn create_token<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     body: Option<Json<CreateTokenRequest>>,
 ) -> Result<Json<ApiResponse<ApiToken>>, StatusCode> {
@@ -431,8 +448,9 @@ async fn delete_token<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path(token_id): Path<uuid::Uuid>,
 ) -> Result<StatusCode, StatusCode> {
@@ -455,11 +473,16 @@ async fn list_notifiers<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
 ) -> Result<Json<ApiResponse<Vec<NotifierSummary>>>, StatusCode> {
-    match state.notifier_service.list_notifiers(&user_id).await {
+    match state
+        .notifier_service
+        .list_notifiers(NotifierScope::Account(&user_id))
+        .await
+    {
         Ok(notifiers) => {
             let summaries: Vec<NotifierSummary> = notifiers.iter().map(Into::into).collect();
             Ok(Json(ApiResponse::success(summaries)))
@@ -479,13 +502,35 @@ async fn create_notifier<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Json(config): Json<NotifierConfig>,
 ) -> Response {
+    create_notifier_for(
+        state.notifier_service.as_ref(),
+        state.billing_service.as_ref(),
+        &user_id,
+        None,
+        config,
+    )
+    .await
+}
+
+/// Plan gate, SSRF validation and insert, shared by the account-wide and the
+/// project notifier endpoints. `user_id` owns the new row and its plan
+/// decides which kinds are allowed — for a project notifier that is the
+/// project owner, not necessarily the member creating it.
+pub(crate) async fn create_notifier_for<NS: NotifierService, BS: BillingService>(
+    notifier_service: &NS,
+    billing_service: &BS,
+    user_id: &str,
+    project_id: Option<uuid::Uuid>,
+    config: NotifierConfig,
+) -> Response {
     let kind = config.kind();
-    let plan = match state.billing_service.get_plan(&user_id).await {
+    let plan = match billing_service.get_plan(user_id).await {
         Ok(p) => p,
         Err(e) => {
             error!("Failed to fetch plan for {user_id}: {e:?}");
@@ -514,9 +559,8 @@ async fn create_notifier<
             .into_response();
     }
 
-    match state
-        .notifier_service
-        .create_notifier(&user_id, config)
+    match notifier_service
+        .create_notifier(user_id, project_id, config)
         .await
     {
         Ok(notifier) => {
@@ -542,14 +586,15 @@ async fn delete_notifier<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path(notifier_id): Path<uuid::Uuid>,
 ) -> Result<StatusCode, StatusCode> {
     match state
         .notifier_service
-        .delete_notifier(&user_id, notifier_id)
+        .delete_notifier(NotifierScope::Account(&user_id), notifier_id)
         .await
     {
         Ok(true) => Ok(StatusCode::NO_CONTENT),
@@ -562,8 +607,8 @@ async fn delete_notifier<
 }
 
 #[derive(Deserialize)]
-struct SetEnabledRequest {
-    enabled: bool,
+pub(crate) struct SetEnabledRequest {
+    pub(crate) enabled: bool,
 }
 
 async fn set_notifier_enabled<
@@ -574,15 +619,16 @@ async fn set_notifier_enabled<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path(notifier_id): Path<uuid::Uuid>,
     Json(req): Json<SetEnabledRequest>,
 ) -> Result<StatusCode, StatusCode> {
     match state
         .notifier_service
-        .set_enabled(&user_id, notifier_id, req.enabled)
+        .set_enabled(NotifierScope::Account(&user_id), notifier_id, req.enabled)
         .await
     {
         Ok(true) => Ok(StatusCode::NO_CONTENT),
@@ -612,15 +658,35 @@ async fn test_notifier<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path(notifier_id): Path<uuid::Uuid>,
 ) -> Response {
-    let notifiers = match state.notifier_service.list_notifiers(&user_id).await {
+    test_notifier_in(
+        state.notifier_service.as_ref(),
+        state.billing_service.as_ref(),
+        NotifierScope::Account(&user_id),
+        notifier_id,
+        state.email.clone(),
+    )
+    .await
+}
+
+/// Send a test message through the notifier `notifier_id` within `scope`.
+/// Shared by the account-wide and the project notifier endpoints.
+pub(crate) async fn test_notifier_in<NS: NotifierService, BS: BillingService>(
+    notifier_service: &NS,
+    billing_service: &BS,
+    scope: NotifierScope<'_>,
+    notifier_id: uuid::Uuid,
+    email: Option<EmailDispatchConfig>,
+) -> Response {
+    let notifiers = match notifier_service.list_notifiers(scope).await {
         Ok(n) => n,
         Err(e) => {
-            error!("test_notifier list failed for {user_id}: {e:?}");
+            error!("test_notifier list failed for notifier {notifier_id}: {e:?}");
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
@@ -628,11 +694,12 @@ async fn test_notifier<
         return StatusCode::NOT_FOUND.into_response();
     };
     let kind = notifier.kind;
+    let user_id = notifier.user_id.clone();
 
     // Refuse to test (and therefore re-validate the credentials of) a
-    // notifier whose kind is no longer allowed under the user's current
-    // plan. Matches `notify_user`'s dispatch-side filter.
-    let plan = match state.billing_service.get_plan(&user_id).await {
+    // notifier whose kind is no longer allowed under the owning account's
+    // current plan. Matches `notify_user`'s dispatch-side filter.
+    let plan = match billing_service.get_plan(&user_id).await {
         Ok(p) => p,
         Err(e) => {
             error!("test_notifier: plan lookup failed for {user_id}: {e:?}");
@@ -651,7 +718,7 @@ async fn test_notifier<
             "If you see this, the {kind:?} notifier on your hoister account is configured correctly."
         ),
     );
-    match dispatch_one_async(notifier, msg, state.email.clone()).await {
+    match dispatch_one_async(notifier, msg, email).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             // Full chatterbox error goes to the server log only. We
@@ -684,8 +751,9 @@ async fn get_deployments<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
 ) -> Result<Json<ApiResponse<Vec<Deployment>>>, StatusCode> {
     match state
@@ -709,8 +777,9 @@ async fn get_deployments_by_service<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path((project_name, service_name)): Path<(ProjectName, ServiceName)>,
 ) -> Result<Json<ApiResponse<Vec<Deployment>>>, StatusCode> {
@@ -737,8 +806,9 @@ async fn create_deployment<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Json(payload): Json<CreateDeployment>,
 ) -> Response {
@@ -801,6 +871,7 @@ async fn create_deployment<
                         state.notifier_service.clone(),
                         state.billing_service.clone(),
                         user_id.clone(),
+                        req.project_name.clone(),
                         message,
                         state.email.clone(),
                     );
@@ -830,15 +901,17 @@ fn payload_message(payload: &CreateDeployment, dashboard_url: &str) -> Message {
     payload.to_message_with_dashboard(Some(dashboard_url))
 }
 
-/// Fan out a deployment-event message to the user's notifiers, in the
-/// background. We also pass `billing_service` so notifiers whose kind is
-/// no longer allowed under the user's current plan are dropped — without
-/// this, paying for a single month of Pro permanently unlocks Slack
-/// notifications even after a downgrade.
+/// Fan out an event of `user_id`'s project `project_name` to its notifiers —
+/// the user's account-wide ones plus the project's own — in the background.
+/// We also pass `billing_service` so notifiers whose kind is no longer
+/// allowed under the user's current plan are dropped — without this, paying
+/// for a single month of Pro permanently unlocks Slack notifications even
+/// after a downgrade.
 fn notify_user<NS: NotifierService, BS: BillingService>(
     notifier_service: Arc<NS>,
     billing_service: Arc<BS>,
     user_id: String,
+    project_name: ProjectName,
     message: Message,
     email: Option<EmailDispatchConfig>,
 ) {
@@ -851,7 +924,10 @@ fn notify_user<NS: NotifierService, BS: BillingService>(
             }
         };
         let limits = plan.limits();
-        match notifier_service.list_notifiers(&user_id).await {
+        match notifier_service
+            .list_event_notifiers(&user_id, &project_name)
+            .await
+        {
             Ok(notifiers) if !notifiers.is_empty() => {
                 let allowed: Vec<_> = notifiers
                     .into_iter()
@@ -878,8 +954,9 @@ async fn post_container_state<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path((hostname, project_name)): Path<(HostName, ProjectName)>,
     Json(payload): Json<PostContainerStateRequest>,
@@ -942,8 +1019,9 @@ async fn post_container_state_heartbeat<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path((hostname, project_name)): Path<(HostName, ProjectName)>,
 ) -> Response {
@@ -956,20 +1034,20 @@ async fn post_container_state_heartbeat<
 
 #[derive(TS, Serialize)]
 #[ts(export)]
-struct ContainerStateResponse {
-    hostname: HostName,
-    project_name: ProjectName,
-    service_name: ServiceName,
+pub(crate) struct ContainerStateResponse {
+    pub(crate) hostname: HostName,
+    pub(crate) project_name: ProjectName,
+    pub(crate) service_name: ServiceName,
     /// Routed through `serde_json::Value` (BTreeMap-backed by default) so
     /// nested maps — Labels, ExposedPorts, Networks, etc. — serialize in a
     /// stable alphabetical order rather than HashMap's arbitrary one.
     #[ts(type = "any")]
-    container_inspections: serde_json::Value,
-    last_logs: Option<String>,
-    last_updated: DateTime<Utc>,
+    pub(crate) container_inspections: serde_json::Value,
+    pub(crate) last_logs: Option<String>,
+    pub(crate) last_updated: DateTime<Utc>,
 }
 
-fn inspect_to_sorted_value(
+pub(crate) fn inspect_to_sorted_value(
     inspect: &bollard::models::ContainerInspectResponse,
 ) -> serde_json::Value {
     serde_json::to_value(inspect).unwrap_or(serde_json::Value::Null)
@@ -977,7 +1055,7 @@ fn inspect_to_sorted_value(
 
 #[derive(TS, Serialize)]
 #[ts(export)]
-struct ContainerStateResponses(Vec<ContainerStateResponse>);
+pub(crate) struct ContainerStateResponses(Vec<ContainerStateResponse>);
 
 impl From<ContainerStateData> for ContainerStateResponses {
     fn from(value: ContainerStateData) -> Self {
@@ -1015,8 +1093,9 @@ async fn get_container_state_by_service_name<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
 ) -> Result<Json<ApiResponse<ContainerStateResponse>>, StatusCode> {
@@ -1057,8 +1136,9 @@ async fn delete_project<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path((hostname, project_name)): Path<(HostName, ProjectName)>,
 ) -> Result<StatusCode, StatusCode> {
@@ -1087,8 +1167,9 @@ async fn get_container_states<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
 ) -> impl IntoResponse {
     debug!("Received request for container states (user: {user_id})");
@@ -1109,8 +1190,9 @@ async fn post_container_metrics<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path((hostname, project_name)): Path<(HostName, ProjectName)>,
     Json(payload): Json<PostContainerMetricsRequest>,
@@ -1143,6 +1225,7 @@ async fn post_container_metrics<
             state.notifier_service.clone(),
             state.billing_service.clone(),
             user_id.clone(),
+            project_name.clone(),
             message,
             state.email.clone(),
         );
@@ -1155,7 +1238,7 @@ async fn post_container_metrics<
 
 #[derive(TS, Serialize)]
 #[ts(export)]
-struct MetricPointResponse {
+pub(crate) struct MetricPointResponse {
     recorded_at: DateTime<Utc>,
     cpu_pct: f64,
     // u64 in the domain; JSON-serialized as a plain number. Memory/network/storage
@@ -1174,13 +1257,28 @@ struct MetricPointResponse {
     disk_write_bytes: u64,
 }
 
+impl From<MetricPoint> for MetricPointResponse {
+    fn from(p: MetricPoint) -> Self {
+        Self {
+            recorded_at: p.recorded_at,
+            cpu_pct: p.cpu_pct,
+            mem_bytes: p.mem_bytes,
+            mem_limit_bytes: p.mem_limit_bytes,
+            net_rx_bytes: p.net_rx_bytes,
+            net_tx_bytes: p.net_tx_bytes,
+            disk_read_bytes: p.disk_read_bytes,
+            disk_write_bytes: p.disk_write_bytes,
+        }
+    }
+}
+
 #[derive(TS, Serialize)]
 #[ts(export)]
-struct ServiceMetricsResponse {
-    hostname: HostName,
-    project_name: ProjectName,
-    service_name: ServiceName,
-    points: Vec<MetricPointResponse>,
+pub(crate) struct ServiceMetricsResponse {
+    pub(crate) hostname: HostName,
+    pub(crate) project_name: ProjectName,
+    pub(crate) service_name: ServiceName,
+    pub(crate) points: Vec<MetricPointResponse>,
 }
 
 #[derive(TS, Serialize)]
@@ -1219,8 +1317,9 @@ async fn get_service_metrics<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
 ) -> impl IntoResponse {
@@ -1231,16 +1330,7 @@ async fn get_service_metrics<
         .get_service_metrics(&user_id, &hostname, &project_name, &service_name, since)
         .await
         .into_iter()
-        .map(|p| MetricPointResponse {
-            recorded_at: p.recorded_at,
-            cpu_pct: p.cpu_pct,
-            mem_bytes: p.mem_bytes,
-            mem_limit_bytes: p.mem_limit_bytes,
-            net_rx_bytes: p.net_rx_bytes,
-            net_tx_bytes: p.net_tx_bytes,
-            disk_read_bytes: p.disk_read_bytes,
-            disk_write_bytes: p.disk_write_bytes,
-        })
+        .map(MetricPointResponse::from)
         .collect();
     Json(ApiResponse::success(ServiceMetricsResponse {
         hostname,
@@ -1260,8 +1350,9 @@ async fn get_latest_metrics<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
 ) -> impl IntoResponse {
     debug!("Received request for latest metrics (user: {user_id})");
@@ -1304,8 +1395,9 @@ async fn post_pending_update<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Json(payload): Json<PendingUpdateRequest>,
 ) -> impl IntoResponse {
@@ -1318,11 +1410,13 @@ async fn post_pending_update<
         detected_at: Utc::now(),
     };
     let message = pending_update_message(&update);
+    let project_name = update.project_name.clone();
     state.pending_updates.add(&user_id, update).await;
     notify_user(
         state.notifier_service.clone(),
         state.billing_service.clone(),
         user_id,
+        project_name,
         message,
         state.email.clone(),
     );
@@ -1356,8 +1450,9 @@ async fn get_pending_updates<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
 ) -> impl IntoResponse {
     let updates = state.pending_updates.get_all(&user_id).await;
@@ -1372,8 +1467,9 @@ async fn apply_pending_update<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
 ) -> impl IntoResponse {
@@ -1403,8 +1499,9 @@ async fn post_container_logs<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
     Json(payload): Json<PostContainerLogsRequest>,
@@ -1427,8 +1524,9 @@ async fn request_container_logs<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
 ) -> StatusCode {
@@ -1439,9 +1537,9 @@ async fn request_container_logs<
 
 #[derive(TS, Serialize)]
 #[ts(export)]
-struct ContainerLogsResponse {
-    logs: String,
-    received_at: DateTime<Utc>,
+pub(crate) struct ContainerLogsResponse {
+    pub(crate) logs: String,
+    pub(crate) received_at: DateTime<Utc>,
 }
 
 /// Internal endpoint: read the most recently forwarded log tail for one service.
@@ -1454,8 +1552,9 @@ async fn get_container_logs<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path((hostname, project_name, service_name)): Path<(HostName, ProjectName, ServiceName)>,
 ) -> Result<Json<ApiResponse<ContainerLogsResponse>>, StatusCode> {
@@ -1482,8 +1581,9 @@ async fn delete_user<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
 ) -> StatusCode {
     if state.billing_service.delete_user(&user_id).await {
@@ -1563,8 +1663,9 @@ async fn list_alert_rules<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
 ) -> Result<Json<ApiResponse<Vec<AlertRuleResponse>>>, StatusCode> {
     match state.alerts_service.list_rules(&user_id).await {
@@ -1586,8 +1687,9 @@ async fn create_alert_rule<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Json(body): Json<CreateAlertRuleBody>,
 ) -> Response {
@@ -1626,8 +1728,9 @@ async fn delete_alert_rule<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path(rule_id): Path<uuid::Uuid>,
 ) -> Result<StatusCode, StatusCode> {
@@ -1649,8 +1752,9 @@ async fn set_alert_rule_enabled<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Path(rule_id): Path<uuid::Uuid>,
     Json(req): Json<SetEnabledRequest>,
@@ -1760,8 +1864,9 @@ async fn list_alert_events<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS>>,
+    State(state): State<AppState<DS, CS, TS, NS, BS, MS, AS, PS>>,
     Extension(UserId(user_id)): Extension<UserId>,
     Query(query): Query<AlertHistoryQuery>,
 ) -> Result<Json<ApiResponse<AlertHistoryResponse>>, StatusCode> {
@@ -1790,8 +1895,9 @@ pub async fn create_agent_router<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    state: AppState<DS, CS, TS, NS, BS, MS, AS>,
+    state: AppState<DS, CS, TS, NS, BS, MS, AS, PS>,
 ) -> Router {
     let rate_limiter = RateLimiter::new();
     Router::new()
@@ -1799,35 +1905,35 @@ pub async fn create_agent_router<
         .route("/sse", get(sse_handler))
         .route(
             "/deployments",
-            post(create_deployment::<DS, CS, TS, NS, BS, MS, AS>),
+            post(create_deployment::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/container/state/{hostname}/{project_name}",
-            post(post_container_state::<DS, CS, TS, NS, BS, MS, AS>),
+            post(post_container_state::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/container/state/{hostname}/{project_name}/heartbeat",
-            post(post_container_state_heartbeat::<DS, CS, TS, NS, BS, MS, AS>),
+            post(post_container_state_heartbeat::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/container/metrics/{hostname}/{project_name}",
-            post(post_container_metrics::<DS, CS, TS, NS, BS, MS, AS>),
+            post(post_container_metrics::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/container/logs/{hostname}/{project_name}/{service_name}",
-            post(post_container_logs::<DS, CS, TS, NS, BS, MS, AS>),
+            post(post_container_logs::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/pending-updates",
-            post(post_pending_update::<DS, CS, TS, NS, BS, MS, AS>),
+            post(post_pending_update::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/pending-updates",
-            get(get_pending_updates::<DS, CS, TS, NS, BS, MS, AS>),
+            get(get_pending_updates::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/pending-updates/{hostname}/{project_name}/{service_name}/apply",
-            post(apply_pending_update::<DS, CS, TS, NS, BS, MS, AS>),
+            post(apply_pending_update::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         // Rate limit runs AFTER auth so it can key on the resolved user_id.
         // Auth runs first because `.layer` applies in reverse order.
@@ -1835,7 +1941,7 @@ pub async fn create_agent_router<
         .layer(Extension(rate_limiter))
         .layer(middleware::from_fn_with_state(
             state.clone(),
-            agent_auth_middleware::<DS, CS, TS, NS, BS, MS, AS>,
+            agent_auth_middleware::<DS, CS, TS, NS, BS, MS, AS, PS>,
         ))
         .layer(DefaultBodyLimit::max(AGENT_BODY_LIMIT))
         // Audit log is outermost so it sees the final response status,
@@ -1854,8 +1960,9 @@ pub async fn create_internal_router<
     BS: BillingService,
     MS: MetricsService,
     AS: AlertsService,
+    PS: ProjectsService,
 >(
-    state: AppState<DS, CS, TS, NS, BS, MS, AS>,
+    state: AppState<DS, CS, TS, NS, BS, MS, AS, PS>,
     internal_secret: InternalSecret,
 ) -> Router {
     if internal_secret.0.as_deref().unwrap_or_default().is_empty() {
@@ -1868,112 +1975,130 @@ pub async fn create_internal_router<
     }
     Router::new()
         .route("/health", get(health))
-        .route("/me", get(get_me::<DS, CS, TS, NS, BS, MS, AS>))
-        .route("/tokens", get(list_tokens::<DS, CS, TS, NS, BS, MS, AS>))
-        .route("/tokens", post(create_token::<DS, CS, TS, NS, BS, MS, AS>))
+        .route("/me", get(get_me::<DS, CS, TS, NS, BS, MS, AS, PS>))
+        .route(
+            "/tokens",
+            get(list_tokens::<DS, CS, TS, NS, BS, MS, AS, PS>),
+        )
+        .route(
+            "/tokens",
+            post(create_token::<DS, CS, TS, NS, BS, MS, AS, PS>),
+        )
         .route(
             "/tokens/{id}",
-            axum::routing::delete(delete_token::<DS, CS, TS, NS, BS, MS, AS>),
+            axum::routing::delete(delete_token::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/notifiers",
-            get(list_notifiers::<DS, CS, TS, NS, BS, MS, AS>),
+            get(list_notifiers::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/notifiers",
-            post(create_notifier::<DS, CS, TS, NS, BS, MS, AS>),
+            post(create_notifier::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/notifiers/{id}",
-            axum::routing::delete(delete_notifier::<DS, CS, TS, NS, BS, MS, AS>),
+            axum::routing::delete(delete_notifier::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/notifiers/{id}/enabled",
-            axum::routing::patch(set_notifier_enabled::<DS, CS, TS, NS, BS, MS, AS>),
+            axum::routing::patch(set_notifier_enabled::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/notifiers/{id}/test",
-            post(test_notifier::<DS, CS, TS, NS, BS, MS, AS>),
+            post(test_notifier::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/alerts",
-            get(list_alert_rules::<DS, CS, TS, NS, BS, MS, AS>),
+            get(list_alert_rules::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/alerts",
-            post(create_alert_rule::<DS, CS, TS, NS, BS, MS, AS>),
+            post(create_alert_rule::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/alerts/events",
-            get(list_alert_events::<DS, CS, TS, NS, BS, MS, AS>),
+            get(list_alert_events::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/alerts/{id}",
-            axum::routing::delete(delete_alert_rule::<DS, CS, TS, NS, BS, MS, AS>),
+            axum::routing::delete(delete_alert_rule::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/alerts/{id}/enabled",
-            axum::routing::patch(set_alert_rule_enabled::<DS, CS, TS, NS, BS, MS, AS>),
+            axum::routing::patch(set_alert_rule_enabled::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/deployments",
-            get(get_deployments::<DS, CS, TS, NS, BS, MS, AS>),
+            get(get_deployments::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/billing/plan",
-            post(set_plan::<DS, CS, TS, NS, BS, MS, AS>),
+            post(set_plan::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/deployments/{project_name}/{service_name}",
-            get(get_deployments_by_service::<DS, CS, TS, NS, BS, MS, AS>),
+            get(get_deployments_by_service::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/container/state",
-            get(get_container_states::<DS, CS, TS, NS, BS, MS, AS>),
+            get(get_container_states::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/container/state/{hostname}/{project_name}/{service_name}",
-            get(get_container_state_by_service_name::<DS, CS, TS, NS, BS, MS, AS>),
+            get(get_container_state_by_service_name::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/container/state/{hostname}/{project_name}",
-            axum::routing::delete(delete_project::<DS, CS, TS, NS, BS, MS, AS>),
+            axum::routing::delete(delete_project::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/container/metrics",
-            get(get_latest_metrics::<DS, CS, TS, NS, BS, MS, AS>),
+            get(get_latest_metrics::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/container/metrics/{hostname}/{project_name}/{service_name}",
-            get(get_service_metrics::<DS, CS, TS, NS, BS, MS, AS>),
+            get(get_service_metrics::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         // On-demand logs: the browser POSTs `.../request` to trigger an SSE
         // log request to the agent, then polls the GET to read the answer.
         .route(
             "/container/logs/{hostname}/{project_name}/{service_name}/request",
-            post(request_container_logs::<DS, CS, TS, NS, BS, MS, AS>),
+            post(request_container_logs::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/container/logs/{hostname}/{project_name}/{service_name}",
-            get(get_container_logs::<DS, CS, TS, NS, BS, MS, AS>),
+            get(get_container_logs::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         // Pending-update read/apply mirrored from the agent router so the
         // BFF can drive them. Writes (POST /pending-updates) stay agent-only.
         .route(
             "/pending-updates",
-            get(get_pending_updates::<DS, CS, TS, NS, BS, MS, AS>),
+            get(get_pending_updates::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/pending-updates/{hostname}/{project_name}/{service_name}/apply",
-            post(apply_pending_update::<DS, CS, TS, NS, BS, MS, AS>),
+            post(apply_pending_update::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
         .route(
             "/users",
-            axum::routing::delete(delete_user::<DS, CS, TS, NS, BS, MS, AS>),
+            axum::routing::delete(delete_user::<DS, CS, TS, NS, BS, MS, AS, PS>),
         )
+        // Project overview, project-scoped reads for owners and members,
+        // sharing and project notifiers. See `inbound::projects`.
+        .merge(crate::inbound::projects::routes::<
+            DS,
+            CS,
+            TS,
+            NS,
+            BS,
+            MS,
+            AS,
+            PS,
+        >())
         .layer(middleware::from_fn_with_state(
             state.clone(),
-            internal_user_middleware::<DS, CS, TS, NS, BS, MS, AS>,
+            internal_user_middleware::<DS, CS, TS, NS, BS, MS, AS, PS>,
         ))
         .layer(Extension(internal_secret))
         .layer(middleware::from_fn(audit_log_middleware))

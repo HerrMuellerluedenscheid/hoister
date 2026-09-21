@@ -231,12 +231,25 @@ pub struct WebhookConfig {
     pub headers: std::collections::HashMap<String, String>,
 }
 
+/// Which notifiers an operation addresses: a user's account-wide ones, or the
+/// ones attached to a single project (shared by all of its members).
+#[derive(Debug, Clone, Copy)]
+pub enum NotifierScope<'a> {
+    Account(&'a str),
+    Project(uuid::Uuid),
+}
+
 /// A persisted notifier. The full `config` (with secrets) stays
 /// server-side; the dashboard receives [`NotifierSummary`] instead.
 #[derive(Debug, Clone)]
 pub struct Notifier {
     pub id: uuid::Uuid,
+    /// The owning account. For a project notifier this is the project owner,
+    /// whichever member created it, so the owner's plan governs it.
     pub user_id: String,
+    /// `None` for account-wide notifiers (every event of every project the
+    /// user owns); `Some` limits the notifier to that project's events.
+    pub project_id: Option<uuid::Uuid>,
     pub kind: NotifierKind,
     pub config: NotifierConfig,
     pub enabled: bool,
@@ -440,6 +453,7 @@ mod tests {
         Notifier {
             id: uuid::Uuid::nil(),
             user_id: "u".into(),
+            project_id: None,
             kind,
             config,
             enabled: true,

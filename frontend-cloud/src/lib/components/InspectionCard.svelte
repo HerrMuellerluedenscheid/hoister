@@ -3,7 +3,10 @@
 	import type { ContainerStateResponse } from '../../bindings/ContainerStateResponse';
 	import { isStale } from '$lib/staleness';
 
-	const { inspection_data }: { inspection_data: ContainerStateResponse } = $props();
+	// `href` overrides the default host/project/service link, e.g. to the
+	// project-scoped service page (which also works for shared projects).
+	const { inspection_data, href }: { inspection_data: ContainerStateResponse; href?: string } =
+		$props();
 
 	const inspection = $derived(inspection_data.container_inspections);
 	const hoisterEnabled = $derived(inspection.Config?.Labels?.['hoister.enable'] === 'true');
@@ -63,7 +66,8 @@
 </script>
 
 <a
-	href="/containers/{inspection_data.hostname}/{inspection_data.project_name}/{inspection_data.service_name}"
+	href={href ??
+		`/containers/${inspection_data.hostname}/${inspection_data.project_name}/${inspection_data.service_name}`}
 	class="block rounded-xl border border-line bg-card p-5 transition hover:border-line-subtle hover:bg-card/80 {stale
 		? 'opacity-60'
 		: ''}"
