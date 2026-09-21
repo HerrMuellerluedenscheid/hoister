@@ -5,8 +5,16 @@
 
 	// `linkToContainer` makes each row navigate to the container the deployment
 	// happened on — used on the all-deployments list, off on the container page.
-	let { data, linkToContainer = false }: { data: Deployment[]; linkToContainer?: boolean } =
-		$props();
+	// `hrefFor` overrides where a row links to (e.g. project-scoped pages).
+	let {
+		data,
+		linkToContainer = false,
+		hrefFor
+	}: {
+		data: Deployment[];
+		linkToContainer?: boolean;
+		hrefFor?: (item: Deployment) => string;
+	} = $props();
 
 	// Track which deployments have their captured failed-container logs expanded.
 	let expanded = $state<Set<bigint>>(new Set());
@@ -19,6 +27,7 @@
 	}
 
 	function containerHref(item: Deployment): string {
+		if (hrefFor) return hrefFor(item);
 		return `/containers/${encodeURIComponent(item.hostname)}/${encodeURIComponent(
 			item.project_name
 		)}/${encodeURIComponent(item.service_name)}`;

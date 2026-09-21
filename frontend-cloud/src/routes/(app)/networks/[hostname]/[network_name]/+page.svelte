@@ -43,7 +43,7 @@
 <div class="px-4 py-6 sm:px-8 sm:py-10">
 	<div class="mx-auto max-w-6xl space-y-6">
 		<div>
-			<a href="/containers" class="text-xs text-ink-faint hover:text-ink-secondary">← Containers</a>
+			<a href="/projects" class="text-xs text-ink-faint hover:text-ink-secondary">← Projects</a>
 			<h1 class="mt-2 text-2xl font-bold">
 				<span class="text-ink-muted">Network</span>
 				<span class="px-2 text-ink-ghost">/</span>

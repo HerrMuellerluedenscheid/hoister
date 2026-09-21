@@ -83,9 +83,19 @@ async function unwrap<T>(response: Response, what: string): Promise<T> {
 	return result.data;
 }
 
-export async function listNotifiers(userId: string): Promise<Notifier[]> {
+/**
+ * Account-wide notifiers live under `/notifiers`; the notifiers of one project
+ * (shared with everyone who has access to it) under `/projects/:id/notifiers`.
+ * Every function below takes an optional `projectId` to pick the scope.
+ */
+function notifiersUrl(projectId?: string, rest = ''): string {
 	if (!BACKEND_URL) throw error(500, 'Backend URL not configured');
-	const response = await fetch(`${BACKEND_URL}/notifiers`, {
+	const scope = projectId ? `/projects/${encodeURIComponent(projectId)}` : '';
+	return `${BACKEND_URL}${scope}/notifiers${rest}`;
+}
+
+export async function listNotifiers(userId: string, projectId?: string): Promise<Notifier[]> {
+	const response = await fetch(notifiersUrl(projectId), {
 		headers: backendHeaders(userId)
 	});
 	return unwrap<Notifier[]>(response, 'list notifiers');
@@ -97,11 +107,11 @@ export type CreateNotifierResult =
 
 export async function createNotifier(
 	userId: string,
-	config: NotifierConfig
+	config: NotifierConfig,
+	projectId?: string
 ): Promise<CreateNotifierResult> {
-	if (!BACKEND_URL) throw error(500, 'Backend URL not configured');
 	const headers = { ...backendHeaders(userId), 'Content-Type': 'application/json' };
-	const response = await fetch(`${BACKEND_URL}/notifiers`, {
+	const response = await fetch(notifiersUrl(projectId), {
 		method: 'POST',
 		headers,
 		body: JSON.stringify(config)
@@ -114,9 +124,12 @@ export async function createNotifier(
 	return { ok: true, notifier };
 }
 
-export async function deleteNotifier(userId: string, notifierId: string): Promise<boolean> {
-	if (!BACKEND_URL) throw error(500, 'Backend URL not configured');
-	const response = await fetch(`${BACKEND_URL}/notifiers/${notifierId}`, {
+export async function deleteNotifier(
+	userId: string,
+	notifierId: string,
+	projectId?: string
+): Promise<boolean> {
+	const response = await fetch(notifiersUrl(projectId, `/${notifierId}`), {
 		method: 'DELETE',
 		headers: backendHeaders(userId)
 	});
@@ -129,10 +142,10 @@ export type TestNotifierResult = { ok: true } | { ok: false; error: string };
 
 export async function testNotifier(
 	userId: string,
-	notifierId: string
+	notifierId: string,
+	projectId?: string
 ): Promise<TestNotifierResult> {
-	if (!BACKEND_URL) throw error(500, 'Backend URL not configured');
-	const response = await fetch(`${BACKEND_URL}/notifiers/${notifierId}/test`, {
+	const response = await fetch(notifiersUrl(projectId, `/${notifierId}/test`), {
 		method: 'POST',
 		headers: backendHeaders(userId)
 	});
@@ -145,11 +158,11 @@ export async function testNotifier(
 export async function setNotifierEnabled(
 	userId: string,
 	notifierId: string,
-	enabled: boolean
+	enabled: boolean,
+	projectId?: string
 ): Promise<boolean> {
-	if (!BACKEND_URL) throw error(500, 'Backend URL not configured');
 	const headers = { ...backendHeaders(userId), 'Content-Type': 'application/json' };
-	const response = await fetch(`${BACKEND_URL}/notifiers/${notifierId}/enabled`, {
+	const response = await fetch(notifiersUrl(projectId, `/${notifierId}/enabled`), {
 		method: 'PATCH',
 		headers,
 		body: JSON.stringify({ enabled })

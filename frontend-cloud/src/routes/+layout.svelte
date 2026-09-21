@@ -27,7 +27,7 @@
 <ClerkProvider
 	publishableKey={env.PUBLIC_CLERK_PUBLISHABLE_KEY}
 	signUpFallbackRedirectUrl="/tokens"
-	signInFallbackRedirectUrl="/containers"
+	signInFallbackRedirectUrl="/projects"
 >
 	{@render children()}
 	<CookieBanner />

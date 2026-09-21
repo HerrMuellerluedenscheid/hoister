@@ -59,10 +59,9 @@
 	// Logs are fetched only when the user asks: we POST a request (the controller
 	// relays it to the agent over SSE), then poll until the agent's answer lands.
 	// Nothing is persisted, and the agent only answers with HOISTER_REPORT_LOGS=true.
+	const projectHref = $derived(`/projects/${data.project.id}`);
 	const logsUrl = $derived(
-		hostname && project_name && service_name
-			? `/containers/${encodeURIComponent(hostname)}/${encodeURIComponent(project_name)}/${encodeURIComponent(service_name)}/logs`
-			: null
+		service_name ? `${projectHref}/services/${encodeURIComponent(service_name)}/logs` : null
 	);
 
 	let liveLogs = $state<string | null>(null);
@@ -114,8 +113,13 @@
 		{:else}
 			<!-- Header -->
 			<div>
+				<nav class="mb-2 text-xs text-ink-faint">
+					<a href="/projects" class="hover:text-ink-secondary">Projects</a>
+					<span class="px-1 text-ink-ghost">/</span>
+					<a href={projectHref} class="hover:text-ink-secondary">{project_name}</a>
+				</nav>
 				<h1 class="mb-1 text-2xl font-bold">
-					<span class="text-ink-muted">{project_name}</span>
+					<a href={projectHref} class="text-ink-muted hover:text-ink">{project_name}</a>
 					<span class="px-2 text-ink-ghost">/</span>
 					<span>{service_name}</span>
 				</h1>
@@ -409,16 +413,22 @@
 								MacAddress?: string;
 							}}
 							<div class="rounded-lg border border-line p-3">
-								<a
-									href="/networks/{encodeURIComponent(hostname ?? '')}/{encodeURIComponent(
-										networkName
-									)}"
-									class="mb-2 inline-flex items-center gap-1 text-sm font-medium text-brand-light hover:text-brand-light hover:underline"
-									title="View services on this network"
-								>
-									{networkName}
-									<span aria-hidden="true">→</span>
-								</a>
+								<!-- The network view lists your own containers only, so it has
+								     nothing to show for a project shared with you. -->
+								{#if data.project.role === 'owner'}
+									<a
+										href="/networks/{encodeURIComponent(hostname ?? '')}/{encodeURIComponent(
+											networkName
+										)}"
+										class="mb-2 inline-flex items-center gap-1 text-sm font-medium text-brand-light hover:text-brand-light hover:underline"
+										title="View services on this network"
+									>
+										{networkName}
+										<span aria-hidden="true">→</span>
+									</a>
+								{:else}
+									<p class="mb-2 text-sm font-medium text-ink-code">{networkName}</p>
+								{/if}
 								<div class="grid grid-cols-1 gap-3 text-xs md:grid-cols-3">
 									<div>
 										<span class="text-ink-faint">IP</span>

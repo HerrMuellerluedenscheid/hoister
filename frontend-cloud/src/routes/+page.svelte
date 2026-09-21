@@ -116,7 +116,7 @@
 			<Show when="signed-in">
 				{#snippet children()}
 					<a
-						href="/containers"
+						href="/projects"
 						class="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-stone-100 transition hover:bg-brand-hover"
 					>
 						Open app
@@ -150,7 +150,7 @@
 			<Show when="signed-in">
 				{#snippet children()}
 					<a
-						href="/containers"
+						href="/projects"
 						class="rounded-xl bg-brand px-6 py-3 text-sm font-semibold text-stone-100 shadow-lg transition hover:bg-brand-hover active:scale-95"
 					>
 						Open app →

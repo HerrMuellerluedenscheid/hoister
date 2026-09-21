@@ -19,7 +19,9 @@ use crate::domain::metrics::models::{
     AddMetricsRequest, LatestMetric, MetricPoint, RETENTION_DAYS,
 };
 use crate::domain::metrics::port::MetricsRepository;
-use crate::domain::notifiers::models::{Notifier, NotifierConfig, NotifierError, NotifierKind};
+use crate::domain::notifiers::models::{
+    Notifier, NotifierConfig, NotifierError, NotifierKind, NotifierScope,
+};
 use crate::domain::notifiers::ports::NotifierRepository;
 use crate::domain::tokens::models::{ApiToken, TokenError};
 use crate::domain::tokens::ports::TokenRepository;
@@ -30,6 +32,8 @@ use log::error;
 use sqlx::{Error as SqlxError, PgPool, Row};
 use std::collections::HashMap;
 use tracing::{debug, info};
+
+mod projects;
 
 #[derive(Clone)]
 pub struct Postgresql {
@@ -553,22 +557,15 @@ impl DeploymentsRepository for Postgresql {
     }
 }
 
-impl NotifierRepository for Postgresql {
-    async fn list_notifiers(&self, user_id: &str) -> Result<Vec<Notifier>, NotifierError> {
-        let rows = sqlx::query(
-            "SELECT id, user_id, kind, config::text AS config, enabled, created_at::text AS created_at
-                FROM notifier
-                WHERE user_id = $1
-                ORDER BY created_at DESC, id DESC",
-        )
-        .bind(user_id)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| {
-            error!("list_notifiers failed: {e:?}");
-            NotifierError::UnknownError
-        })?;
+const NOTIFIER_COLUMNS: &str = "SELECT id, user_id, project_id, kind, config::text AS config,
+        enabled, created_at::text AS created_at
+    FROM notifier";
 
+impl Postgresql {
+    fn decode_notifiers(
+        &self,
+        rows: Vec<sqlx::postgres::PgRow>,
+    ) -> Result<Vec<Notifier>, NotifierError> {
         let mut out = Vec::with_capacity(rows.len());
         for r in rows {
             let kind_str: String = r.get("kind");
@@ -584,6 +581,7 @@ impl NotifierRepository for Postgresql {
             out.push(Notifier {
                 id: r.get::<uuid::Uuid, _>("id"),
                 user_id: r.get("user_id"),
+                project_id: r.get::<Option<uuid::Uuid>, _>("project_id"),
                 kind,
                 config,
                 enabled: r.get("enabled"),
@@ -592,10 +590,68 @@ impl NotifierRepository for Postgresql {
         }
         Ok(out)
     }
+}
+
+impl NotifierRepository for Postgresql {
+    async fn list_notifiers(
+        &self,
+        scope: NotifierScope<'_>,
+    ) -> Result<Vec<Notifier>, NotifierError> {
+        // Order by the timestamp column, not the `::text` alias of the same name.
+        let rows = match scope {
+            NotifierScope::Account(user_id) => {
+                sqlx::query(&format!(
+                    "{NOTIFIER_COLUMNS} WHERE user_id = $1 AND project_id IS NULL
+                        ORDER BY notifier.created_at DESC, id DESC"
+                ))
+                .bind(user_id)
+                .fetch_all(&self.pool)
+                .await
+            }
+            NotifierScope::Project(project_id) => {
+                sqlx::query(&format!(
+                    "{NOTIFIER_COLUMNS} WHERE project_id = $1
+                        ORDER BY notifier.created_at DESC, id DESC"
+                ))
+                .bind(project_id)
+                .fetch_all(&self.pool)
+                .await
+            }
+        }
+        .map_err(|e| {
+            error!("list_notifiers failed: {e:?}");
+            NotifierError::UnknownError
+        })?;
+        self.decode_notifiers(rows)
+    }
+
+    async fn list_event_notifiers(
+        &self,
+        owner_id: &str,
+        project_name: &ProjectName,
+    ) -> Result<Vec<Notifier>, NotifierError> {
+        let rows = sqlx::query(&format!(
+            "{NOTIFIER_COLUMNS}
+                WHERE user_id = $1
+                  AND (project_id IS NULL
+                       OR project_id = (SELECT id FROM project WHERE user_id = $1 AND name = $2))
+                ORDER BY notifier.created_at DESC, id DESC"
+        ))
+        .bind(owner_id)
+        .bind(project_name.as_str())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("list_event_notifiers failed: {e:?}");
+            NotifierError::UnknownError
+        })?;
+        self.decode_notifiers(rows)
+    }
 
     async fn create_notifier(
         &self,
         user_id: &str,
+        project_id: Option<uuid::Uuid>,
         config: NotifierConfig,
     ) -> Result<Notifier, NotifierError> {
         let id = uuid::Uuid::new_v4();
@@ -607,11 +663,13 @@ impl NotifierRepository for Postgresql {
             NotifierError::UnknownError
         })?;
         let row = sqlx::query(
-            "INSERT INTO notifier (id, user_id, kind, config) VALUES ($1, $2, $3, $4::jsonb)
+            "INSERT INTO notifier (id, user_id, project_id, kind, config)
+                VALUES ($1, $2, $3, $4, $5::jsonb)
                 RETURNING created_at::text AS created_at",
         )
         .bind(id)
         .bind(user_id)
+        .bind(project_id)
         .bind(kind.as_str())
         .bind(&to_store)
         .fetch_one(&self.pool)
@@ -623,6 +681,7 @@ impl NotifierRepository for Postgresql {
         Ok(Notifier {
             id,
             user_id: user_id.to_string(),
+            project_id,
             kind,
             config,
             enabled: true,
@@ -632,31 +691,58 @@ impl NotifierRepository for Postgresql {
 
     async fn delete_notifier(
         &self,
-        user_id: &str,
+        scope: NotifierScope<'_>,
         notifier_id: uuid::Uuid,
     ) -> Result<bool, NotifierError> {
-        let result = sqlx::query("DELETE FROM notifier WHERE id = $1 AND user_id = $2")
-            .bind(notifier_id)
-            .bind(user_id)
-            .execute(&self.pool)
-            .await
+        let result =
+            match scope {
+                NotifierScope::Account(user_id) => sqlx::query(
+                    "DELETE FROM notifier WHERE id = $1 AND user_id = $2 AND project_id IS NULL",
+                )
+                .bind(notifier_id)
+                .bind(user_id)
+                .execute(&self.pool)
+                .await,
+                NotifierScope::Project(project_id) => {
+                    sqlx::query("DELETE FROM notifier WHERE id = $1 AND project_id = $2")
+                        .bind(notifier_id)
+                        .bind(project_id)
+                        .execute(&self.pool)
+                        .await
+                }
+            }
             .map_err(|_| NotifierError::UnknownError)?;
         Ok(result.rows_affected() > 0)
     }
 
     async fn set_enabled(
         &self,
-        user_id: &str,
+        scope: NotifierScope<'_>,
         notifier_id: uuid::Uuid,
         enabled: bool,
     ) -> Result<bool, NotifierError> {
-        let result = sqlx::query("UPDATE notifier SET enabled = $1 WHERE id = $2 AND user_id = $3")
-            .bind(enabled)
-            .bind(notifier_id)
-            .bind(user_id)
-            .execute(&self.pool)
-            .await
-            .map_err(|_| NotifierError::UnknownError)?;
+        let result = match scope {
+            NotifierScope::Account(user_id) => {
+                sqlx::query(
+                    "UPDATE notifier SET enabled = $1
+                        WHERE id = $2 AND user_id = $3 AND project_id IS NULL",
+                )
+                .bind(enabled)
+                .bind(notifier_id)
+                .bind(user_id)
+                .execute(&self.pool)
+                .await
+            }
+            NotifierScope::Project(project_id) => {
+                sqlx::query("UPDATE notifier SET enabled = $1 WHERE id = $2 AND project_id = $3")
+                    .bind(enabled)
+                    .bind(notifier_id)
+                    .bind(project_id)
+                    .execute(&self.pool)
+                    .await
+            }
+        }
+        .map_err(|_| NotifierError::UnknownError)?;
         Ok(result.rows_affected() > 0)
     }
 }

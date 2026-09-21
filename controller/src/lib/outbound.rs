@@ -2,6 +2,7 @@ pub mod logs_memory;
 pub mod notification_dispatch;
 pub mod pending_updates_memory;
 pub mod postgresql;
+mod projects;
 pub mod secrets;
 pub mod sqlite;
 
@@ -22,7 +23,7 @@ use crate::domain::deployments::models::deployment::{
 use crate::domain::deployments::ports::DeploymentsRepository;
 use crate::domain::metrics::models::{AddMetricsRequest, LatestMetric, MetricPoint};
 use crate::domain::metrics::port::MetricsRepository;
-use crate::domain::notifiers::models::{Notifier, NotifierConfig, NotifierError};
+use crate::domain::notifiers::models::{Notifier, NotifierConfig, NotifierError, NotifierScope};
 use crate::domain::notifiers::ports::NotifierRepository;
 use crate::domain::tokens::models::{ApiToken, TokenError};
 use crate::domain::tokens::ports::TokenRepository;
@@ -203,11 +204,31 @@ impl TokenRepository for Database {
 }
 
 impl NotifierRepository for Database {
-    async fn list_notifiers(&self, user_id: &str) -> Result<Vec<Notifier>, NotifierError> {
+    async fn list_notifiers(
+        &self,
+        scope: NotifierScope<'_>,
+    ) -> Result<Vec<Notifier>, NotifierError> {
         match self {
-            Self::Sqlite(db) => <Sqlite as NotifierRepository>::list_notifiers(db, user_id).await,
+            Self::Sqlite(db) => <Sqlite as NotifierRepository>::list_notifiers(db, scope).await,
             Self::Postgresql(db) => {
-                <Postgresql as NotifierRepository>::list_notifiers(db, user_id).await
+                <Postgresql as NotifierRepository>::list_notifiers(db, scope).await
+            }
+        }
+    }
+
+    async fn list_event_notifiers(
+        &self,
+        owner_id: &str,
+        project_name: &ProjectName,
+    ) -> Result<Vec<Notifier>, NotifierError> {
+        match self {
+            Self::Sqlite(db) => {
+                <Sqlite as NotifierRepository>::list_event_notifiers(db, owner_id, project_name)
+                    .await
+            }
+            Self::Postgresql(db) => {
+                <Postgresql as NotifierRepository>::list_event_notifiers(db, owner_id, project_name)
+                    .await
             }
         }
     }
@@ -215,45 +236,48 @@ impl NotifierRepository for Database {
     async fn create_notifier(
         &self,
         user_id: &str,
+        project_id: Option<uuid::Uuid>,
         config: NotifierConfig,
     ) -> Result<Notifier, NotifierError> {
         match self {
             Self::Sqlite(db) => {
-                <Sqlite as NotifierRepository>::create_notifier(db, user_id, config).await
+                <Sqlite as NotifierRepository>::create_notifier(db, user_id, project_id, config)
+                    .await
             }
             Self::Postgresql(db) => {
-                <Postgresql as NotifierRepository>::create_notifier(db, user_id, config).await
+                <Postgresql as NotifierRepository>::create_notifier(db, user_id, project_id, config)
+                    .await
             }
         }
     }
 
     async fn delete_notifier(
         &self,
-        user_id: &str,
+        scope: NotifierScope<'_>,
         notifier_id: uuid::Uuid,
     ) -> Result<bool, NotifierError> {
         match self {
             Self::Sqlite(db) => {
-                <Sqlite as NotifierRepository>::delete_notifier(db, user_id, notifier_id).await
+                <Sqlite as NotifierRepository>::delete_notifier(db, scope, notifier_id).await
             }
             Self::Postgresql(db) => {
-                <Postgresql as NotifierRepository>::delete_notifier(db, user_id, notifier_id).await
+                <Postgresql as NotifierRepository>::delete_notifier(db, scope, notifier_id).await
             }
         }
     }
 
     async fn set_enabled(
         &self,
-        user_id: &str,
+        scope: NotifierScope<'_>,
         notifier_id: uuid::Uuid,
         enabled: bool,
     ) -> Result<bool, NotifierError> {
         match self {
             Self::Sqlite(db) => {
-                <Sqlite as NotifierRepository>::set_enabled(db, user_id, notifier_id, enabled).await
+                <Sqlite as NotifierRepository>::set_enabled(db, scope, notifier_id, enabled).await
             }
             Self::Postgresql(db) => {
-                <Postgresql as NotifierRepository>::set_enabled(db, user_id, notifier_id, enabled)
+                <Postgresql as NotifierRepository>::set_enabled(db, scope, notifier_id, enabled)
                     .await
             }
         }

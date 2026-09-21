@@ -21,6 +21,7 @@ mod tests {
     use controller::domain::deployments::service::Service as DeploymentsService;
     use controller::domain::metrics::service::Service as MetricsService;
     use controller::domain::notifiers::service::Service as NotifierService;
+    use controller::domain::projects::service::Service as ProjectsService;
     use controller::domain::tokens::service::Service as TokenService;
     use controller::inbound::server::{
         ApiResponse, AppState, InternalSecret, create_agent_router, create_internal_router,
@@ -68,7 +69,8 @@ mod tests {
             notifier_service: Arc::new(NotifierService::new(db.clone())),
             billing_service: Arc::new(BillingService::new(db.clone())),
             metrics_service: Arc::new(MetricsService::new(db.clone())),
-            alerts_service: Arc::new(AlertsService::new(db)),
+            alerts_service: Arc::new(AlertsService::new(db.clone())),
+            projects_service: Arc::new(ProjectsService::new(db)),
             #[cfg(feature = "self-hosted")]
             api_secret: Some("tests-secret".to_string()),
             event_tx,
@@ -715,5 +717,457 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    // ── Projects and sharing ─────────────────────────────────────────────────
+
+    /// A co-maintainer and an unrelated user, both only ever seen through the
+    /// internal router's `X-User-Id`.
+    const MEMBER: &str = "user_member";
+    const OUTSIDER: &str = "user_outsider";
+
+    /// One internal-router call as `user`; returns the status and the JSON
+    /// body (`Null` for empty bodies).
+    async fn call(
+        internal: &Router,
+        method: &str,
+        uri: &str,
+        user: &str,
+        body: Option<serde_json::Value>,
+    ) -> (StatusCode, serde_json::Value) {
+        let mut request = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("X-User-Id", user);
+        let body = match body {
+            Some(json) => {
+                request = request.header("Content-Type", "application/json");
+                Body::from(json.to_string())
+            }
+            None => Body::empty(),
+        };
+        let response = internal
+            .clone()
+            .oneshot(request.body(body).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+        (status, json)
+    }
+
+    /// Report a running "web" service for `project` through the agent router
+    /// (owned by TEST_USER) and return the project id from the overview.
+    async fn seed_project(agent: &Router, internal: &Router, project: &str) -> String {
+        let state_body = serde_json::json!({
+            "project_name": project,
+            "payload": { "web": { "inspect": {
+                "State": { "Status": "running", "Health": { "Status": "healthy" } },
+                "Config": { "Image": "nginx:latest" }
+            } } }
+        });
+        let response = agent
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/container/state/test-host/{project}"))
+                    .header("Authorization", "Bearer tests-secret")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(state_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let (status, projects) = call(internal, "GET", "/projects", TEST_USER, None).await;
+        assert_eq!(status, StatusCode::OK);
+        projects["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["name"] == project)
+            .expect("seeded project is listed")["id"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    }
+
+    #[tokio::test]
+    async fn test_project_overview_summarises_services_and_latest_rollout() {
+        let (agent, internal, _db) = setup_test_app().await;
+        let id = seed_project(&agent, &internal, "shop").await;
+
+        let deployment = CreateDeployment {
+            project: ProjectName::new("shop"),
+            service: ServiceName::new("web"),
+            image: ImageName::new("nginx:latest"),
+            digest: ImageDigest::new("sha256:new"),
+            status: DeploymentStatus::Success,
+            hostname: HostName::new("test-host"),
+            logs: None,
+        };
+        let response = agent
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/deployments")
+                    .header("Authorization", "Bearer tests-secret")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(serde_json::to_string(&deployment).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let (status, body) = call(&internal, "GET", "/projects", TEST_USER, None).await;
+        assert_eq!(status, StatusCode::OK);
+        let projects = body["data"].as_array().unwrap();
+        assert_eq!(projects.len(), 1);
+        let project = &projects[0];
+        assert_eq!(project["id"], id.as_str());
+        assert_eq!(project["hostname"], "test-host");
+        assert_eq!(project["role"], "owner");
+        assert_eq!(project["services"][0]["name"], "web");
+        assert_eq!(project["services"][0]["status"], "running");
+        assert_eq!(project["services"][0]["health"], "healthy");
+        assert_eq!(project["services"][0]["image"], "nginx:latest");
+        assert_eq!(project["latest_deployment"]["digest"], "sha256:new");
+        assert_eq!(project["pending_updates"], 0);
+        assert_eq!(project["member_count"], 0);
+
+        // Project-scoped service and deployment reads work for the owner.
+        let (status, services) = call(
+            &internal,
+            "GET",
+            &format!("/projects/{id}/services"),
+            TEST_USER,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(services.as_array().map(|a| a.len()), Some(1));
+        let (status, deployments) = call(
+            &internal,
+            "GET",
+            &format!("/projects/{id}/services/web/deployments"),
+            TEST_USER,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(deployments["data"].as_array().map(|a| a.len()), Some(1));
+    }
+
+    #[tokio::test]
+    async fn test_shared_project_is_readable_by_members_but_administered_by_the_owner() {
+        let (agent, internal, _db) = setup_test_app().await;
+        let id = seed_project(&agent, &internal, "shop").await;
+        let project = format!("/projects/{id}");
+
+        // Before sharing, the project is invisible to anyone else — and
+        // indistinguishable from a project that doesn't exist.
+        let (_, listed) = call(&internal, "GET", "/projects", MEMBER, None).await;
+        assert_eq!(listed["data"].as_array().map(|a| a.len()), Some(0));
+        let (status, _) = call(&internal, "GET", &project, MEMBER, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let (status, _) = call(
+            &internal,
+            "POST",
+            &format!("{project}/members"),
+            MEMBER,
+            Some(serde_json::json!({ "user_id": MEMBER })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        // The owner shares it; sharing twice is a no-op.
+        let add = serde_json::json!({ "user_id": MEMBER });
+        let (status, added) = call(
+            &internal,
+            "POST",
+            &format!("{project}/members"),
+            TEST_USER,
+            Some(add.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(added["data"]["added"], true);
+        let (_, added) = call(
+            &internal,
+            "POST",
+            &format!("{project}/members"),
+            TEST_USER,
+            Some(add),
+        )
+        .await;
+        assert_eq!(added["data"]["added"], false);
+
+        // The member sees it, with the owner's live state.
+        let (_, listed) = call(&internal, "GET", "/projects", MEMBER, None).await;
+        let listed = listed["data"].as_array().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0]["role"], "member");
+        assert_eq!(listed[0]["services"][0]["status"], "running");
+        let (status, service) = call(
+            &internal,
+            "GET",
+            &format!("{project}/services/web"),
+            MEMBER,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(service["data"]["service_name"], "web");
+        let (status, detail) = call(&internal, "GET", &project, MEMBER, None).await;
+        assert_eq!(status, StatusCode::OK);
+        let members = detail["data"]["members"].as_array().unwrap();
+        assert_eq!(members.len(), 2);
+        assert_eq!(members[0]["user_id"], TEST_USER);
+        assert_eq!(members[0]["role"], "owner");
+        assert_eq!(members[1]["user_id"], MEMBER);
+
+        // …but may neither re-share, invite, nor delete it.
+        let (status, _) = call(
+            &internal,
+            "POST",
+            &format!("{project}/members"),
+            MEMBER,
+            Some(serde_json::json!({ "user_id": OUTSIDER })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        let (status, _) = call(
+            &internal,
+            "POST",
+            &format!("{project}/invitations"),
+            MEMBER,
+            Some(serde_json::json!({ "email": "someone@example.com" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        let (status, _) = call(&internal, "DELETE", &project, MEMBER, None).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+
+        // Outsiders still can't see it, and a member can't remove others.
+        let (status, _) = call(&internal, "GET", &project, OUTSIDER, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let (status, _) = call(
+            &internal,
+            "DELETE",
+            &format!("{project}/members/{TEST_USER}"),
+            MEMBER,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+
+        // A member can leave.
+        let (status, _) = call(
+            &internal,
+            "DELETE",
+            &format!("{project}/members/{MEMBER}"),
+            MEMBER,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, listed) = call(&internal, "GET", "/projects", MEMBER, None).await;
+        assert_eq!(listed["data"].as_array().map(|a| a.len()), Some(0));
+    }
+
+    #[tokio::test]
+    async fn test_invitations_are_claimed_by_email_once() {
+        let (agent, internal, _db) = setup_test_app().await;
+        let id = seed_project(&agent, &internal, "shop").await;
+        let invitations = format!("/projects/{id}/invitations");
+
+        let (status, invited) = call(
+            &internal,
+            "POST",
+            &invitations,
+            TEST_USER,
+            Some(serde_json::json!({ "email": " Member@Example.com " })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(invited["data"]["created"], true);
+        assert_eq!(invited["data"]["invitation"]["email"], "member@example.com");
+
+        // Re-inviting the same address doesn't create (or re-send) anything.
+        let (_, again) = call(
+            &internal,
+            "POST",
+            &invitations,
+            TEST_USER,
+            Some(serde_json::json!({ "email": "member@example.com" })),
+        )
+        .await;
+        assert_eq!(again["data"]["created"], false);
+
+        let (status, _) = call(
+            &internal,
+            "POST",
+            &invitations,
+            TEST_USER,
+            Some(serde_json::json!({ "email": "not-an-address" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        // Signing up with a different address claims nothing.
+        let (_, claimed) = call(
+            &internal,
+            "POST",
+            "/invitations/claim",
+            OUTSIDER,
+            Some(serde_json::json!({ "emails": ["outsider@example.com"] })),
+        )
+        .await;
+        assert_eq!(
+            claimed["data"]["project_ids"].as_array().map(|a| a.len()),
+            Some(0)
+        );
+
+        // The invitee claims it with their verified address.
+        let (status, claimed) = call(
+            &internal,
+            "POST",
+            "/invitations/claim",
+            MEMBER,
+            Some(serde_json::json!({ "emails": ["MEMBER@example.com"] })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(claimed["data"]["project_ids"][0], id.as_str());
+        let (_, listed) = call(&internal, "GET", "/projects", MEMBER, None).await;
+        assert_eq!(listed["data"].as_array().map(|a| a.len()), Some(1));
+
+        // The invitation is used up.
+        let (_, detail) = call(
+            &internal,
+            "GET",
+            &format!("/projects/{id}"),
+            TEST_USER,
+            None,
+        )
+        .await;
+        assert_eq!(
+            detail["data"]["invitations"].as_array().map(|a| a.len()),
+            Some(0)
+        );
+        let (_, claimed) = call(
+            &internal,
+            "POST",
+            "/invitations/claim",
+            OUTSIDER,
+            Some(serde_json::json!({ "emails": ["member@example.com"] })),
+        )
+        .await;
+        assert_eq!(
+            claimed["data"]["project_ids"].as_array().map(|a| a.len()),
+            Some(0)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_project_notifiers_are_shared_with_members_and_kept_off_the_account_list() {
+        let (agent, internal, _db) = setup_test_app().await;
+        let id = seed_project(&agent, &internal, "shop").await;
+        let notifiers = format!("/projects/{id}/notifiers");
+        let telegram = serde_json::json!({ "kind": "telegram", "bot_token": "t", "chat_id": 1 });
+
+        call(
+            &internal,
+            "POST",
+            &format!("/projects/{id}/members"),
+            TEST_USER,
+            Some(serde_json::json!({ "user_id": MEMBER })),
+        )
+        .await;
+
+        // Owner and member each add one; both land on the project.
+        let (status, _) = call(
+            &internal,
+            "POST",
+            &notifiers,
+            TEST_USER,
+            Some(telegram.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, created) = call(
+            &internal,
+            "POST",
+            &notifiers,
+            MEMBER,
+            Some(telegram.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let member_notifier = created["data"]["id"].as_str().unwrap().to_string();
+
+        let (_, listed) = call(&internal, "GET", &notifiers, MEMBER, None).await;
+        assert_eq!(listed["data"].as_array().map(|a| a.len()), Some(2));
+
+        // Project notifiers don't show up among (or get managed through) the
+        // owner's account-wide notifiers.
+        let (_, account) = call(&internal, "GET", "/notifiers", TEST_USER, None).await;
+        assert_eq!(account["data"].as_array().map(|a| a.len()), Some(0));
+        let (status, _) = call(
+            &internal,
+            "DELETE",
+            &format!("/notifiers/{member_notifier}"),
+            TEST_USER,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        // Outsiders can neither list nor add.
+        let (status, _) = call(&internal, "GET", &notifiers, OUTSIDER, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let (status, _) = call(&internal, "POST", &notifiers, OUTSIDER, Some(telegram)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        // Members can toggle and delete project notifiers.
+        let (status, _) = call(
+            &internal,
+            "PATCH",
+            &format!("{notifiers}/{member_notifier}/enabled"),
+            MEMBER,
+            Some(serde_json::json!({ "enabled": false })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (status, _) = call(
+            &internal,
+            "DELETE",
+            &format!("{notifiers}/{member_notifier}"),
+            MEMBER,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        // Deleting the project takes its notifiers and memberships with it.
+        let (status, _) = call(
+            &internal,
+            "DELETE",
+            &format!("/projects/{id}"),
+            TEST_USER,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, listed) = call(&internal, "GET", "/projects", MEMBER, None).await;
+        assert_eq!(listed["data"].as_array().map(|a| a.len()), Some(0));
+        let (status, _) = call(&internal, "GET", &notifiers, TEST_USER, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
     }
 }
